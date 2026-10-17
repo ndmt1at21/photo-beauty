@@ -1,41 +1,32 @@
-// composite_tile() (render.h) on the CPU: the reference the GPU composite (B2) matches. The layers with pixels at the
-// tile become a list of steps, run row by row over float accumulators of premultiplied R, G, B and alpha with
+// composite_tile() (render.h) on the CPU: the reference the GPU composite (B2) matches. The tile's plan
+// (composite_plan(), composite.h) runs row by row over float accumulators of premultiplied R, G, B and alpha with
 // blend.h's formulas.
+#include "composite.h"
+
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
 
 #include "blend.h"
+#include "mip.h"
 #include "profile.h"  // snapone's PROFILE_ZONE
-#include "render.h"
 
 namespace pb {
 namespace {
 
 constexpr int S = kTileSize;
 
-// One step of a tile's composite. Push and Pop bracket a group's layers when they do not go straight onto the
-// backdrop: an isolated group's (onto transparency, then blended as one layer) and a Pass Through's below full
-// opacity (onto a copy of the backdrop, then mixed with it).
-struct Step {
-  enum Type : uint8_t { Layer, Push, Pop } type = Layer;
-  bool pass = false;             // Push, Pop: a Pass Through group's
-  Blend blend = Blend::Normal;   // Layer, Pop
-  float alpha = 1;               // Layer, Pop: opacity x fill
-  const Tile* tile = nullptr;    // Layer: its pixels here, null where it has none
-  const Tile* stroke = nullptr;  // Layer: the stroke buffer's tile here, when the stroke is on this layer
-  Pin pixels, coverage;          // theirs, for as long as the composite runs
-};
-
-// The steps of tile (tx, ty), bottom up, leaving out hidden layers, layers without pixels there and groups of none.
-struct Plan {
+// The steps of a tile, bottom up, from the layer tree.
+struct Planner {
   const RenderInput& in;
-  int tx, ty;
-  std::vector<Step> steps;
-  int depth = 0, max_depth = 0;  // of nested Push
+  int level, tx, ty;
+  CompositePlan& plan;
+  int depth = 0;
 
   void add(const Layer& group) {
+    std::vector<CompositeStep>& steps = plan.steps;
     for (const LayerPtr& l : group.children) {
       const LayerProps& p = l->props;
       // ponytail: fill scales alpha as opacity does; Photoshop weighs fill otherwise in Color Burn, Color Dodge, Linear
@@ -49,27 +40,24 @@ struct Plan {
         add(*l);  // its layers straight onto the backdrop
       } else {
         const size_t at = steps.size();
-        steps.push_back({Step::Push, pass});
-        max_depth = std::max(max_depth, ++depth);
+        steps.push_back({CompositeStep::Push, l->id, pass});
+        plan.depth = std::max(plan.depth, ++depth);
         add(*l);
         depth--;
         if (steps.size() == at + 1)
           steps.pop_back();
         else
-          steps.push_back({Step::Pop, pass, p.blend, alpha});
+          steps.push_back({CompositeStep::Pop, l->id, pass, p.blend, alpha});
       }
     }
   }
 
   void add_pixels(const Layer& l, float alpha) {
-    const Tile* t = l.pixels ? l.pixels->get(tx, ty) : nullptr;
+    TilePtr t = l.pixels ? mip(*l.pixels, level, tx, ty) : nullptr;
     const bool stroked = in.stroke && in.stroke->layer == l.id && in.stroke->buffer;
-    const Tile* st = stroked ? in.stroke->buffer->get(tx, ty) : nullptr;
-    if (!t && (!st || in.stroke->erase)) return;  // erasing where there is nothing leaves nothing
-    Step s{Step::Layer, false, l.props.blend, alpha, t, st};
-    if (t) s.pixels = t->pin();
-    if (st) s.coverage = st->pin();
-    steps.push_back(std::move(s));
+    TilePtr cover = stroked ? mip(*in.stroke->buffer, level, tx, ty) : nullptr;
+    if (!t && (!cover || in.stroke->erase)) return;  // erasing where there is nothing leaves nothing
+    plan.steps.push_back({CompositeStep::Layer, l.id, false, l.props.blend, alpha, std::move(t), std::move(cover)});
   }
 };
 
@@ -86,14 +74,14 @@ void unpack(const T* in, int channels, double k, int n, float* out) {
   }
 }
 
-// Pixels x0 to x0 + n of row y of a Layer step's tile; transparent where it has none.
-void load(const Step& s, int y, int x0, int n, float* out) {
-  if (!s.tile) return void(std::fill(out, out + 4 * n, 0.f));
-  const Format f = s.tile->format();
+// Pixels x0 to x0 + n of row y of a layer's tile t (pinned as p); transparent where it is null.
+void load(const Tile* t, const Pin& p, int y, int x0, int n, float* out) {
+  if (!t) return void(std::fill(out, out + 4 * n, 0.f));
+  const Format f = t->format();
   const double k = 1.0 / max_value(f.depth);
-  const uint8_t* d = s.pixels.data();
+  const uint8_t* d = p.data();
   if (!d) {  // solid
-    const Pixel v = s.tile->value();
+    const Pixel v = t->value();
     unpack(v.data(), f.channels, k, 1, out);
     for (int i = 1; i < n; i++) std::copy(out, out + 4, out + 4 * i);
     return;
@@ -105,12 +93,13 @@ void load(const Step& s, int y, int x0, int n, float* out) {
     unpack(d + at, f.channels, k, n, out);
 }
 
-// The stroke over the same pixels of its layer, `color` in R, G, B.
-void apply_stroke(const StrokeOverlay& o, const float color[3], const Step& s, int y, int x0, int n, float* px) {
+// The stroke over the same pixels of its layer, its coverage tile `cover` pinned as p, `color` in R, G, B.
+void apply_stroke(const StrokeOverlay& o, const float color[3], const Tile& cover, const Pin& p, int y, int x0, int n,
+                  float* px) {
   constexpr double scale = 1.0 / 65535;
-  const uint16_t* cov = reinterpret_cast<const uint16_t*>(s.coverage.data());
+  const uint16_t* cov = reinterpret_cast<const uint16_t*>(p.data());
   if (cov) cov += size_t(y) * S + size_t(x0);
-  const float solid = unit(s.stroke->value()[0], scale);
+  const float solid = unit(cover.value()[0], scale);
   for (int i = 0; i < n; i++, px += 4) {
     const float k = o.opacity * (cov ? unit(cov[i], scale) : solid);
     if (o.erase) {
@@ -150,45 +139,60 @@ void over_row(Blend m, float* acc, const float* src, int n, float alpha) {
 
 }  // namespace
 
+CompositePlan composite_plan(const RenderInput& in, int level, int tx, int ty) {
+  PROFILE_ZONE("composite_plan");
+  if (!in.doc) throw std::invalid_argument("pb: composite_plan: no document");
+  if (level < 0 || level > 31) throw std::invalid_argument("pb: composite_plan: no such mip level");
+  if (in.stroke && in.stroke->buffer && in.stroke->buffer->format() != Format{Depth::U16, 1})
+    throw std::invalid_argument("pb: composite_plan: a stroke buffer is 1 channel U16");
+  const DocState& d = *in.doc;
+  // The canvas at the level. A pixel partly on it averages in what lies past the edge (mip.h): transparent for a layer
+  // within the canvas. ponytail: a layer spilling past the canvas tints that last row and column at levels > 0; mask
+  // such layers at the edge before averaging if it shows.
+  const int64_t w = (int64_t(d.width) + (int64_t(1) << level) - 1) >> level;
+  const int64_t h = (int64_t(d.height) + (int64_t(1) << level) - 1) >> level;
+  const int64_t left = int64_t(tx) * S, top = int64_t(ty) * S;
+  CompositePlan plan;
+  plan.x0 = int(std::clamp<int64_t>(-left, 0, S)), plan.x1 = int(std::clamp<int64_t>(w - left, 0, S));
+  plan.y0 = int(std::clamp<int64_t>(-top, 0, S)), plan.y1 = int(std::clamp<int64_t>(h - top, 0, S));
+  if (plan.x0 >= plan.x1 || plan.y0 >= plan.y1 || !d.root) return plan;
+  Planner{in, level, tx, ty, plan}.add(*d.root);
+  return plan;
+}
+
 TilePtr composite_tile(const RenderInput& in, int level, int tx, int ty) {
   PROFILE_ZONE("composite_tile");
-  if (!in.doc) throw std::invalid_argument("pb: composite_tile: no document");
-  // ponytail: full size only; the mip levels read K2's tiles once it lands.
-  if (level != 0) throw std::invalid_argument("pb: composite_tile: no mip levels before K2");
-  if (in.stroke && in.stroke->buffer && in.stroke->buffer->format() != Format{Depth::U16, 1})
-    throw std::invalid_argument("pb: composite_tile: a stroke buffer is 1 channel U16");
-  const DocState& d = *in.doc;
-  // The canvas's part of the tile, columns x0 to x1 and rows y0 to y1; the rest stays transparent.
-  const int64_t left = int64_t(tx) * S, top = int64_t(ty) * S;
-  const int x0 = int(std::clamp<int64_t>(-left, 0, S)), x1 = int(std::clamp<int64_t>(d.width - left, 0, S));
-  const int y0 = int(std::clamp<int64_t>(-top, 0, S)), y1 = int(std::clamp<int64_t>(d.height - top, 0, S));
-  if (x0 >= x1 || y0 >= y1 || !d.root) return nullptr;
-  Plan plan{in, tx, ty, {}};
-  plan.add(*d.root);
+  const CompositePlan plan = composite_plan(in, level, tx, ty);
   if (plan.steps.empty()) return nullptr;
-
-  const int n = x1 - x0;
+  // The Layer steps' pixels, held while the composite runs.
+  std::vector<std::array<Pin, 2>> pins(plan.steps.size());
+  for (size_t i = 0; i < plan.steps.size(); i++) {
+    if (plan.steps[i].tile) pins[i][0] = plan.steps[i].tile->pin();
+    if (plan.steps[i].cover) pins[i][1] = plan.steps[i].cover->pin();
+  }
+  const int x0 = plan.x0, n = plan.x1 - plan.x0;
   float color[3] = {};  // the stroke's in R, G, B
   if (in.stroke) {
     const auto& c = in.stroke->color;
-    const bool grey = d.mode == Mode::Gray;
+    const bool grey = in.doc->mode == Mode::Gray;
     color[0] = c[0], color[1] = grey ? c[0] : c[1], color[2] = grey ? c[0] : c[2];
   }
   // A row of accumulator per Push deep, then a row of source pixels.
-  std::vector<float> rows(size_t(plan.max_depth + 2) * S * 4);
-  float* const src = rows.data() + size_t(plan.max_depth + 1) * S * 4;
+  std::vector<float> rows(size_t(plan.depth + 2) * S * 4);
+  float* const src = rows.data() + size_t(plan.depth + 1) * S * 4;
   const std::shared_ptr<Tile> out = Tile::make({Depth::U16, 4});
   {
     const WritePin w = out->write();
-    for (int y = y0; y < y1; y++) {
+    for (int y = plan.y0; y < plan.y1; y++) {
       float* acc = rows.data();
       std::fill(acc, acc + 4 * n, 0.f);
-      for (const Step& s : plan.steps) {
-        if (s.type == Step::Layer) {
-          load(s, y, x0, n, src);
-          if (s.stroke) apply_stroke(*in.stroke, color, s, y, x0, n, src);
+      for (size_t i = 0; i < plan.steps.size(); i++) {
+        const CompositeStep& s = plan.steps[i];
+        if (s.type == CompositeStep::Layer) {
+          load(s.tile.get(), pins[i][0], y, x0, n, src);
+          if (s.cover) apply_stroke(*in.stroke, color, *s.cover, pins[i][1], y, x0, n, src);
           over_row(s.blend, acc, src, n, s.alpha);
-        } else if (s.type == Step::Push) {
+        } else if (s.type == CompositeStep::Push) {
           float* next = acc + 4 * S;
           if (s.pass)
             std::copy(acc, acc + 4 * n, next);
@@ -198,11 +202,11 @@ TilePtr composite_tile(const RenderInput& in, int level, int tx, int ty) {
         } else {
           float* below = acc - 4 * S;
           if (s.pass) {
-            for (int i = 0; i < 4 * n; i++) below[i] = blend::mix(below[i], acc[i], s.alpha);
+            for (int j = 0; j < 4 * n; j++) below[j] = blend::mix(below[j], acc[j], s.alpha);
           } else {  // the group as a layer
-            for (int i = 0; i < 4 * n; i += 4) {
-              for (int c = 0; c < 3; c++) src[i + c] = blend::unpremultiply(acc[i + c], acc[i + 3]);
-              src[i + 3] = acc[i + 3];
+            for (int j = 0; j < 4 * n; j += 4) {
+              for (int c = 0; c < 3; c++) src[j + c] = blend::unpremultiply(acc[j + c], acc[j + 3]);
+              src[j + 3] = acc[j + 3];
             }
             over_row(s.blend, below, src, n, s.alpha);
           }
@@ -210,10 +214,10 @@ TilePtr composite_tile(const RenderInput& in, int level, int tx, int ty) {
         }
       }
       uint16_t* o = reinterpret_cast<uint16_t*>(w.data()) + (size_t(y) * S + size_t(x0)) * 4;
-      for (int i = 0; i < 4 * n; i += 4) {
-        const uint16_t a = from_unit(acc[i + 3], Depth::U16);
-        for (int c = 0; c < 3; c++) o[i + c] = a ? from_unit(blend::unpremultiply(acc[i + c], acc[i + 3]), Depth::U16) : 0;
-        o[i + 3] = a;
+      for (int j = 0; j < 4 * n; j += 4) {
+        const uint16_t a = from_unit(acc[j + 3], Depth::U16);
+        for (int c = 0; c < 3; c++) o[j + c] = a ? from_unit(blend::unpremultiply(acc[j + c], acc[j + 3]), Depth::U16) : 0;
+        o[j + 3] = a;
       }
     }
   }

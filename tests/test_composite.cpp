@@ -1,6 +1,6 @@
-// composite_tile() (render.h) and its formulas (blend.h): each P0 mode against W3C's formula (Photoshop's where they
-// differ), Normal, what is skipped, isolated and Pass Through groups, the stroke overlay, 8 bits against 16, grey
-// against RGB. Documents are made by hand (doc.cpp is T1's).
+// composite_tile() (render.h), its plan (composite.h) and its formulas (blend.h): each P0 mode against W3C's formula
+// (Photoshop's where they differ), Normal, what is skipped, isolated and Pass Through groups, the stroke overlay, 8 bits
+// against 16, grey against RGB, mip levels 1 to 6. Documents are made by hand.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -10,11 +10,14 @@
 #include <optional>
 #include <random>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "blend.h"
 #include "check.h"
+#include "composite.h"
+#include "mip.h"
 #include "render.h"
 
 using namespace pb;
@@ -111,9 +114,8 @@ DocPtr doc(std::vector<LayerPtr> layers, Depth depth = Depth::U16, Mode mode = M
   d->width = w, d->height = h, d->mode = mode, d->depth = depth, d->root = std::move(root);
   return d;
 }
-// Tile (tx, ty) of the composite, 4 samples a pixel row by row (zeros for null).
-std::vector<uint16_t> composite(const DocPtr& d, int tx = 0, int ty = 0, std::optional<StrokeOverlay> stroke = {}) {
-  const TilePtr t = composite_tile({d, std::move(stroke)}, 0, tx, ty);
+// A composite tile's pixels, 4 samples each row by row (zeros for null).
+std::vector<uint16_t> pixels_of(const TilePtr& t) {
   std::vector<uint16_t> px(kPixels * 4);
   if (!t) return px;
   CHECK(t->format() == kRgba16);
@@ -121,6 +123,9 @@ std::vector<uint16_t> composite(const DocPtr& d, int tx = 0, int ty = 0, std::op
   g.set(0, 0, t);
   g.read_rect(0, 0, S, S, reinterpret_cast<uint8_t*>(px.data()), S * 8);
   return px;
+}
+std::vector<uint16_t> composite(const DocPtr& d, int tx = 0, int ty = 0, std::optional<StrokeOverlay> stroke = {}) {
+  return pixels_of(composite_tile({d, std::move(stroke)}, 0, tx, ty));
 }
 int max_diff(const std::vector<uint16_t>& a, const std::vector<uint16_t>& b) {
   int d = 0;
@@ -189,7 +194,7 @@ TEST(test_composite_modes) {
 }
 
 // Normal at 100 % over a solid backdrop gives the layer above, every 16-bit value as it was; solid in, solid out;
-// nothing visible, null; only the canvas shows; mip levels wait for K2.
+// nothing visible, null; only the canvas shows; mip levels are 0 to 31.
 TEST(test_composite_normal) {
   std::mt19937 rng(11);
   const TilePtr base = Tile::solid(kRgba16, {1000, 30000, 60000, 65535});
@@ -221,13 +226,15 @@ TEST(test_composite_normal) {
   for (int y = 0; y < S; y++)
     for (int x = 0; x < S; x++) CHECK(edge[(size_t(y) * S + size_t(x)) * 4 + 3] == (x < 44 && y < 200 ? 65535 : 0));
   for (const TileXY t : {TileXY{-1, 0}, TileXY{2, 0}, TileXY{0, 1}, TileXY{0, -1}}) CHECK(!composite_tile({small}, 0, t.x, t.y));
-  bool threw = false;
-  try {
-    composite_tile({small}, 1, 0, 0);
-  } catch (const std::invalid_argument&) {
-    threw = true;
+  for (const int level : {-1, 32}) {
+    bool threw = false;
+    try {
+      composite_tile({small}, level, 0, 0);
+    } catch (const std::invalid_argument&) {
+      threw = true;
+    }
+    CHECK(threw);
   }
-  CHECK(threw);
 }
 
 // Layers without pixels at the tile, hidden ones, ones at opacity or fill 0 and groups of none change nothing there.
@@ -360,5 +367,141 @@ TEST(test_composite_depths) {
     const auto c8 = composite(doc(l8, Depth::U8, mode));
     CHECK(c8 == composite(doc(l16, Depth::U16, mode)));
     if (is_grey) CHECK(c8 == composite(doc(rgb, Depth::U8)));
+  }
+}
+
+// The plan the GPU composite runs too (composite.h): the layers with pixels at the tile in order, groups bracketed
+// unless Pass Through at full opacity, the layers' tiles at the level, the tile's part of the canvas at that level.
+TEST(test_composite_plan) {
+  const TilePtr t = Tile::solid(kRgba16, {1, 2, 3, 65535});
+  const auto here = at00(t), elsewhere = grid(kRgba16, {{{4, 0}, t}});
+  const DocPtr d = doc({pixel(1, here), group(2, {pixel(3, here, Blend::Multiply, 0.5f, 0.5f)}, Blend::Screen),
+                        group(4, {pixel(5, here)}), group(6, {pixel(7, here), hidden(pixel(8, here))}, Blend::PassThrough, 0.5f),
+                        pixel(9, elsewhere), group(10, {pixel(11, elsewhere)}, Blend::Normal)},
+                       Depth::U16, Mode::Rgb, 1100, 700);
+  using C = CompositeStep;
+  const std::vector<std::tuple<C::Type, LayerId, bool, Blend, float>> want = {
+      {C::Layer, 1, false, Blend::Normal, 1}, {C::Push, 2, false, Blend::Normal, 1},
+      {C::Layer, 3, false, Blend::Multiply, 0.25f}, {C::Pop, 2, false, Blend::Screen, 1},
+      {C::Layer, 5, false, Blend::Normal, 1}, {C::Push, 6, true, Blend::Normal, 1},
+      {C::Layer, 7, false, Blend::Normal, 1}, {C::Pop, 6, true, Blend::PassThrough, 0.5f}};
+  const CompositePlan p = composite_plan({d}, 0, 0, 0);
+  CHECK(p.steps.size() == want.size() && p.depth == 1);
+  for (size_t i = 0; i < want.size(); i++) {
+    const C& s = p.steps[i];
+    CHECK(std::make_tuple(s.type, s.layer, s.pass, s.blend, s.alpha) == want[i]);
+    CHECK(s.type == C::Layer ? s.tile == t : !s.tile);
+  }
+  CHECK(p.x0 == 0 && p.x1 == S && p.y0 == 0 && p.y1 == S);
+  // At level 2 the canvas is 275 x 175 (1100 / 4, 700 / 4): tile (1, 0) has 19 x 175 of it, and the mip tiles there.
+  const CompositePlan p2 = composite_plan({d}, 2, 1, 0);
+  CHECK(p2.x0 == 0 && p2.x1 == 19 && p2.y0 == 0 && p2.y1 == 175 && p2.steps.size() == 4);
+  CHECK(p2.steps[0].layer == 9 && p2.steps[0].tile == mip(*elsewhere, 2, 1, 0) && p2.steps[2].tile == p2.steps[0].tile);
+  CHECK(composite_plan({d}, 2, 2, 0).steps.empty());  // past the canvas
+}
+
+namespace {
+
+// Every pixel grid as its tiles at `level` (mip.h), where they lie at that level.
+std::shared_ptr<const TileGrid> shrink(const std::shared_ptr<const TileGrid>& g, int level) {
+  if (!g) return g;
+  auto out = std::make_shared<TileGrid>(g->format(), g->fill());
+  const TileRect b = g->bounds();
+  for (int y = b.y0 >> level; y <= (b.y1 - 1) >> level; y++)
+    for (int x = b.x0 >> level; x <= (b.x1 - 1) >> level; x++) out->set(x, y, mip(*g, level, x, y));
+  return out;
+}
+LayerPtr shrink(const LayerPtr& l, int level) {
+  auto c = std::make_shared<Layer>(*l);
+  c->pixels = shrink(l->pixels, level);
+  for (LayerPtr& child : c->children) child = shrink(child, level);
+  return c;
+}
+
+}  // namespace
+
+// Levels 1 to 6. Reference: the document shrunk 2^L times, its grids and the stroke buffer as their tiles at level L
+// (mip.h) and its canvas ceil(size / 2^L), composited at level 0; tolerance 0.
+TEST(test_composite_levels) {
+  std::mt19937 rng(29);
+  const auto rnd = [&](const std::vector<TileXY>& where, bool opaque) {
+    std::vector<std::pair<TileXY, TilePtr>> tiles;
+    for (const TileXY xy : where)
+      tiles.push_back({xy, make_tile(kRgba16, [&](size_t) {
+                         Pixel v = random_px(rng, kRgba16);
+                         if (opaque) v[3] = 65535;
+                         return v;
+                       })});
+    return grid(kRgba16, tiles);
+  };
+  std::vector<TileXY> canvas;  // 1100 x 700 in 5 x 3 tiles
+  for (int y = 0; y < 3; y++)
+    for (int x = 0; x < 5; x++) canvas.push_back({x, y});
+  const auto coverage = [&] { return make_tile(kCover, [&](size_t) { return Pixel{sample(rng, Depth::U16)}; }); };
+  const StrokeOverlay s{8, grid(kCover, {{{0, 0}, coverage()}, {{2, 0}, coverage()}, {{1, 1}, Tile::solid(kCover, {40000})}}),
+                        {0.9f, 0.1f, 0.3f}, 0.7f, false};
+  const DocPtr d = doc({pixel(1, rnd(canvas, true)),
+                        pixel(2, rnd({{-1, 0}, {1, 1}, {4, 2}, {5, 2}}, false), Blend::Multiply, 0.8f),  // past the canvas too
+                        group(3, {pixel(4, rnd({{1, 1}, {2, 2}}, false)),
+                                  group(5, {pixel(6, rnd({{2, 1}}, false), Blend::Overlay)}, Blend::PassThrough, 0.6f)},
+                              Blend::Screen, 0.7f),
+                        group(7, {pixel(8, rnd({{0, 0}, {1, 0}}, false), Blend::SoftLight)}),
+                        hidden(pixel(9, rnd({{0, 0}}, false), Blend::Difference)),
+                        pixel(10, grid(kRgba16, {{{3, 2}, Tile::solid(kRgba16, {50000, 1000, 20000, 30000})}}), Blend::Difference)},
+                       Depth::U16, Mode::Rgb, 1100, 700);
+  for (int level = 1; level <= 6; level++) {
+    auto shrunk = std::make_shared<DocState>(*d);
+    shrunk->root = shrink(d->root, level);
+    shrunk->width = (1100 + (1 << level) - 1) >> level, shrunk->height = (700 + (1 << level) - 1) >> level;
+    StrokeOverlay ss = s;
+    ss.buffer = shrink(s.buffer, level);
+    CHECK(composite_tile({d, s}, level, 0, 0));
+    for (int ty = -1; ty <= (shrunk->height - 1) / S + 1; ty++)
+      for (int tx = -1; tx <= (shrunk->width - 1) / S + 1; tx++)
+        CHECK(pixels_of(composite_tile({d, s}, level, tx, ty)) == pixels_of(composite_tile({shrunk, ss}, 0, tx, ty)));
+  }
+}
+
+// A level-L pixel stands for the 2^L x 2^L full-size pixels under it. Reference: their average by alpha (as mip.h
+// averages) over the level-0 composite, transparent past the canvas, in double; one layer within the canvas, smooth up
+// to its edge. Tolerance L / 2 + 1 16-bit levels: K2 rounds each level to the nearest, the composite once.
+TEST(test_composite_downsampled) {
+  constexpr int W = 700, H = 500;  // in 3 x 2 tiles
+  std::vector<std::pair<TileXY, TilePtr>> tiles;
+  for (int ty = 0; ty < 2; ty++)
+    for (int tx = 0; tx < 3; tx++)
+      tiles.push_back({{tx, ty}, make_tile(kRgba16, [&](size_t i) {
+                         const int x = tx * S + int(i % S), y = ty * S + int(i / S);
+                         if (x >= W || y >= H) return Pixel{};
+                         return Pixel{uint16_t(65535 * x / W), uint16_t(65535 * y / H), uint16_t(65535 - 65535 * (x + y) / (W + H)),
+                                      uint16_t(20000 + 45535 * x / W * y / H)};
+                       })});
+  const DocPtr d = doc({pixel(1, grid(kRgba16, tiles))}, Depth::U16, Mode::Rgb, W, H);
+  std::vector<uint16_t> full(size_t(3 * S) * 2 * S * 4);  // the level-0 composite of those tiles
+  for (int ty = 0; ty < 2; ty++)
+    for (int tx = 0; tx < 3; tx++) {
+      const auto px = composite(d, tx, ty);
+      for (int y = 0; y < S; y++)
+        std::copy_n(&px[size_t(y) * S * 4], S * 4, &full[(size_t(ty * S + y) * 3 * S + size_t(tx) * S) * 4]);
+    }
+  for (int level = 1; level <= 6; level++) {
+    const int n = 1 << level;
+    const double tol = level / 2. + 1;
+    std::vector<std::vector<uint16_t>> at(4);  // the level's tiles (0, 0), (1, 0), (0, 1), (1, 1): all it takes
+    for (int k = 0; k < 4; k++) at[k] = pixels_of(composite_tile({d}, level, k & 1, k >> 1));
+    for (int j = 0; j < 2 * S / n; j++)
+      for (int i = 0; i < 3 * S / n; i++) {
+        double a = 0, c[3] = {};
+        for (int y = j * n; y < (j + 1) * n; y++)
+          for (int x = i * n; x < (i + 1) * n; x++) {
+            const uint16_t* p = &full[(size_t(y) * 3 * S + size_t(x)) * 4];
+            a += p[3];
+            for (int k = 0; k < 3; k++) c[k] += double(p[3]) * p[k];
+          }
+        const uint16_t* g = &at[size_t(i / S + 2 * (j / S))][(size_t(j % S) * S + size_t(i % S)) * 4];
+        CHECK(std::abs(g[3] - a / (n * n)) <= tol);
+        if (a / (n * n) >= 1)
+          for (int k = 0; k < 3; k++) CHECK(std::abs(g[k] - c[k] / a) <= tol);
+      }
   }
 }
