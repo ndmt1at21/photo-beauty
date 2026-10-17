@@ -46,6 +46,14 @@ struct View {
   std::array<double, 2> to_canvas(double doc_x, double doc_y) const;
   std::array<double, 2> to_doc(double canvas_x, double canvas_y) const;
   int level() const;  // the mip level frames show: floor(log2(1 / zoom)), not below 0
+
+  // A frame of the canvas in device pixels, width x dpr by height x dpr rounded, stretched over it: pixel (i, j)
+  // shows the document point at its centre, origin + i * across + j * down. What kernels step by.
+  struct Pixels {
+    int width = 0, height = 0;  // 0 x 0 for an empty canvas
+    std::array<double, 2> origin{}, across{}, down{};
+  };
+  Pixels pixels() const;
 };
 
 }  // namespace pb
