@@ -37,6 +37,8 @@ inline void applyLook() {
   for (const QString& f : fonts.entryList(QDir::Files)) QFontDatabase::addApplicationFont(fonts.filePath(f));
   QFont font("Space Grotesk");
   font.setPixelSize(12);
+  // fontconfig's hintslight, which Linux has anyway: Windows offscreen (tests, shots) hints fully without fontconfig.
+  font.setHintingPreference(QFont::PreferVerticalHinting);
   QGuiApplication::setFont(font);
   qApp->installEventFilter(new EnterPresses(qApp));
 }
