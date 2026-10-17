@@ -4,11 +4,14 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
+#include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QtQml/qqmlextensionplugin.h>
 
+#include "brand/splash.h"
 #include "look.h"
 
 Q_IMPORT_QML_PLUGIN(PhotoBeautyPlugin)
@@ -18,12 +21,16 @@ int main(int argc, char* argv[]) {
   for (int i = 1; i < argc; i++) {
     const char* a = argv[i];
     while (*a == '-') a++;
-    if (!qstrncmp(a, "screenshot", 10) && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
+    if ((!qstrncmp(a, "screenshot", 10) || !qstrncmp(a, "start-screen", 12)) && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM"))
+      qputenv("QT_QPA_PLATFORM", "offscreen");
   }
   QGuiApplication app(argc, argv);
   app.setApplicationName("photo-beauty");
   app.setOrganizationName("photo-beauty");
   app.setApplicationVersion(PB_VERSION);
+#ifndef Q_OS_WIN  // Windows windows take the exe's icon, ui/brand/photo-beauty.ico (U22)
+  app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/PhotoBeauty/brand/icon.png")));
+#endif
   applyLook();
 
   QCommandLineParser args;
@@ -33,7 +40,8 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption theme("theme", "dark or light; else the one kept from the last start.", "name");
   const QCommandLineOption state("state", "The prototype's artboard to open: Main, Start, Retouch, a dialog or a space.", "name");
   const QCommandLineOption imports("import", "QML import folder searched first, as pb-ui-tests' (build/ui/ui/live: QML from the sources).", "dir");
-  args.addOptions({shot, settle, size, theme, state, imports});
+  const QCommandLineOption startScreen("start-screen", "Save the start screen as PNG at --size (else 560x340), then quit.", "file");
+  args.addOptions({shot, settle, size, theme, state, imports, startScreen});
   args.addHelpOption();
   args.addVersionOption();
   args.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);  // -import as pb-ui-tests takes it
@@ -47,6 +55,16 @@ int main(int argc, char* argv[]) {
   if (args.isSet(theme) && args.value(theme) != u"dark" && args.value(theme) != u"light") {
     qCritical("--theme: dark or light");
     return 2;
+  }
+  if (args.isSet(startScreen)) {  // ui/brand/splash.h, to compare with the Splash artboard
+    QImage image(args.isSet(size) ? QSize(w, h) : QSize(560, 340), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter p(&image);
+    paintStart(p, image.size(), 0.46);
+    p.end();
+    const QString file = args.value(startScreen);
+    QDir().mkpath(QFileInfo(file).absolutePath());
+    return image.save(file) ? 0 : 2;
   }
 
   QQmlApplicationEngine engine;

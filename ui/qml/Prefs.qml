@@ -47,7 +47,8 @@ QtObject {
         workspace: [
             { kind: "toggle", key: "autoCollapsePanels", label: qsTr("Tự thu gọn panel về icon"), def: false },
             { kind: "toggle", key: "documentTabs", label: qsTr("Mở tài liệu dạng tab"), def: true },
-            { kind: "toggle", key: "narrowOptions", label: qsTr("Thanh tùy chọn hẹp"), def: false }
+            { kind: "toggle", key: "narrowOptions", label: qsTr("Thanh tùy chọn hẹp"), def: false },
+            { kind: "toggle", key: "twoColumnTools", label: qsTr("Thanh công cụ hai cột"), def: false }  // U5's toolbar, 80 px
         ],
         tools: [
             { kind: "toggle", key: "tooltipKeys", label: qsTr("Tooltip có phím và tên tiếng Anh"), def: true },
@@ -134,7 +135,7 @@ QtObject {
     readonly property var system: ({ ramGB: 16, gpuName: "Intel Iris Xe Graphics", gpuApi: "Vulkan 1.3", ramUsed: 3.1, vramUsed: 0.9, scratchUsed: 1.2,
         disks: { "C:": { kind: qsTr("SSD NVMe"), free: 118 }, "D:": { kind: qsTr("SSD"), free: 402 }, "E:": { kind: qsTr("HDD ngoài"), free: 1200 } } })
     readonly property var defaults: {
-        const o = Object.assign({}, perf)
+        const o = Object.assign({ newDocPresets: [] }, perf)  // New's Đã lưu (U16): presets as NewDocSpec.P() makes them
         for (const id in panes)
             for (const r of panes[id]) {
                 if (r.keys)

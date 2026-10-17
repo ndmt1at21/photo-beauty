@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<!-- photo-beauty's app icon, the prototype's temporary logo (build/proto/Splash.dc.html): the accent tile with its
+     corners at 22.5 % of the side, the dot 37.5 % across at 22 % from the top left. render.sh makes the files. -->
+<rect width="1024" height="1024" rx="230.4" fill="#2FB5B0"/>
+<circle cx="417.28" cy="417.28" r="192" fill="#1D0F0B"/>
+</svg>
