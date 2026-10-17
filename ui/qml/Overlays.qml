@@ -232,6 +232,7 @@ Item {
                 Tools.setFg("#d9a68e")
         }
     }
+    CanvasClicks { doc: ov.doc; pointerArea: ov.pointerArea as MouseArea; enabled: ov.visible }  // the other tools' clicks (U7b)
     BrushCursor {
         id: cursor
         anchors.fill: parent
