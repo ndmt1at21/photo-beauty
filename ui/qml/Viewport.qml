@@ -61,6 +61,17 @@ Rectangle {
         const s = View.scale(view, size)
         return { x: Math.round(view.x + (p.x - size.w / 2) / s), y: Math.round(view.y + (p.y - size.h / 2) / s) }
     }
+    function pixelAt(x, y) {  // the document pixel at a frame point: (i, j) covers [i, i + 1) × [j, j + 1)
+        const d = View.toDoc(view, size, { x: x, y: y })
+        return { x: Math.floor(d.x), y: Math.floor(d.y) }
+    }
+    // Tools.pointer, for Info (U12): the document pixel under the pointer while it is in the frame, outside the image too
+    // as Photoshop's; null off it. Only the Viewport the pointer is in writes it, so a second one (U15's spaces) keeps out;
+    // one going away takes its pixel along. (A Binding would not: it restores no JS object, nor anything when destroyed.)
+    readonly property var pointer: input.containsMouse && view ? pixelAt(input.mouseX, input.mouseY) : null
+    property bool pointing: false  // Tools.pointer is this one's
+    onPointerChanged: if (pointer || pointing) { Tools.pointer = pointer; pointing = !!pointer }
+    Component.onDestruction: if (pointing) Tools.pointer = null
     function setOrigin(o) {
         const all = Object.assign({}, origins)
         if (o)

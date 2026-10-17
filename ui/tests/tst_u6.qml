@@ -14,6 +14,7 @@ Item {
     width: 200
     height: 100
     Component { id: mainC; Main {} }
+    Component { id: vpC; Viewport {} }
 
     function find(item, pred) {
         for (const c of item.children) {
@@ -388,6 +389,54 @@ Item {
             Tools.tool = "brush"
             keyClick(Qt.Key_Escape)
             compare(Math.round(d.view.angle), -90, "Esc: only with Rotate View")
+        }
+
+        // Tools.pointer (Info, U12): the document pixel under the pointer on the canvas, outside the image too; null off it.
+        function test_pointer() {
+            const w = open(), c = parts(w), d = Docs.current, size = c.vp.size
+            const under = (x, y) => {
+                const p = View.toDoc(c.vp.view, size, { x: x, y: y })
+                return { x: Math.floor(p.x), y: Math.floor(p.y) }
+            }
+            compare(Tools.pointer, null)
+            mouseMove(c.frame, 300, 200)
+            compare(Tools.pointer, { x: 464, y: 1400 })  // 2.200 + (300 − 517) × 8, 2.800 + (200 − 375) × 8
+            keys("Ctrl+1")
+            compare(Tools.pointer, { x: 1983, y: 2625 }, "the view moved under a still pointer")
+            mouseWheel(c.frame, 300, 200, 0, 120, Qt.NoButton, Qt.AltModifier)
+            compare(d.view.zoom, 2)
+            compare(Tools.pointer, { x: 1983, y: 2625 }, "zoomed about it: the same pixel")
+            mouseMove(c.frame, 301, 201)
+            compare(Tools.pointer, { x: 1983, y: 2625 }, "half a pixel on at 200 %")
+            mouseMove(c.frame, 302, 202)
+            compare(Tools.pointer, { x: 1984, y: 2626 })
+            d.setView({ angle: 30 })
+            compare(Tools.pointer, under(302, 202), "turned under it")
+            d.setView({ angle: 0 })
+            keys("Ctrl+0")  // the whole image, the grey around it
+            mouseMove(c.frame, 5, 5)
+            compare(Tools.pointer, under(5, 5))
+            verify(Tools.pointer.x < 0 && Tools.pointer.y < 0, "off the image, above and left of it: as Photoshop's Info " + JSON.stringify(Tools.pointer))
+            mouseMove(c.frame, c.frame.width - 5, c.frame.height - 5)
+            compare(Tools.pointer, under(c.frame.width - 5, c.frame.height - 5))
+            verify(Tools.pointer.x >= d.w && Tools.pointer.y >= d.h, "below and right of it: past w, h " + JSON.stringify(Tools.pointer))
+            mouseMove(c.vp, 9, 9)  // the rulers' corner: off the canvas
+            compare(Tools.pointer, null)
+            mouseMove(c.frame, 600, 300)
+            compare(Tools.pointer, under(600, 300))
+            createTemporaryObject(vpC, root, { doc: Docs.docs[1], width: 300, height: 200 }).destroy()  // a second canvas (U15)
+            wait(0)
+            compare(Tools.pointer, under(600, 300), "a canvas away from the pointer keeps out, coming and going")
+            Docs.closeAll()  // no document: no canvas
+            compare(Tools.pointer, null)
+            Docs.reset()
+            waitForRendering(w.contentItem)
+            mouseMove(c.vp, 9, 9)  // Qt takes the canvas for hovered still: off it and back
+            mouseMove(c.frame, 600, 300)
+            compare(Tools.pointer, under(600, 300))
+            w.destroy()  // the canvas gone from under the pointer (U15's space closed)
+            wait(0)
+            compare(Tools.pointer, null)
         }
 
         // ---- the mock canvas ---------------------------------------------------------------------------------------

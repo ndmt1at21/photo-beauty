@@ -42,6 +42,9 @@ QtObject {
     property bool selEdges: true
     property bool brushPrev: true
     property var snapTo: ({})  // { guides, grid, layers, bounds: bool }
+    // The document pixel under the pointer on the canvas, { x, y } (Viewport sets it, U6; Info reads it, U12), outside
+    // the image too as Photoshop's Info; null while the pointer is off the canvas frame.
+    property var pointer: null
     // Window
     property bool showOpts: true
     property bool showTools: true
@@ -91,6 +94,7 @@ QtObject {
         selEdges = true
         brushPrev = true
         snapTo = { guides: true, grid: true, layers: true, bounds: true }
+        pointer = null
         showOpts = true
         showTools = true
         dockTab = { c: "Color", p: "Properties", l: "Layers" }

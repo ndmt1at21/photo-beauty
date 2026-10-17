@@ -130,6 +130,7 @@ Item {
                 source: mc.showPhoto ? Mock.photoUrl(mc.doc.photo) : ""
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
+                mipmap: true  // shrunk far (Navigator, U12) without jagged edges
             }
         }
     }
