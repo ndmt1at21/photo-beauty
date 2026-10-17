@@ -1,0 +1,256 @@
+# photo-beauty: giao diện trước, nối lõi sau
+
+Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RYzJMaprzXxuYsJ) (30 artboard, phần P0–P1 của mục "Danh sách chức năng cho thiết kế giao diện" trong [plan.md](../plan.md)), theo cách snapone đã làm ở [ui-plan.md](../../snapone/docs/ui-plan.md) của nó: dựng hết giao diện trên dữ liệu giả (bước U), rồi nối lõi từng phần khi task lõi xong (bước N). Thay R1b và mục U · Khung giao diện (U1–U4) của [p0-tasks.md](p0-tasks.md); V1, V2, C3, E3, E4 ở lại đó, chỗ gắn vào giao diện đổi như mục [Đổi ở p0-tasks.md](#đổi-ở-p0-tasksmd).
+
+## Cần bạn chốt
+
+Đề xuất in đậm; task viết theo đề xuất cho tới khi bạn đổi.
+
+1. **Dựng hết prototype P0–P1 trên dữ liệu giả trước khi nối lõi.** Giao diện không chờ lõi, lõi không chờ giao diện; task lõi nào xong thì task N tương ứng thay nguồn dữ liệu, không sửa QML. Cách khác: chỉ dựng phần P0 (khung, Layers tối thiểu, Brush, Eraser, mở, lưu như U1–U4 cũ), phần P1 dựng sau G1: ít việc trước G1 hơn, nhưng mỗi panel P1 về sau phải mở lại khung.
+2. **Dữ liệu giả viết bằng QML/JS, chép logic và bảng dữ liệu từ script của prototype; API của nó là API mà cầu nối C++ sẽ có.** Lệnh layer P0 mang đúng tên và trường JSON của lệnh T1 (`addLayer`, `setProps`, `moveLayer`…), nên N1 chỉ thay `Doc` giả bằng `DocModel` C++ trên `DocState`. Cách khác: dựng `DocModel` C++ ngay cho layer điểm ảnh và nhóm (T1 đã xong), chỉ giả phần P1: bớt một bản giả, nhưng mọi task giao diện phải build và link lõi, và panel có hai nguồn dữ liệu ngay từ đầu.
+3. **Ảnh giả không đổi theo thanh trượt:** adjustment, bộ lọc, Liquify, Select and Mask chỉ đổi giá trị trên giao diện; chỉ phép hình học (xoay, lật, crop, đổi cỡ) và lớp phủ được vẽ, như quyết định 6 của snapone. Prototype giả màu bằng filter CSS; QML làm được bằng `MultiEffect`, nhưng ảnh chụp offscreen không vẽ shader và phần đó bỏ đi khi nối lõi.
+4. **Từ N1, trên tài liệu thật, control mà lõi chưa có thì mờ và khóa, không ẩn**, như N1 của snapone; tài liệu giả vẫn thao tác được hết. Cách khác: ẩn hẳn ở bản phát hành theo "chức năng chưa dựng thì ẩn hẳn" của plan.md, chỉ hiện khi chạy `--mock`.
+5. **Màu nhấn mặc định `#2FB5B0` (teal) như prototype**, ba màu kia chọn trong Thiết lập. Một token (`Theme.accents[0]`), đổi lúc nào cũng được.
+
+## Tiến độ
+
+| Bước | Task | Phần | Trạng thái |
+| --- | --- | --- | --- |
+| Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | Chưa làm |
+| Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | Chưa làm |
+| Panel | U8–U14 | dock và 16 panel | Chưa làm |
+| Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Chưa làm |
+| Windows, soát, CI | U22–U24 | | Chưa làm |
+| Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
+
+## Cách làm
+
+- **Phối hợp** như mục Cách phối hợp của p0-tasks.md: lead giao task và sửa file này, mỗi agent một worktree `.claude/worktrees/<mã>`, nhánh `ui/<mã>`, chỉ sửa file của task, merge fast-forward dưới `.git/merge.lock`, việc nặng qua `tools/heavy.sh`, giữ đĩa C:, xóa dump crash của mình, báo lại commit, test, ảnh chụp.
+- **Thêm file là đủ:** U0 làm build lấy `ui/*.cpp`, `ui/qml/*.qml`, `ui/qml/*.js`, `ui/tests/tst_*.qml` bằng glob; file QML có `pragma Singleton` tự thành singleton. Mỗi task có file test riêng `ui/tests/tst_<mã>.qml`.
+- **File nhiều task chạm** mỗi lúc một task giữ, theo thứ tự: `ui/qml/Main.qml` U0 → U4; `ui/qml/Viewport.qml` U6 → V1 → V2 → C3 → N3; `ui/qml/Doc.qml`, `ui/qml/Docs.qml` U3 → N1 → N2; `ui/qml/Tools.qml` U3 → N3; `CMakePresets.json`, `ui/CMakeLists.txt`, `tools/configure.sh` U0, rồi U22, V1, N1 theo thứ tự vào main. U4 tạo file rỗng đúng cỡ cho mọi vùng của cửa sổ, U8 cho mọi panel, U6 cho lớp phủ; task sau thay nội dung file của mình. Hộp thoại mở theo tên kèm tham số (`NewDoc` mở `NewDocDialog.qml`; `Filter` kèm tên bộ lọc, `Adjust` kèm tên adjustment, `LayerStyle` kèm trang), không gian toàn màn hình theo tên (`SelectMask` mở `SelectMaskSpace.qml`); `MenuSpec.js` ghi tên cho từng mục, vì prototype gộp vài hộp thoại vào một artboard (Fill và Stroke; Image Size và Canvas Size; Color Settings, Assign Profile, Convert to Profile; sáu hộp thoại của `Notices`). File chưa có thì mục menu mờ, nên task hộp thoại chỉ thêm file.
+- **Dữ liệu giả** (quyết định 2): `Docs` (tài liệu đang mở, gần đây, khôi phục, việc nền), `Doc` (một tài liệu: cỡ, mode, bit, hồ sơ, view, cây layer, vùng chọn, kênh, lịch sử, snapshot), `Tools` (công cụ, giá trị thanh tùy chọn, cọ, màu, chế độ màn hình, bật tắt của View), `Prefs` (Thiết lập). Control nhận giá trị và callback qua thuộc tính, không đọc singleton nào ngoài `Theme` (bài học của quyết định 1 trong p0-tasks.md: control của snapone dính `App`, `Spec` nên không dùng lại được); chỉ thanh, panel, hộp thoại đọc singleton. Task cần lệnh giả chưa có thì báo lead, như hợp đồng lõi.
+- **Prototype là spec:** đọc artboard bằng Artifact `read`, `path` là `project/<Tên>.dc.html`. Script trong file là spec của hành vi và dữ liệu: chép các bảng (`MENUS`, `SUBS`, `REQ`, `GROUPS`, `BARS`, `LISTS`, `ADJ`, `PRESETS`, nhóm swatch, gradient, brush, `PANES` của Thiết lập, `CATS` của New…) sang file `*Spec.js` của task, không gõ lại tay. `Retouch.dc.html` là `Main.dc.html` với dòng `INIT` khác. Chữ "P2: …", "P3: …" trong artboard là ghi chú thiết kế, không hiện trong app. Prototype không chạy phím tắt và chỉ có hai menu chuột phải (nhóm công cụ, tài liệu gần đây): phím lấy theo cột phím của menu và tooltip; menu chuột phải trên canvas, layer, tab dựng từ mục của menu tương ứng (Hành vi chung của plan.md). Lệch prototype thì theo prototype, trừ chỗ plan.md ghi khác; prototype đổi thì đọc lại.
+- **Không phụ thuộc snapone** (quyết định 2 của p0-tasks.md): mã, QML, font, ảnh mẫu, tài liệu của snapone đọc ở `/home/ndmt1at21/snapone` (chỉ đọc, không ghi gì vào đó); cần thì chép sang `ui/`, `core/` (namespace `pb`), ghi commit nguồn ở đầu file; không link, không submodule. "Chép từ snapone" trong các task dưới đây theo đúng luật này.
+- **Ảnh và tài liệu mẫu:** U3 chép 12 ảnh `~/snapone/ui/mock/photos/` (2,7 MB; các ảnh `/_blob/…` của prototype chính là chúng) sang `ui/mock/photos/`. Tài liệu giả như prototype: `chân dung.psd` 4.400 × 5.600, 16 bit, 9 layer (Curves 1, Làm trắng răng, Làm sáng mắt, Dodge & Burn, nhóm Tách tần số có Cao và Thấp, Heal, Background), `san-pham.webp`, `hoang-hon.tif`.
+- **Một hàm đổi tọa độ:** mọi lớp phủ đổi tọa độ qua `View.js` (`toCanvas`, `toDoc`), cùng nghĩa với `View` của `core/render.h`: điểm tài liệu ở tâm khung, `zoom` là điểm ảnh thiết bị trên một điểm ảnh tài liệu (1 là 100%), `angle` độ theo chiều kim đồng hồ, `dpr`. Pan, zoom, xoay nằm ở `Viewport.qml` cho cả canvas giả và `Canvas` của V1; V1 cho `Canvas` cùng hai hàm, nên thay canvas không sửa lớp phủ (quyết định 7 của snapone).
+- **Môi trường:** Qt 6.11.3 chỉ chạy được ở WSL Ubuntu-24.04 (`/opt/Qt/6.11.3/gcc_64`, bản Windows `~/Qt-win/6.11.3/llvm-mingw_64`, đã cài từ snapone; quyết định 2 trong ui-plan của snapone). Phiên Claude, git và việc sửa file vẫn ở 20.04; build, test, chụp ảnh chạy ở 24.04 qua `tools/ui.sh <lệnh>` (U0). Thư mục photo-beauty được mount vào 24.04 ở đúng đường dẫn `/home/ndmt1at21/photo-beauty` (qua `/mnt/wsl`, mất khi WSL khởi động lại, `tools/ui.sh` tự mount lại) để đường dẫn tuyệt đối và worktree như nhau ở hai distro. Không dùng `build/vcpkg_installed` của 20.04 ở 24.04: vcpkg sẽ dựng lại gói bằng GCC 13 vào đó và build của 20.04 hỏng. 24.04 dùng chung RAM với các phiên giao diện của snapone: build qua `tools/heavy.sh`, không ghi gì vào `~/snapone` của 24.04. C++ trong `ui/` chỉ build bằng GCC 13 và llvm-mingw, nên không vướng giới hạn GCC 9 của CLAUDE.md.
+- **Quy ước QML** như mục "Quy ước trong `ui/qml`" của ui-plan snapone: màu chỉ qua `Theme`, cỡ chữ qua `Theme.pt()`, icon gọi theo tên, Tab, Enter, Esc qua `FocusRing` và `EnterPresses`, `pragma ComponentBehavior: Bound` và `required property` ở delegate, mọi chuỗi qua `qsTr()`, số kiểu Việt (1.234,5; dấu "−") qua `Fmt.js`, giới hạn JS của Qt 6.11, renderer phần mềm khi chụp offscreen, đổi model của Repeater, test tìm item theo kiểu. Thuật ngữ theo điểm 9 của plan.md. Tên file không trùng type của Qt Quick Controls (`MenuBar`, `ToolButton`, `Dialog`…), như `Btn`, `PopupMenu` của snapone.
+- **Xong:** đạt dòng "Xong khi"; `pb-ui-tests` qua (ctest `ui`, offscreen, chạy lặp 4 lần), `all_qmllint` sạch; báo cáo có ảnh chụp các trạng thái của task (`pb-ui --state <artboard> --size 1440x900 --screenshot`, trạng thái khác chụp trong file test) đặt cạnh artboard; phần của task đi được bằng Tab, Enter, Esc.
+
+## Thứ tự
+
+```text
+Đợt 1  U0                                                    (R1 đã xong)
+Đợt 2  U1   U3                                               (cần U0)            V1: phần C++ (cần U0)
+Đợt 3  U2                                                    (cần U1)
+Đợt 4  U4                                                    (cần U2, U3)
+Đợt 5  U5   U6   U8                                          (cần U4)
+Đợt 6  U7 (U6)   U9   U10   U11   U12   U13 (U8)   U16   U17   U18   U19   U21   U22 (U4)   U20 (U5)
+Đợt 7  U14 (U7, U8)   U15 (U6, U7)
+Đợt 8  U23 (U4–U22)                                          U24 (R2, U4)
+Nối    V1 gắn vào Viewport.qml (U6) → V2 → C3 → N3 (U5, C3)
+       N1 (U9, U12, T2, M1, K2) → N2 (N1, M2, M3, K1)
+
+Đường găng phía giao diện: U0 → U1 → U2 → U4 → U6 → V1 → V2 → C3 → N3 (C3 còn chờ B3 của lõi)
+```
+
+Agent lõi và giao diện cùng chạy 4–6 cái được (build/orch/HANDOFF.md), vì `tools/heavy.sh` xếp hàng mọi việc nặng, cả build ở 24.04. Thiếu agent thì làm đường găng trước, rồi U8 (mở khóa 6 task).
+
+## Task
+
+Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng 1.000 dòng); task cần xong trước; file task được sửa. Artboard ghi theo tên file trong `project/`.
+
+### U · Giao diện trên dữ liệu giả
+
+- [ ] **U0 · Khung `pb-ui`** (build, giao diện; Nhỏ; cần R1; thay R1b; file `CMakeLists.txt`, `CMakePresets.json`, `CLAUDE.md` (mục giao diện), `tools/configure.sh`, `tools/ui.sh`, `ui/CMakeLists.txt`, `ui/main.cpp`, `ui/look.h`, `ui/qml/Main.qml`, `ui/tests/main.cpp`, `ui/tests/tst_u0.qml`):
+  - `tools/ui.sh <lệnh>` chạy lệnh trong Ubuntu-24.04 ở thư mục đang đứng, sau `source ~/.profile` (`QT_ROOT_DIR`, `VCPKG_ROOT`), mount lại khi mất (mục Cách làm, Môi trường). `tools/configure.sh ui` dựng `build/ui` với một `vcpkg_installed` riêng của 24.04, dùng chung mọi worktree, cạnh bản của 20.04; chạy ở 24.04 thì từ chối preset của 20.04 và ngược lại. CLAUDE.md thêm vài dòng: task giao diện đọc file này; build, test, chụp ảnh qua `tools/ui.sh`.
+  - Như `SNAPONE_UI` của snapone: tùy chọn `PB_UI`, `PB_CRASH` (chỉ phần cấu hình; nối Sentry ở P1), preset `ui` cấu hình cả lõi (V1 cần), task U chỉ build `pb-ui`, `pb-ui-tests`. Module QML `PhotoBeauty` là thư viện tĩnh, app và test cùng link plugin của nó; QML, JS, font, ảnh mẫu lấy bằng glob. `pb-ui` chưa link `pb_core` (V1 hay N1 link).
+  - `pb-ui`: cờ `--screenshot <png>`, `--settle <ms>`, `--size WxH`, `--theme dark|light`, `--state <artboard>` (U4 làm phần mở trạng thái); `look.h` chép của snapone (style Basic, font, `EnterPresses`). `pb-ui-tests`: QML test offscreen lấy `ui/tests/tst_*.qml`, ctest `ui`; target `all_qmllint`.
+
+  **Xong khi:** từ một worktree ở 20.04, `tools/ui.sh tools/configure.sh ui` và `tools/ui.sh tools/heavy.sh cmake --build build/ui --target pb-ui pb-ui-tests` qua; `pb-ui --size 1440x900 --screenshot x.png` offscreen ra cửa sổ trống nền `#161617`; ctest `ui` chạy `tst_u0` qua; preset `default` của 20.04 không đổi; ghi số phút configure lần đầu.
+- [ ] **U1 · Theme, font, icon, control chép từ snapone** (giao diện; Nhỏ; cần U0; file `ui/qml/Theme.qml`, `ui/qml/{Btn,Icon,IconButton,StrokeIcon,Toggle,Select,TextBox,Spinner,FocusRing,DialogBox,PanelHead,PanelSection,Link,Toast}.qml`, `ui/qml/Icons.js`, `ui/qml/StrokeIcons.js`, `ui/fonts/*`, `ui/tests/tst_u1.qml`): theo quyết định 1 của p0-tasks.md, chép 12 control không dính `App`, `Spec` cùng `Theme.qml` và toast của snapone, ghi commit nguồn của `~/snapone` lúc chép ở đầu file.
+  - Token theo artboard `Tokens`: 13 màu mỗi theme (bg, p1–p3, ln, t1–t4, view, trk, thumb, sel), danger, warn, closeFill, màu dữ liệu (h1–h3, grid, faint; chồng kênh screen ở theme tối, multiply ở theme sáng), 4 màu nhấn (quyết định 5; chữ trên nền nhấn `#1d0f0b`), acc2 16%, góc bo 4, 6, 8, 10, cỡ chữ Nhỏ, Vừa, Lớn 11; 12; 13,5 px qua `Theme.pt()`, 4 nền quanh ảnh.
+  - Font: Space Grotesk, JetBrains Mono, Manrope (wordmark), Material Symbols Outlined (wght 300, opsz 20) rút gọn bằng `make-icons.sh` chép sang `ui/fonts/`, với mọi tên icon có trong 30 artboard (bảng `P` của từng file) để task sau không phải sửa danh sách. Icon nét tự vẽ (bảng `K` của `Main.dc.html`, ô có chấm ở artboard `Icons`: Elliptical Marquee, Polygonal Lasso, Selection Brush, Perspective Crop, Spot Healing Brush, Patch, Dodge, Sponge, Quick Mask, mask, bốn chế độ vùng chọn, căn đều đoạn…) thành `StrokeIcon`, vẽ bằng Qt Quick Shapes, nét 52/960.
+
+  **Xong khi:** `tst_u1`: mỗi control dựng được ở hai theme, đổi màu nhấn, cỡ chữ áp ngay; ảnh chụp mọi icon (Material và nét) đặt cạnh artboard `Icons`.
+- [ ] **U2 · Control mới dùng chung** (giao diện; Vừa; cần U1; file `ui/qml/{NumberField,Dropdown,Segmented,Swatch,ColorPair,CheckRow,ToolToggle,SliderField,Section,PanelTabs,PopupMenu,Chips,AnchorGrid,PresetGrid,Histogram}.qml`, `ui/qml/Fmt.js`, `ui/tests/tst_u2.qml`): theo artboard `Controls` và lớp CSS của `Main.dc.html` (`.fld`, `.dd`, `.tb`, `.chip`, `.sw`, `.ph`, `.pnlh`, `.sr`, `.mi`, `.pop`):
+  - `NumberField` (ô số của plan.md): kéo nhãn (±1 mỗi bước, Shift ±10), ↑ ↓ ±1, Shift ±10, gõ phép tính (`1240*2`) và đơn vị (`5cm`, `2in`, `50%`, theo ppi truyền vào), giới hạn có ghi chú ("Tối đa 1.000 px"), Enter áp, Esc trả lại, nhấp đúp nhãn về mặc định, nút bung thanh trượt nhỏ (ô `FC` của thanh tùy chọn).
+  - `Fmt.js`: in và đọc số kiểu Việt (1.234,5; "−"; %, °, px; zoom "12,5%") như `vn`, `sg`, `zt`, `pnum` của prototype.
+  - `Dropdown` cao 24 (tiền tố như "Preset: ", danh sách cuộn tối đa 320, mở lên khi sát đáy), `Segmented` (chữ, icon hay ô gradient), `Swatch` (ô màu, ô "không màu" gạch đỏ, nhấp gọi callback), `ColorPair`, `CheckRow`, `ToolToggle` (nút 26 × 24 bật tắt), `SliderField` (nhãn, giá trị, thanh 3 px có rãnh màu tùy ý như dải hue; kéo đổi liền, thả tay gọi `commit`), `Section` (tiêu đề 30 thu gọn được, huy hiệu "Đã có…"), `PanelTabs` (tab 30 có gạch màu nhấn, nhấp đúp thu gọn nhóm, nút menu panel), `Chips` (bỏ phần dính `Spec`).
+  - `PopupMenu` chép từ snapone, bỏ phần dính `App`: dòng 28, ngăn cách, dấu chọn, phím tắt bên phải, mục mờ, menu con mở khi rê, ↑ ↓ → ← Enter Esc; dùng cho menu bar (U4), nhóm công cụ (U5), menu chuột phải.
+  - `AnchorGrid` (lưới neo 3 × 3 có mũi tên: Canvas Size, điểm gốc của Free Transform), `PresetGrid` (ô đang chọn viền màu nhấn, nhóm thu gọn, cỡ ô), `Histogram` (dạng gọn RGB chồng kênh theo h1–h3; chép từ snapone, nhận mảng 3 × 256 qua thuộc tính).
+
+  **Xong khi:** `tst_u2` cho từng hành vi trên, `NumberField` đủ các ca của artboard `Controls`; không control nào đọc singleton ngoài `Theme`; ảnh chụp trang thử cạnh artboard `Controls`.
+- [ ] **U3 · Dữ liệu giả** (giao diện; Vừa; cần U0; file `ui/qml/{Docs,Doc,Tools,Prefs}.qml`, `ui/qml/Mock.js`, `ui/qml/Presets.js`, `ui/mock/photos/*`, `ui/tests/tst_u3.qml`): theo quyết định 2, chép logic của `class Component` trong `Main.dc.html` (`mkL`, `docBase`, `mkPortrait`, `upd`, `step`, `restore`, `histTo`, `exec`, phần Layers, Channels, Retouch); không file nào dựng giao diện.
+  - `Docs` (singleton): tài liệu đang mở, tài liệu hiện tại; mở gần đây, tạo mới (cỡ, mode, bit, nền, hồ sơ của hộp thoại New), đóng, đóng tất cả, nhân bản; danh sách gần đây và khôi phục; việc nền (`Timer`: tiến độ, hủy, lưu xong thì hết chấm chưa lưu) cho lưu, xuất nhanh, xuất. Lúc mở như prototype: ba tài liệu, việc "Đang lưu chân dung.psd" 64%.
+  - `Doc` (một tài liệu): file, cỡ, ppi, mode, bit, hồ sơ, view (x, y, zoom, angle), cây layer (id cố định; điểm ảnh, nhóm, adjustment, fill, chữ, hình, smart object; tên, ẩn hiện, opacity, fill, blend, khóa, mask, mask tắt, clipping, nhóm mở, giá trị adjustment, hiệu ứng), layer đang chọn và cờ đang sửa mask, vùng chọn (hình của prototype), vùng chọn trước, đảo, kênh alpha, kênh đang xem, kênh ẩn, có mặt người, chưa lưu, snapshot.
+  - Lệnh: phần P0 mang tên và trường JSON của T1 (`addLayer`, `deleteLayers`, `duplicateLayers`, `moveLayer`, `groupLayers`, `ungroup`, `setProps`, `selectLayers`; opacity 0–1, blend camelCase như `kBlendNames`); phần P1 đặt tên theo lệnh Photoshop (mask, clipping, smart object, rasterize, merge, fill layer, adjustment layer, layer style, vùng chọn, kênh, xoay lật canvas và layer, mode, bit, crop, Image Size, Canvas Size), đủ mọi lệnh prototype có. Mỗi lệnh là một bước lịch sử có tên và icon như prototype ("Layer mới", "Blend mode"…); undo, redo, nhảy bước, đổi qua lại bước cuối, hoàn nguyên; `beginGesture()`, `endGesture()` gộp một lần kéo thành một bước; `can(lệnh)` cho mục mờ, theo `REQ`, `cx` của prototype.
+  - `Tools` (singleton): công cụ, công cụ đứng đầu từng nhóm, giá trị từng ô của thanh tùy chọn (khóa `<thanh>:<chỉ số>` như `v` của prototype), cỡ, độ cứng, spacing, đầu cọ của từng công cụ vẽ, màu trước, sau, swatch gần đây, gradient đang chọn và gần đây, Quick Mask, chế độ màn hình, bật tắt của menu View và Window, ô thông tin của thanh trạng thái, trạng thái Retouch (`rt`).
+  - `Prefs` (singleton): mọi giá trị của Thiết lập theo `PANES` và trang Hiệu năng của `Settings.dc.html`, mặc định như artboard; lưu bằng `Settings` của QtCore thành một chuỗi JSON, chỉ khi app bật `persist` như snapone (test và `--screenshot` không đọc, không ghi).
+  - `Presets.js`: swatch (`RECENT_SW`, `SW_GROUPS`), gradient (`GR_GROUPS`), brush (`BR_GROUPS`, `TIPS`, `BS_ROWS`); `Mock.js`: ảnh mẫu (`PH` của prototype trỏ vào 8 trong 12 ảnh), tài liệu mẫu, `RECENT`.
+
+  **Xong khi:** `tst_u3`: 1.000 lệnh ngẫu nhiên xen undo, redo, nhảy bước khớp bản chạy lại từ đầu (so JSON của cây); kéo opacity qua 100 giá trị là một bước; `can()` đúng như `REQ` trên tài liệu không layer, có vùng chọn, có mask; đóng, nhân bản tài liệu; việc nền tới 100% thì hết chấm chưa lưu.
+- [ ] **U4 · Khung cửa sổ: thanh trên, menu, thanh trạng thái** (giao diện; Vừa; cần U2, U3; file `ui/qml/Main.qml`, `ui/qml/{TopBar,AppMenu,JobIndicator,StatusBar}.qml`, `ui/qml/MenuSpec.js`, `ui/titlebar.cpp`, file rỗng `ui/qml/{Toolbar,OptionsBar,DocTabs,Viewport,Dock,SideColumn,StartScreen}.qml`, `ui/tests/tst_u4.qml`): theo artboard `Main`, `Menus`, lưới của `Tokens`:
+  - `Main.qml`: cửa sổ 1.440 × 900, nhỏ nhất 1.280 × 800; thanh trên 44, thanh tùy chọn 36, thanh công cụ 44, tab 28, cột icon 36, dock 308, thanh trạng thái 24; ba chế độ màn hình (F: chuẩn, toàn màn hình có menu, toàn màn hình nền đen); Tab ẩn panel; lớp chắn đóng menu, popup khi nhấp ra ngoài; không có tài liệu thì hiện `StartScreen`; thả file vào cửa sổ (giả: mở tài liệu giả mang tên file); `Prefs` nối vào `Theme`. Hộp thoại và không gian toàn màn hình mở theo tên kèm tham số (mục Cách làm); `--state <tên>` mở artboard đó: `Main`, `Start`, `Retouch` (dòng `INIT` của `Retouch.dc.html`), tên hộp thoại hay không gian.
+  - `TopBar`: logo (ô màu nhấn có chấm) và wordmark Manrope 800 13,5; `AppMenu` với 10 menu và menu con của `MENUS`, `SUBS` (chép sang `MenuSpec.js` cùng hành động), rê chuột chuyển menu khi đang mở một menu, Alt + chữ cái, mục mờ theo `Doc.can()`, dấu chọn (View, Window, Mode), chữ động ("Hoàn tác Layer mới", "Fade Brush…"), Mở gần đây; phím của mọi mục đăng ký bằng `Shortcut` (Ctrl Z, Ctrl ⇧ Z, F5–F8…) và hiện trong menu ("Ctrl ⇧ Z"); `JobIndicator`: vòng quay, tên việc, tiến độ, nút hủy, popup chi tiết, xong thì "Đã lưu …" rồi tự ẩn. Trên Windows thanh trên làm thanh tiêu đề (kéo, ba nút) qua `titlebar.cpp` chép từ N12 của snapone.
+  - `StatusBar`: ô zoom gõ được ("12,5%", Enter áp), cỡ tài liệu và ppi, mode/bit và hồ sơ, ô thông tin chọn được (Tài liệu, Hồ sơ màu, Kích thước, RAM và scratch, Thời gian thao tác, Công cụ đang dùng).
+
+  **Xong khi:** `pb-ui --state Main` chụp ra khung đúng cỡ từng vùng như artboard `Main`, cả theme sáng; `tst_u4`: mọi menu và menu con có đúng mục như artboard `Menus`, mục mờ đúng khi không có tài liệu, không có vùng chọn; Hoàn tác mang tên bước; mỗi phím của menu chạy lệnh; F đổi ba chế độ; hủy việc nền.
+- [ ] **U5 · Thanh công cụ, thanh tùy chọn** (giao diện; Vừa; cần U4; file `ui/qml/Toolbar.qml`, `ui/qml/ToolBtn.qml`, `ui/qml/OptionsBar.qml`, `ui/qml/BrushPicker.qml`, `ui/qml/ToolSpec.js`, `ui/tests/tst_u5.qml`): theo artboard `Toolbar`, `OptionsBars` và `GROUPS`, `BARS`, `LISTS`, `MODES`, `GTYPES`, `HINT` của `Main.dc.html` (chép sang `ToolSpec.js`):
+  - Thanh công cụ: 16 nhóm, 31 công cụ P0–P1, ngăn cách như prototype; nút 32 × 32, tam giác ở nhóm nhiều công cụ, giữ chuột 350 ms hay chuột phải để bung (ô vuông ở công cụ đứng đầu), tooltip "Tên (phím)"; phím từng công cụ, Shift + phím đổi trong nhóm (theo Thiết lập); nhấp đúp Hand vừa màn hình, nhấp đúp Zoom 100%; màu trước, sau (X đổi, D mặc định, nhấp mở Color Picker), Quick Mask (Q), chế độ màn hình (F); hai cột 80 px khi bật trong Thiết lập.
+  - Thanh tùy chọn: 28 thanh như artboard `OptionsBars` (26 công cụ, Free Transform, Warp) theo DSL `BARS` (ic, |, L, D, F, FC, T, B, C, BT, BI, M, S, S2, GT, BP, SW, G, IF, AN, SP; tiền tố "!" là mờ); giá trị vào `Tools`; nút dẫn sang hộp thoại, không gian ("Select and Mask…"), panel (Brush Settings) qua hành động của U4. Bảng cọ (`BP`): Size 1–5.000 px, Hardness, Spacing 1–1.000%, 6 đầu cọ, 6 preset; ô gradient mở panel Gradients.
+  - Phím của Hành vi chung: `[` `]` cỡ cọ, Shift `[` `]` độ cứng, phím số đặt opacity, Shift phím số đặt flow; giữ Space tạm Hand, giữ Alt khi đang dùng công cụ vẽ thì tạm Eyedropper, giữ Ctrl tạm Move, nhả thì trả công cụ cũ.
+
+  **Xong khi:** `tst_u5`: mỗi phím, mỗi nút, mỗi nhóm bung đổi đúng `Tools`; mỗi thanh có đúng ô như artboard `OptionsBars`; ảnh chụp thanh công cụ (một cột, hai cột, nhóm bung) và 28 thanh cạnh artboard.
+- [ ] **U6 · Tab tài liệu, canvas giả, thước** (giao diện; Vừa; cần U4; file `ui/qml/DocTabs.qml`, `ui/qml/Viewport.qml`, `ui/qml/MockCanvas.qml`, `ui/qml/Ruler.qml`, `ui/qml/View.js`, file rỗng `ui/qml/Overlays.qml`, `ui/tests/tst_u6.qml`):
+  - Tab: "file @ zoom (layer đang chọn, RGB/16)", "Quick Mask/16", "Layer Mask/16"; chấm chưa lưu thành nút đóng khi rê; quá chỗ thì nút "+N" mở menu; chuột phải: Đóng, Đóng tab khác.
+  - `View.js` theo mục Cách làm; canvas giả: ảnh mẫu (`Image`) theo `View`, xoay, lật canvas và layer như prototype, caro dưới phần trong suốt (cỡ, màu theo Thiết lập), nền quanh ảnh 4 mức xám theo chế độ màn hình; con trỏ theo công cụ.
+  - Tương tác ở `Viewport.qml`: pan (giữ Space kéo, Hand, cuộn, nút giữa), zoom 1–12.800% (con lăn theo Thiết lập, Ctrl +/−, Ctrl 0 vừa màn hình, Ctrl 1 100%, Lấp đầy; Zoom nhấp, Alt nhấp thu, kéo khi Scrubby Zoom; quanh con trỏ; theo bậc `ZOOMS`), xoay view (R kéo, Shift bước 15°, Esc về 0°, ô góc của thanh tùy chọn).
+  - Thước 18 px (đơn vị theo Thiết lập; chuột phải đổi px, in, cm, mm, pt, %; vạch theo zoom; vạch sáng ở con trỏ; kéo góc đặt gốc, nhấp đúp góc về lại), Ctrl R bật tắt; menu chuột phải trên canvas theo công cụ đang dùng (mục của menu Select, Layer, Edit).
+
+  **Xong khi:** `tst_u6`: tài liệu → canvas → tài liệu khớp, zoom quanh một điểm giữ điểm đó đứng yên, xoay quanh tâm khung (cùng ca với `test_view` của V1); bậc zoom và ô zoom của thanh trạng thái khớp nhau; ảnh chụp ở vừa màn hình, 100%, xoay 30°, có thước, cạnh artboard `Main`.
+- [ ] **U7 · Lớp phủ trên canvas** (giao diện; Vừa; cần U6; file `ui/qml/Overlays.qml`, `ui/qml/{BrushCursor,Ants,CropBox,TransformBox,GuidesGrid,CanvasBar,SampleRing,CloneSource,ShapeHandles,TypeBox,GradientLine,FaceOverlay}.qml`, `ui/tests/tst_u7.qml`): theo artboard `Overlays` và phần `ov`, `cur` của `Main.dc.html`; mọi tọa độ qua `View.js`; không dùng màu nhấn (trắng đen, guide `#29d3f5`, Quick Mask đỏ 50%, đổi được trong Thiết lập); vẽ bằng Qt Quick Shapes:
+  - con trỏ cọ hai nét trắng đen có chữ thập, Caps Lock chỉ còn chữ thập; HUD cỡ, độ cứng khi Alt kéo chuột phải (Ctrl Option kéo trên macOS);
+  - viền kiến của các hình vùng chọn giả (chạy 10 lần mỗi giây, chỉ lớp phủ vẽ lại), Quick Mask; vùng chọn không điểm nào quá 50% thì không vẽ viền, thanh báo nói lý do;
+  - Crop (tấm che, lưới 1/3, 8 tay nắm, xoay ngoài khung, HUD tỉ lệ và cỡ); Free Transform (8 tay nắm, điểm gốc, xoay ngoài khung, HUD W, H, góc); Warp (lưới 3 × 3, tay nắm Bezier);
+  - lưới, guide, lưới điểm ảnh từ 600%; vòng lấy mẫu của Eyedropper (màu mới trên, cũ dưới); nguồn Clone, Healing (chữ thập, xem trước trong vòng cọ); tay nắm của hình, chấm bo góc; khung chữ đoạn có con trỏ nhập, gạch chân IME; đường gradient có điểm dừng; thanh báo (Xem chi tiết, Bỏ qua) và thanh tiến độ mảnh ở mép trên có nút hủy;
+  - lớp phủ Retouch: khung mặt, màu da, mắt, môi, răng, nhãn "Xem trước Mask: …".
+
+  **Xong khi:** `tst_u7`: mỗi lớp phủ đúng chỗ ở zoom 12,5%, 100%, 800% và xoay 30° (so điểm tài liệu đã biết); viền kiến chỉ làm lớp phủ vẽ lại (đếm); ảnh chụp từng ô của artboard `Overlays`.
+- [ ] **U8 · Dock, cột icon, panel Channels** (giao diện; Vừa; cần U4; file `ui/qml/Dock.qml`, `ui/qml/SideColumn.qml`, `ui/qml/SidePanel.qml`, `ui/qml/ChannelsPanel.qml`, file rỗng `ui/qml/{Layers,Properties,Adjustments,Retouch,Color,Swatches,Gradients,History,Brushes,BrushSettings,Navigator,Histogram,Info,Character,Paragraph}Panel.qml`, `ui/tests/tst_u8.qml`): theo artboard `Main`, `Controls` (Dock), `PanelsA`, `PanelsB`:
+  - Dock 308: ba nhóm có tab (Color, Swatches, Gradients; Properties, Adjustments, Retouch; Layers, Channels), nhấp đúp tab thu gọn nhóm, Properties cao tối đa 360, Layers lấp phần còn lại; thu dock thành cột icon (ba icon mở nhóm nổi cạnh cột, nhấp ra ngoài thì đóng), mở rộng lại; menu Window mở đúng panel, có dấu chọn.
+  - Cột icon 36 của panel phụ: History; Brushes, Brush Settings; Navigator, Histogram, Info; Character, Paragraph; nhấp mở panel nổi cạnh cột với tab của nhóm; F5, F8 như menu Window.
+  - Channels: kênh tổng và R, G, B (Gray khi tài liệu xám) có thumbnail, kênh alpha; mắt, nhấp chọn, Ctrl 2–5; đáy: nạp làm vùng chọn, lưu vùng chọn, kênh mới, xóa.
+
+  **Xong khi:** `tst_u8`: mỗi panel mở được từ tab, menu Window, cột icon; thu gọn nhóm, thu dock, mở lại giữ tab đang mở; Channels đổi kênh, ẩn kênh, thêm, xóa kênh alpha (một bước); ảnh chụp dock mở, dock thu thành cột, nhóm nổi cạnh artboard.
+- [ ] **U9 · Panel Layers** (giao diện; Vừa; cần U8; file `ui/qml/LayersPanel.qml`, `ui/qml/LayerRow.qml`, `ui/tests/tst_u9.qml`): theo artboard `PanelsA`, `Controls` (dòng layer) và phần `lay`, `rows` của `Main.dc.html`:
+  - Đầu panel: lọc theo loại (điểm ảnh, adjustment, chữ, hình, smart object) và tên; Blend (27 mode, thêm Pass Through cho nhóm), Opacity, Fill bằng `NumberField`, 4 khóa; mờ khi không chọn layer hay đang chọn Background.
+  - Dòng 32, thumbnail 24 (Nhỏ, Vừa, Lớn trong menu panel): mắt (Alt nhấp chỉ hiện layer này), mũi tên clipping, nhóm thu gọn, thụt 16 mỗi cấp, thumbnail theo loại (ảnh, huy hiệu smart object, xám, chữ T, màu hình, màu fill, icon adjustment), thumbnail mask có xích và sọc khi mask tắt, vòng chọn ở layer hay ở mask, tên (nhấp đúp đổi tên, Enter, Esc), fx mở danh sách hiệu ứng (mỗi dòng một mắt), khóa, màu nhãn, Background in nghiêng.
+  - Chọn nhiều (Shift, Ctrl), kéo đổi thứ tự và vào nhóm, Alt kéo nhân bản; chuột phải (mục của menu Layer); đáy: Link, fx (mở Layer Style), mask, menu fill và adjustment (Solid Color, Gradient, 16 adjustment), nhóm, layer mới, xóa. `ListView` ảo hóa.
+
+  **Xong khi:** `tst_u9`: thêm, xóa, đổi tên, blend, opacity, ẩn hiện, khóa, nhóm, kéo thả đổi `Doc` đúng, undo trả lại; 1.000 layer giả cuộn từng hàng, phần việc mỗi bước dưới một khung hình 60 Hz (đo như `test_grid_thousands` của snapone); ảnh chụp mọi trạng thái dòng của artboard `Controls`.
+- [ ] **U10 · Properties, Adjustments, 16 adjustment** (giao diện; Vừa; cần U8; file `ui/qml/PropertiesPanel.qml`, `ui/qml/AdjustmentsPanel.qml`, `ui/qml/AdjustRows.qml`, `ui/qml/AdjustDialog.qml`, `ui/qml/{CurveBox,LevelsBar,HueRange}.qml`, `ui/qml/AdjustSpec.js`, `ui/tests/tst_u10.qml`): theo artboard `PanelsA`, `Adjustments`, `Controls` và `ADJ`, `PRESETS`, `TRK`, `ATOOLS`, `CURVE_D` của `Main.dc.html` (chép sang `AdjustSpec.js`):
+  - Properties theo thứ đang chọn: tài liệu (canvas W, H, độ phân giải, hướng, mode, hồ sơ; Select Subject, Remove Background), layer điểm ảnh (W, H, X, Y, góc, xích, lật, 6 nút căn), adjustment layer (icon, tên, các dòng; đáy: clip vào layer dưới, giữ để xem trước, đặt lại, mắt, xóa; sang mask), chữ (Character, Paragraph rút gọn), hình (W, H, X, Y, Fill, Stroke, bo từng góc, thao tác path), fill layer, Layer Mask (Density, Feather, Select and Mask…, Color Range…, Invert, nạp vùng chọn, áp, tắt, xóa), smart object (tên, cỡ, Sửa nội dung, Rasterize).
+  - Adjustments: lưới 16 icon, nhấp thêm adjustment layer.
+  - Dòng adjustment theo DSL `ADJ` (PRE, DDL có Auto, BTN, S có rãnh màu và số lẻ, CHK, SEG, TOOLS, NOTE, HIST, OUT, FLDS, LF, CURVE, RANGE, GRAD, RADIO, TINT, TOT), khoảng giá trị theo bảng Adjustment của plan.md; `CurveBox` chép từ snapone, bỏ phần dính `App`; Levels có 3 tam giác vào, 2 ra trên histogram; dải màu Hue/Saturation 4 tay nắm (`HueRange`); kéo thanh đổi giá trị ngay, thả tay một bước (quyết định 3: ảnh không đổi).
+  - Image › Adjustments: hộp thoại `Adjust` cùng dòng, thêm Preview, OK, Hủy (mục không có hộp thoại như Invert, Desaturate là lệnh của U3, U4).
+
+  **Xong khi:** `tst_u10`: mỗi loại thứ chọn ra đúng trang Properties; mỗi adjustment có đúng dòng như artboard `Adjustments`, mặc định và giới hạn đúng, preset đổi giá trị, một lần kéo là một bước; ảnh chụp 16 adjustment và các trang Properties cạnh artboard.
+- [ ] **U11 · Color, Swatches, Gradients, Color Picker** (giao diện; Vừa; cần U8; file `ui/qml/{Color,Swatches,Gradients}Panel.qml`, `ui/qml/ColorField.qml`, `ui/qml/GradientBar.qml`, `ui/qml/ColorPickerDialog.qml`, `ui/qml/Color.js`, `ui/tests/tst_u11.qml`): theo artboard `PanelsB`, `ColorPicker`, `Controls`:
+  - Color: thanh HSB, RGB hay Lab có rãnh đổi theo màu, ô giá trị, hex, chọn kiểu thanh, dạng vòng màu; thêm màu trước vào Swatches. Đổi sRGB ↔ HSB, Lab (D65) ở `Color.js` như prototype.
+  - Swatches: hàng gần đây (10), nhóm thu gọn, thêm, xóa, nhóm mới; Gradients: gần đây (5), nhóm, thêm, xóa, nhóm mới; nhấp đặt màu trước, gradient đang chọn.
+  - `ColorField`: ô SV 256 và dải hue, kéo và mũi tên (Shift bước lớn); `GradientBar`: điểm màu dưới, điểm độ mờ trên, điểm giữa, nhấp thêm, kéo ra để xóa, nhấp đúp đổi màu, ô Vị trí.
+  - Color Picker: màu mới, hiện tại; 9 ô H S B, R G B, L a b có radio kênh của ô SV; hex; Thêm vào Swatches; OK, Hủy; mở từ ô màu của thanh công cụ, thanh tùy chọn, panel, hộp thoại.
+
+  **Xong khi:** `tst_u11`: đổi qua lại sRGB, HSB, Lab giữ màu (lệch ≤ 1 mức 8 bit), gõ hex, kéo ô SV; ảnh chụp các panel và hộp thoại cạnh artboard.
+- [ ] **U12 · History, Navigator, Histogram, Info** (giao diện; Nhỏ; cần U8; file `ui/qml/{History,Navigator,Histogram,Info}Panel.qml`, `ui/tests/tst_u12.qml`): theo artboard `PanelsA`, `PanelsB` và phần `hs`, `nv`, `inf` của `Main.dc.html`:
+  - History: snapshot có thumbnail ở đầu, bước có icon công cụ, bước hiện tại sáng, bước sau mờ, nhấp để quay về; tài liệu mới từ bước, snapshot mới, xóa bước này và các bước sau.
+  - Navigator: ảnh thu nhỏ có khung đang xem (xoay theo view), kéo khung để đi; ô zoom, thanh trượt theo log.
+  - Histogram: dạng gọn RGB đếm từ ảnh mẫu thu nhỏ 160 px (`Canvas` ẩn như snapone), nút tính lại.
+  - Info: hai ô đọc màu (RGB, HSB), X, Y, W, H khi biến đổi, dòng tài liệu, gợi ý của công cụ (`HINT`).
+
+  **Xong khi:** `tst_u12`: nhấp bước History trả `Doc` về đúng bước, tạo snapshot, xóa bước; kéo khung Navigator đổi view; ảnh chụp cạnh artboard.
+- [ ] **U13 · Brushes, Brush Settings, Character, Paragraph** (giao diện; Vừa; cần U8; file `ui/qml/{Brushes,BrushSettings,Character,Paragraph}Panel.qml`, `ui/qml/TipShape.qml`, `ui/qml/StrokePreview.qml`, `ui/tests/tst_u13.qml`): theo artboard `PanelsB`, `Controls`:
+  - Brushes: tìm, thanh cỡ, nhóm thu gọn, preset (đầu cọ, tên, cỡ), nhóm mới, xóa, lưu cọ đang dùng; nhấp preset đặt cỡ, độ cứng cho công cụ vẽ đang dùng.
+  - Brush Settings: 6 đầu cọ, Size, Flip X, Y, `TipShape` (kéo mũi tên xoay Angle, kéo hai chấm đổi Roundness), Hardness, Spacing; Shape Dynamics, Transfer (các Jitter, Control, Minimum), Smoothing, Build-up, Noise, Wet Edges có ô bật; `StrokePreview` ở đáy vẽ lại theo cỡ, độ cứng, spacing, lực nhấn giả; Lưu thành Brush preset mới.
+  - Character: font, kiểu, cỡ, leading, kerning, tracking, co dọc, co ngang, baseline, màu, khử răng cưa, chữ hoa, gạch chân, gạch ngang. Paragraph: 7 kiểu căn, thụt trái, phải, dòng đầu, khoảng trước, sau đoạn.
+
+  **Xong khi:** `tst_u13`: preset và thanh đổi đúng `Tools`; Angle, Roundness kéo và gõ khớp nhau; ảnh chụp cạnh artboard.
+- [ ] **U14 · Retouch chân dung** (giao diện; Nhỏ; cần U7, U8; file `ui/qml/RetouchPanel.qml`, `ui/tests/tst_u14.qml`): theo artboard `Retouch`, phần `rtd` của `Main.dc.html`, bảng Retouch chân dung của plan.md: danh sách mặt (thumbnail, nhấp chọn, tìm lại; không có mặt thì ghi chú); năm mục thu gọn: Tách tần số (Radius; xem Cả hai, Thấp, Cao; Tạo, Tạo lại ra nhóm "Tách tần số" có Cao Linear Light và Thấp), Mask tự động (Da, Mắt, Môi, Răng có màu xem trước, bật lớp phủ, Feather, ra Vùng chọn hay Mask), Làm mịn da (Amount, Texture, Radius; ra layer có mask da), Dodge & Burn (cặp Curves có mask đen hay layer xám 50% Soft Light; tự sang Brush opacity 6%), Mắt, răng (làm trắng mắt, làm sáng mắt, làm trắng răng); huy hiệu "Đã có nhóm", "Đã có layer".
+
+  **Xong khi:** `tst_u14`: mỗi nút tạo đúng layer, nhóm trong `Doc` thành một bước, chip bật lớp phủ của U7; `pb-ui --state Retouch` chụp cạnh artboard `Retouch`.
+- [ ] **U15 · Select and Mask, Liquify** (giao diện; Vừa; cần U6, U7; file `ui/qml/Workspace.qml`, `ui/qml/SelectMaskSpace.qml`, `ui/qml/LiquifySpace.qml`, `ui/tests/tst_u15.qml`): theo artboard `SelectMask`, `Liquify`, cùng khung `Workspace` (tiêu đề "<tên> · <file> · layer <tên>", cột công cụ trái, thanh tùy chọn, canvas dùng lại `Viewport`, Properties bên phải, Hủy, OK); vào từ menu, nút "Select and Mask…" của thanh tùy chọn, Properties của mask:
+  - Select and Mask: Refine Edge Brush, Brush, Lasso, Hand, Zoom (cộng, trừ); Size, Sample All Layers, Select Subject, Refine Hair; View Mode 7 kiểu (phím O M V A T K Y), Opacity, màu Overlay, Show Edge (J), Show Original (P), High Quality Preview; Refine Mode; Edge Detection (Radius, Smart Radius); Global Refinements (Smooth, Feather, Contrast, Shift Edge); Clear Selection, Invert; Output To (5 đích), Remember Settings. Kiểu xem vẽ bằng lớp phủ trên ảnh mẫu theo hình vùng chọn giả.
+  - Liquify: 15 công cụ có phím (W R E C S B O F D A H Z); Brush Tool Options (Size 1–15.000, Density, Pressure, Rate, Stylus Pressure, Pin Edges); Face-Aware Liquify (chọn mặt; Eyes từng bên có xích, Eye Distance; Nose; Mouth; Face Shape; Đặt lại); Mask Options (5 chế độ, None, Mask All, Invert All); View Options (Guides, Face Overlay, Image, Mesh cỡ và màu, Mask màu, Backdrop: layer, mode, opacity); Reconstruct…, Restore All, Amount; Preview; dòng gợi ý trên canvas.
+
+  **Xong khi:** `tst_u15`: vào, ra (OK, Hủy, Esc) trả về đúng tài liệu và công cụ; phím của hai không gian; ảnh chụp cạnh hai artboard.
+- [ ] **U16 · Màn hình bắt đầu, New, màn hình khởi động, icon app** (giao diện; Vừa; cần U4; file `ui/qml/StartScreen.qml`, `ui/qml/NewDocDialog.qml`, `ui/qml/NewDocSpec.js`, `ui/brand/*`, `ui/tests/tst_u16.qml`): theo artboard `Start`, `NewDoc`, `Splash`, bảng Màn hình bắt đầu của plan.md:
+  - Màn hình bắt đầu: thanh trên với menu khi chưa có tài liệu (chỉ lệnh không cần tài liệu sáng); cột trái Tạo mới…, Mở…, vùng thả file và các định dạng; thẻ khôi phục (Mở, Bỏ); hàng 6 preset (cả Tùy chỉnh…); Gần đây: tìm không dấu, sắp theo ngày sửa, tên, dung lượng, lưới hay danh sách, menu và chuột phải (Mở, Mở thư mục chứa file, Sao chép đường dẫn, Bỏ khỏi danh sách), không khớp thì ghi chú.
+  - New: 8 nhóm preset (`CATS`: Gần đây, Đã lưu, Ảnh, In, Minh họa, Web, Di động, Video); Chi tiết: tên, W, H và 6 đơn vị, hướng, độ phân giải và đơn vị, mode và bit, nền (Trắng, Đen, Màu nền sau, Trong suốt, Tùy chọn), hồ sơ theo mode; dòng cỡ file; lưu preset; Tạo ra tài liệu giả trong `Docs`.
+  - Màn hình khởi động 560 × 340 (`pb-ui --start-screen <png>` như N10 của snapone) và icon app (Windows `.ico` 16, 32, 48, 256; macOS `.icns` tới 1.024; Linux PNG 512) dựng từ SVG theo artboard `Splash`; logo là bản tạm của prototype.
+
+  **Xong khi:** `tst_u16`: mở gần đây, tìm, sắp, bỏ khỏi danh sách; New đổi đơn vị giữ cỡ, Tạo ra tài liệu đúng cỡ, mode, bit; ảnh chụp màn hình bắt đầu (lưới, danh sách), New, màn hình khởi động, icon cạnh artboard.
+- [ ] **U17 · Image Size, Canvas Size, Fill, Stroke, bộ lọc** (giao diện; Vừa; cần U4; file `ui/qml/{ImageSize,CanvasSize,Fill,Stroke,Filter}Dialog.qml`, `ui/qml/FilterSpec.js`, `ui/tests/tst_u17.qml`): theo artboard `ImageSize`, `FillStroke`, `Filters`, bảng Hộp thoại của plan.md:
+  - Image Size: thumbnail, cỡ trước, sau (MB), Fit To, W, H có xích, đơn vị (Percent, Pixels, Inches, Centimeters, Millimeters, Points, Picas), độ phân giải, Resample (7 cách), Scale Styles. Canvas Size: cỡ hiện tại, cỡ mới, Relative, `AnchorGrid`, màu phần mở rộng.
+  - Fill: nội dung (màu trước, sau, màu…, lịch sử, đen, xám 50%, trắng), Mode, Opacity, Preserve Transparency. Stroke: độ dày, màu, vị trí (trong, giữa, ngoài), Mode, Opacity, Preserve Transparency.
+  - Bộ lọc: khuôn chung (ô xem trước có − + zoom, nhấp giữ để so gốc, ô Preview, OK, Hủy) cho Gaussian Blur, Unsharp Mask, Add Noise, Reduce Noise, Custom (lưới 5 × 5, Scale, Offset) và các mục "…" khác của menu Filter (Box Blur, Motion Blur, Surface Blur, Dust & Scratches, Median, High Pass, Maximum, Minimum, Offset) với thông số như Photoshop.
+
+  **Xong khi:** `tst_u17`: đổi đơn vị, xích giữ tỉ lệ, OK đổi cỡ `Doc` (một bước), Canvas Size theo neo; ảnh chụp từng hộp thoại cạnh artboard.
+- [ ] **U18 · Layer Style, Blending Options** (giao diện; Vừa; cần U4; file `ui/qml/LayerStyleDialog.qml`, `ui/qml/SplitSlider.qml`, `ui/tests/tst_u18.qml`): theo artboard `LayerStyle`, `LayerStyleBlend`: danh sách trái (Blending Options và 4 hiệu ứng có ô bật); Drop Shadow (Blend Mode, màu, Opacity, Angle, Distance, Spread, Size, chất lượng, Layer Knocks Out Drop Shadow), Stroke (Size, Position, Blend Mode, Opacity, màu), Color Overlay, Gradient Overlay (gradient, Reverse, Dither, Style, Align with Layer, Angle, Scale, Đặt lại căn chỉnh); Blending Options (Blend Mode, Opacity, Fill Opacity, kênh R G B, Blend If theo kênh, This Layer và Underlying Layer bằng `SplitSlider`: Alt kéo tách đôi tam giác, ô số từng nửa); ô xem trước; Đặt làm mặc định, Về mặc định; Preview, OK, Hủy. Mở từ Layer › Layer Style, nút fx và nhấp đúp dòng layer; giá trị vào layer giả, fx hiện trong Layers.
+
+  **Xong khi:** `tst_u18`: bật tắt hiệu ứng, Alt kéo tách đôi, OK là một bước, Hủy không đổi gì; ảnh chụp cạnh hai artboard.
+- [ ] **U19 · Export As, tùy chọn khi lưu, Color Settings, hồ sơ màu** (giao diện; Vừa; cần U4; file `ui/qml/{ExportAs,SaveOptions,ColorSettings,ConvertProfile,AssignProfile}Dialog.qml`, `ui/tests/tst_u19.qml`): theo artboard `ExportAs`, `SaveOptions`, `ColorSettings`:
+  - Export As: xem trước (zoom 12,5–400%, nhấp giữ so gốc), dòng thông tin (cỡ, dung lượng ước tính), định dạng (JPEG, PNG, WebP, TIFF) và tùy chọn từng loại, Chất lượng 1–100, cỡ ảnh W, H, %, Resample, cỡ canvas, nhiều tỉ lệ (0,5× tới 4×, hậu tố, thêm tỉ lệ), metadata, đổi sang sRGB, nhúng hồ sơ; Xuất là một việc nền của `Docs`.
+  - Tùy chọn khi lưu: JPEG (0–12 và bốn mức, Baseline, Baseline Optimized, Progressive, ước lượng cỡ), PSD (Maximize Compatibility, phần chưa hỗ trợ, không hỏi lại), TIFF (nén, layer), PNG (nén, interlace); nhúng hồ sơ ở cả bốn.
+  - Color Settings (bộ thiết lập, không gian làm việc RGB, Gray, chính sách khi mở, hồ sơ khác, thiếu hồ sơ, intent, Black Point Compensation, dither, ô giải thích khi rê), Convert to Profile, Assign Profile.
+
+  **Xong khi:** `tst_u19`: đổi định dạng ra đúng nhóm tùy chọn, Xuất chạy việc nền và hủy được; ảnh chụp cạnh artboard.
+- [ ] **U20 · Hỏi và báo, Phím tắt** (giao diện; Nhỏ; cần U5; file `ui/qml/{ProfileMismatch,MissingFonts,PsdNotice,SaveChanges,Recovery,ModelDownload,Shortcuts}Dialog.qml`, `ui/tests/tst_u20.qml`): theo artboard `Notices`, `Shortcuts`:
+  - Sáu hộp thoại của `Notices`: hồ sơ khác không gian làm việc (3 lựa chọn), thiếu font (thay từng font), PSD có phần chưa sửa được (danh sách theo layer, sao chép), lưu thay đổi khi đóng (Không lưu, Hủy, Lưu, số bước chưa lưu), khôi phục (Mở, Bỏ, Mở tất cả), tải model AI (model, dung lượng, giấy phép, Tải; khi lỗi: Thử lại). Đóng tài liệu, đóng app khi còn tài liệu chưa lưu thì hỏi bằng hộp thoại lưu thay đổi.
+  - Phím tắt: 3 tab (menu ứng dụng, menu panel, công cụ), tìm theo tên tiếng Việt, tiếng Anh hay phím; danh sách đọc từ `MenuSpec.js`, `ToolSpec.js`, một nguồn với phím đang chạy.
+
+  **Xong khi:** `tst_u20`: đóng tài liệu chưa lưu ra hộp thoại, ba nút làm đúng; tìm phím; mọi phím trong hộp thoại Phím tắt chạy được; ảnh chụp cạnh artboard.
+- [ ] **U21 · Thiết lập** (giao diện; Vừa; cần U4; file `ui/qml/SettingsDialog.qml`, `ui/tests/tst_u21.qml`): theo artboard `Settings`, `SettingsPages`: hộp 1.000 × 700, 16 mục bên trái có icon; Hiệu năng (ngân sách RAM theo % RAM máy, VRAM, đồng hồ RAM, VRAM, scratch, GPU bật tắt và tên, Kiểm tra lại, ổ scratch có thứ tự và bật tắt, ngân sách scratch, Cache Levels 1–8); 15 mục kia dựng từ `PANES` (công tắc, select, nhóm chọn, thanh, ô màu, màu nhấn, nút, liên kết, ghi chú). Giá trị vào `Prefs`; theme, màu nhấn, cỡ chữ, nền quanh ảnh, caro, màu guide, lưới, Quick Mask áp ngay; mở bằng Ctrl K, menu Edit, Help › Giấy phép; Esc, ×, nhấp ra ngoài thì đóng.
+
+  **Xong khi:** `tst_u21`: đổi theme, màu nhấn, cỡ chữ áp ngay cả cửa sổ; giá trị còn sau khi mở lại app (bật `persist` như `test_prefs_kept` của snapone); ảnh chụp 16 mục cạnh artboard.
+- [ ] **U22 · Bản Windows** (build, giao diện; Nhỏ; cần U4; file `CMakePresets.json`, `ui/CMakeLists.txt`, `tools/configure.sh`, `ui/deploy-win.sh`): như N2 của snapone: preset `ui-mingw` build chéo trong 24.04 (Qt 6.11.3 cho LLVM-MinGW, llvm-mingw 20250402, link động Qt), `vcpkg_installed` mingw riêng của 24.04; `ui/deploy-win.sh <thư mục>` gom exe, DLL, plugin, module QML; icon của exe từ `ui/brand/` khi U16 đã có; chạy trên Windows ở `/mnt/c/Users/Teko/AppData/Local/Temp/pb-u22/` (xóa khi xong): thanh trên làm thanh tiêu đề như N12 của snapone (kéo, nhấp đúp phóng to, ba nút, Snap Layouts), HiDPI 150%.
+
+  **Xong khi:** `pb-ui.exe --state Main --screenshot` trên Windows ra ảnh như bản Linux; `pb-ui-tests.exe` qua trên Windows; (bạn) thử cửa sổ thật bằng chuột.
+- [ ] **U23 · Soát với prototype** (giao diện; Vừa; cần U4–U22; file: sửa lệch trong file của task U đã xong, lead cho từng file; công cụ soát ở `build/review/`, không vào git): như U6 của snapone: chụp mọi artboard và trạng thái (menu mở, nhóm bung, hộp thoại, chuột phải) ở 1.440 × 900 và 1.280 × 800, theme tối và sáng, từ prototype (Chrome headless của Windows) và từ Qt; ghép cặp thành trang soát (artifact) cho bạn duyệt; sửa chỗ lệch; kiểm cỡ chữ Lớn, cửa sổ nhỏ nhất, HiDPI 150%, đi hết giao diện bằng Tab, Enter, Esc.
+
+  **Xong khi:** bạn duyệt trang soát; chỗ cố ý khác prototype ghi vào dòng task.
+- [ ] **U24 · CI của giao diện** (build; Nhỏ; cần R2, U4; file `.github/workflows/ci.yml`): job `ui` trên ubuntu-24.04 (Qt 6.11.3 qua install-qt-action): build, `all_qmllint`, ctest `ui`, chụp `--state` của mọi artboard làm artifact `ui-screenshots`; job `ui-mingw` build được.
+
+  **Xong khi:** CI xanh với job `ui`, ảnh chụp tải lên được.
+
+### N · Nối lõi
+
+- [ ] **N1 · Mở ảnh thật, Layers và lịch sử trên lõi** (giao diện, lõi; Vừa; cần U9, U12, T2, M1, K2; file `ui/session.h`, `ui/session.cpp`, `ui/docmodel.h`, `ui/docmodel.cpp`, `ui/qml/Docs.qml`, `ui/qml/Doc.qml`, `ui/CMakeLists.txt`, `ui/tests/main.cpp`, `ui/tests/tst_n1.qml`; cần đọc lệnh từ JSON thì thêm `command_from_json()` vào `core/doc.h`, `core/doc.cpp`, theo luật hợp đồng): `pb-ui` link `pb_core`. `Session` (C++): mở JPEG, PNG, TIFF bằng `open_image()` (M1) ở job Background, từ dòng lệnh, File › Mở (hộp thoại của hệ điều hành), kéo thả, danh sách gần đây. `DocModel` (C++) có cùng API với `Doc` giả cho phần lõi có: cây layer (model ảo hóa của cây đã trải), thuộc tính, lệnh qua `run()` (T1) vào `Document` (T2: undo, redo, nhảy bước, gộp cử chỉ, tên bước), thumbnail layer từ `mip()` (K2) qua image provider. Hai việc T1 để giao diện quyết (HANDOFF) làm như prototype, gộp trong một bước: xóa layer thì chọn layer kề, bản nhân bản thêm " bản sao" vào tên. Trên tài liệu thật, lệnh và control lõi chưa có thì mờ, khóa (quyết định 4, qua `can()`); canvas vẫn là canvas giả tới khi V1, V2 gắn vào.
+
+  **Xong khi:** test: mở PNG → Layers có Background → thêm, xóa, đổi tên, blend, opacity, ẩn hiện, nhóm đổi `DocState`, undo trả lại đúng `id` ô (T2), History nhảy bước; panel Layers với 1.000 layer (dáng D4) cuộn ≥ 60 fps; lệnh P1 mờ trên tài liệu thật; mọi test U vẫn qua trên tài liệu giả.
+- [ ] **N2 · Lưu `.pbd`, việc nền, thanh trạng thái, Hiệu năng** (giao diện; Nhỏ; cần N1, M2, M3, K1, U20, U21; file `ui/session.*`, `ui/qml/Docs.qml`, `ui/qml/Doc.qml`, `ui/tests/tst_n2.qml`): Lưu (Ctrl S: `.pbd` lưu tăng dần; lần đầu thành Lưu thành), Lưu thành; mở `.pbd` (M2); chấm chưa lưu theo bước của T2; đóng khi chưa lưu ra hộp thoại của U20; việc lưu hiện ở chỉ báo việc nền (tiến độ, hủy), không hộp thoại chờ; thanh trạng thái: RAM, nén, scratch từ `stats()` (K1), cỡ tài liệu thật; Thiết lập › Hiệu năng đặt ngân sách và thư mục scratch của K1.
+
+  **Xong khi:** test: mở PNG → lưu `.pbd` → mở lại cùng điểm ảnh; lưu D2-mini hiện tiến độ trong khi vẫn đổi được layer; số trên thanh trạng thái khớp `stats()`.
+- [ ] **N3 · Brush, Eraser trên canvas thật** (giao diện; Nhỏ; cần U5, C3; file `ui/qml/Tools.qml`, `ui/qml/Viewport.qml`, `ui/tests/tst_n3.qml`): Brush, Eraser và phím của U5 đặt `Canvas.tool`; ô của thanh tùy chọn (cỡ, độ cứng, opacity, flow, nút lực nhấn cho cỡ, opacity, flow, spacing trong bảng cọ) và màu trước đổi `Canvas.brush` (`BrushParams`: phần trăm thành 0–1, spacing là phần của cỡ); con trỏ cọ của U7 theo cỡ thật; nhả bút là một bước "Brush", "Eraser" trong History; công cụ vẽ khác mờ trên tài liệu thật (quyết định 4). Thay U3 cũ của p0-tasks.md.
+
+  **Xong khi:** test QML: mỗi phím, mỗi ô đổi đúng `Canvas.tool`, `Canvas.brush`; trong `pb-ui`, vẽ trên D1 theo giá trị trên thanh, undo, redo được; ảnh chụp cạnh artboard `OptionsBars`.
+
+## Ranh giới nối lõi
+
+| Giao diện | Bước U (giả) | Khi nối | Task |
+| --- | --- | --- | --- |
+| Tài liệu đang mở, tab, mở, đóng, gần đây | `Docs`: ba tài liệu như prototype; mở gần đây ra tài liệu giả | `Session` C++: JPEG, PNG, TIFF (M1), `.pbd` (M2), dòng lệnh, kéo thả, hộp thoại mở của hệ điều hành | N1, N2 |
+| Cây layer, thuộc tính layer điểm ảnh và nhóm | `Doc` giả, lệnh P0 tên như T1 | `DocModel` trên `DocState`, lệnh qua `run()` | N1 |
+| Hoàn tác, History | mảng trạng thái, bước có tên và icon | `Document` của T2; snapshot có tên của T2 | N1 |
+| Thumbnail layer, kênh | ảnh mẫu thu nhỏ | `mip()` của K2 | N1 |
+| Canvas | `Image` ảnh mẫu theo `View.js` | `Canvas` của V1 (cùng `toCanvas`, `toDoc`), ô ghép theo mip và màu màn hình (V2), ghép GPU (B2, B3) | V1, V2 |
+| Lớp phủ | qua `View.js` | qua `Canvas`; lớp phủ không đổi | V1 |
+| Brush, Eraser | `Tools` | `Canvas.tool`, `Canvas.brush`; nhả bút một bước (C3) | N3 |
+| Lưu, việc nền, chưa lưu | `Timer` | lưu `.pbd` ở job nền có tiến độ, hủy (M2, M3); chấm chưa lưu theo T2 | N2 |
+| Thanh trạng thái, Thiết lập › Hiệu năng | số giả | `stats()`, ngân sách, scratch của K1 | N2 |
+| Histogram, Navigator, Info | ảnh mẫu 160 px | mip của ảnh ghép, màu tại con trỏ | P1 |
+| Adjustment layer, mask, clipping, fill layer, smart object, chữ, hình, Layer Style, vùng chọn, bộ lọc, biến đổi, Image Size, Canvas Size, Select and Mask, Liquify, Retouch, Export As, lưu JPEG, PNG, TIFF, PSD, hồ sơ màu | giả; mờ trên tài liệu thật (quyết định 4) | task lõi P1, chia sau G1 | P1 |
+
+## Đổi ở p0-tasks.md
+
+Lead sửa (agent không sửa p0-tasks.md):
+
+- R1b: chuyển sang U0 của file này. Mục U · Khung giao diện: thay bằng một dòng trỏ sang đây (U1 cũ → U1, U2, U4, U5, U6, U24; U2 cũ → U9, N1; U3 cũ → U5, N3; U4 cũ → U4, U16, U20, N1, N2).
+- V1: cần U0 thay R1b; bỏ `ui/qml/Main.qml`, phần tương tác hand, zoom, rotate và phím tạm H, Z, R (U6 làm ở `Viewport.qml` cho cả hai canvas); thêm `ui/CMakeLists.txt` (link `pb_core`) và `ui/qml/Viewport.qml` sau khi U6 vào main: `Canvas` nhận view qua thuộc tính, có `toCanvas()`, `toDoc()` như `View.js`, `test_view` cùng ca với `tst_u6`; tới V2, `Canvas` hiện mẫu thử khi chạy một cờ riêng, canvas giả vẫn là mặc định. Phần đo trên Iris Xe cần U22.
+- C3: `ui/qml/Main.qml` → `ui/qml/Viewport.qml`; bỏ phím tạm B, E (U5 có phím); `Canvas.brush` cho N3 nối thay U3 cũ.
+- E4: cần N2, N3 thay U3, U4.
+- Cách phối hợp: `ui/qml/Main.qml` U0 → U4; `ui/qml/Viewport.qml` U6 → V1 → V2 → C3 → N3; `.github/workflows/ci.yml` R2 → U24 → E3. Thứ tự: dòng Giao diện trỏ sang mục Thứ tự ở đây; bảng Tiến độ: dòng U trỏ sang đây.
+
+## Rủi ro
+
+| Rủi ro | Cách giảm |
+| --- | --- |
+| Bản giả lớn dần, lệch API lõi, nối lõi phải sửa QML | API giả theo tên lệnh T1; control không đọc singleton; N1 chạy lại mọi test U trên cả tài liệu thật |
+| Giao diện P1 dựng trước lõi P1, thông số có thể đổi khi làm lõi | Tên, khoảng giá trị theo Photoshop (bảng của plan.md); lõi P1 theo đúng chúng |
+| 24.04 dùng chung với các phiên giao diện của snapone, mount mất khi WSL khởi động lại | `tools/ui.sh` tự mount lại; build qua `tools/heavy.sh` |
+| Prototype đổi khi task đang làm | Đọc lại artboard lúc bắt đầu và trước khi merge |
+| Ảnh chụp offscreen dùng renderer phần mềm, không vẽ shader | Thứ cần thấy trong ảnh chụp không dùng shader (quy ước của snapone) |
+
+## Để sau
+
+Cố ý không có trong U, N: bản tiếng Anh (P1; chuỗi đã qua `qsTr`); kéo thả panel, panel nổi, lưu workspace, tìm lệnh Ctrl F, Contextual Task Bar, HUD chọn màu, Edit Toolbar, panel Paths (P2); Timeline (P3); nối Histogram, Navigator, Info và mọi phần P1 trong bảng trên (chia sau G1).
