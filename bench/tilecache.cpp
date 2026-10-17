@@ -7,7 +7,8 @@
 // - paint8: an 8-bit layer of soft and hard strokes in many colours covering 30% of it (D1's painted layers);
 // - mask8: a mask of large soft strokes;
 // - grey16: a dodge and burn layer, 50% grey with faint white and black strokes over 30% (D1's).
-// Then what a pin costs, its tile in RAM: one thread, and 8 at once on tiles of their own (the store has one lock).
+// Then what a pin costs, its tile in RAM: one thread, and 8 at once on tiles of their own (the store has one lock); and
+// what a new tile costs, made, written once (its pixels allocated at the first pin) and dropped: 1 thread, and 8.
 #include <zstd.h>
 
 #include <algorithm>
@@ -169,6 +170,25 @@ void pin_cost() {
   }
 }
 
+void new_tile_cost() {
+  constexpr Format f{Depth::U8, 4};
+  constexpr int kTiles = 4096;  // each thread's
+  for (const int threads : {1, 8}) {
+    const auto t0 = pb::bench::Clock::now();
+    std::vector<std::thread> v;
+    for (int t = 0; t < threads; t++)
+      v.emplace_back([f] {
+        for (int i = 0; i < kTiles; i++) {
+          const std::shared_ptr<Tile> x = Tile::make(f);
+          std::memset(x->write().data(), i, size_t(kTileSize) * kTileSize * 4);
+        }
+      });
+    for (std::thread& t : v) t.join();
+    pb::bench::report(threads == 1 ? "tilecache_new_tile" : "tilecache_new_tile_8_threads",
+                      pb::bench::ms_since(t0) * 1000 / kTiles, "us");
+  }
+}
+
 struct Photo {
   int width = 0, height = 0;
   std::vector<uint16_t> rgba;
@@ -243,4 +263,5 @@ BENCH(tilecache) {
     measure("grey16", data_tiles(p.grid({Depth::U16, 4})));
   }
   pin_cost();
+  new_tile_cost();
 }

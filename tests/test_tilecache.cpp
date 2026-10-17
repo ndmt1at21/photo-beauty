@@ -1,6 +1,7 @@
 // The tile store (tilecache.h): pixels pushed out of RAM (zstd in RAM, scratch, a frame elsewhere) come back exact;
-// pinned tiles stay; the budget holds while 8 threads write and read back 1 GB of tiles through 64 MB; caches are
-// asked to release; the scratch file goes with its process.
+// pinned tiles stay; the budget holds while 8 threads write and read back 1 GB of tiles through 64 MB, and the RSS with
+// it; tiles' pixels lie outside malloc and go back to the OS; caches are asked to release; the scratch file goes with
+// its process.
 #include <zstd.h>
 
 #include <algorithm>
@@ -23,10 +24,24 @@
 #include "tile.h"
 #include "tilecache.h"
 
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define PB_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define PB_SANITIZED 1
+#endif
+#endif
+#if defined(__GLIBC__) && !defined(PB_SANITIZED)
+#include <malloc.h>
+#endif
+
 #ifdef _WIN32
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+// after windows.h; its 2nd version is kernel32's
+#define PSAPI_VERSION 2
+#include <psapi.h>
 #else
 #include <csignal>
 #include <sys/wait.h>
@@ -310,9 +325,24 @@ void check_users() {
   CHECK(tile_stats().charged == base + left);
 }
 
+// The process's resident memory, bytes; 0 where unknown.
+size_t resident() {
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS m{};
+  return GetProcessMemoryInfo(GetCurrentProcess(), &m, sizeof m) ? m.WorkingSetSize : 0;
+#else
+  long pages = 0, rss = 0;
+  FILE* f = std::fopen("/proc/self/statm", "r");
+  const bool ok = f && std::fscanf(f, "%ld %ld", &pages, &rss) == 2;
+  if (f) std::fclose(f);
+  return ok ? size_t(rss) * size_t(sysconf(_SC_PAGESIZE)) : 0;
+#endif
+}
+
 // 8 threads write about 1 GB of tiles of every format and kind through a 64 MB budget, then read them all back in a
 // random order, some at once by several threads, every byte checked; meanwhile the raw and compressed bytes never
-// pass the budget plus what is pinned. Everything goes when the tiles do.
+// pass the budget plus what is pinned, nor the process's RSS what it was plus the budget and a little (K1b: glibc's
+// malloc kept tiles' freed pixels resident past it by half). Everything goes when the tiles do.
 void check_gigabyte() {
   const size_t old = tile_budget(), budget = 64 << 20;
   set_tile_budget(budget);
@@ -330,13 +360,15 @@ void check_gigabyte() {
     total += tile_bytes(items.back().f);
   }
   std::atomic<bool> done{false};
-  std::atomic<size_t> samples{0}, most_scratch{0}, most_zstd{0};
+  std::atomic<size_t> samples{0}, most_scratch{0}, most_zstd{0}, most_rss{0};
+  const size_t rss0 = resident();
   std::thread monitor([&] {
     while (!done) {
       const TileStats s = tile_stats();
       CHECK(s.raw + s.compressed <= budget + s.pinned);
       most_scratch = std::max<size_t>(most_scratch, s.scratch);
       most_zstd = std::max<size_t>(most_zstd, s.compressed);
+      most_rss = std::max(most_rss.load(), resident());
       samples++;
     }
   });
@@ -363,13 +395,55 @@ void check_gigabyte() {
   });
   done = true;
   monitor.join();
-  std::printf("tilecache: 1 GB through 64 MB: at most %zu MB in scratch, %zu MB zstd; %zu samples\n",
-              most_scratch.load() >> 20, most_zstd.load() >> 20, samples.load());
+  const size_t grew = most_rss.load() - std::min(rss0, most_rss.load());
+  std::printf("tilecache: 1 GB through 64 MB: at most %zu MB in scratch, %zu MB zstd, RSS %zu MB past its start; %zu "
+              "samples\n",
+              most_scratch.load() >> 20, most_zstd.load() >> 20, grew >> 20, samples.load());
+#ifndef PB_SANITIZED  // they keep memory of their own
+  CHECK(grew <= budget + (size_t(64) << 20));
+#endif
   CHECK(!wrong && samples > 0 && most_scratch > s0.scratch + (size_t(256) << 20) && most_zstd > s0.compressed);
   items.clear();
   const TileStats s1 = tile_stats();
   CHECK(s1.raw == s0.raw && s1.pinned == s0.pinned && s1.compressed + s1.scratch == s0.compressed + s0.scratch);
   set_tile_budget(old);
+}
+
+// Tiles' pixels come straight from the OS, not from malloc, and go back to it with them (K1b): 256 MB of tiles leave
+// glibc's malloc as it was but for the tiles themselves; dropped, they leave the RSS but for what the pool keeps (32
+// MB). Not under a sanitizer, which has a malloc of its own.
+void check_own_pages() {
+#ifndef PB_SANITIZED
+  const size_t old = tile_budget(), bytes = size_t(kTileSize) * kTileSize * 4, n = (size_t(256) << 20) / bytes;
+  set_tile_budget(size_t(1) << 30);  // they stay raw
+#ifdef __GLIBC__
+  const auto used = [] {  // in arenas and malloc's own mmaps; 32 bits before glibc 2.33, so differences mod 2^32
+#if __GLIBC_PREREQ(2, 33)
+    const struct mallinfo2 m = mallinfo2();
+#else
+    const struct mallinfo m = mallinfo();
+#endif
+    return uint32_t(m.uordblks) + uint32_t(m.hblkhd);
+  };
+  const uint32_t before = used();
+#endif
+  std::vector<std::shared_ptr<Tile>> tiles;
+  for (size_t i = 0; i < n; i++) {
+    tiles.push_back(Tile::make({Depth::U8, 4}));
+    std::memset(tiles.back()->write().data(), int(i), bytes);
+  }
+#ifdef __GLIBC__
+  const uint32_t grew = used() - before;
+  std::printf("tilecache: 256 MB of tiles took %u KB of malloc's\n", grew >> 10);
+  CHECK(grew < uint32_t(n) * 512);
+#endif
+  const size_t full = resident();
+  tiles.clear();
+  const size_t fell = full - std::min(full, resident());
+  std::printf("tilecache: dropped, they took %zu MB off the RSS\n", fell >> 20);
+  CHECK(fell >= (size_t(192) << 20));
+  set_tile_budget(old);
+#endif
 }
 
 // Scratch files of process pid: Linux keeps them nameless but open, Windows named in `dir`.
@@ -485,6 +559,7 @@ TEST(test_tilecache) {
   check_contention();
   check_users();
   check_gigabyte();
+  check_own_pages();
   check_scratch_dies();
   trim_tiles();  // leaves no eviction running for the tests after
 }

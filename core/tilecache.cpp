@@ -29,6 +29,7 @@
 #else
 #include <stdlib.h>  // mkostemp
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #endif
 #ifdef __APPLE__
@@ -36,6 +37,16 @@
 #endif
 #ifdef PB_TRACY
 #include <tracy/Tracy.hpp>
+#endif
+#if defined(__SANITIZE_ADDRESS__)
+#define PB_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define PB_ASAN 1
+#endif
+#endif
+#ifdef PB_ASAN
+#include <sanitizer/asan_interface.h>
 #endif
 
 namespace pb {
@@ -46,8 +57,81 @@ constexpr int kLevel = 1;                       // zstd's; bench/tilecache.cpp w
 constexpr size_t kMinBudget = size_t(1) << 20;  // two of the largest tiles
 
 size_t raw_size(Format f) { return kPixels * size_t(f.bytes()); }
-uint8_t* new_raw(size_t n) { return static_cast<uint8_t*>(::operator new(n, std::align_val_t(64))); }
-void free_raw(uint8_t* p) { ::operator delete(p, std::align_val_t(64)); }
+
+// Raw pixels and zstd copies lie in buffers of whole pages straight from the OS (mmap, VirtualAlloc), not from
+// malloc: glibc's, its mmap threshold rising past a tile's size once one is freed, keeps them in its arenas, where
+// freed ones stay resident between live ones (E1 saw RSS past the budget by half: D2, a 3 GB budget, 4.6 GB). A freed
+// buffer waits in a pool for the next of its size, as faulting fresh pages in costs far more than filling them (WSL2:
+// some 270 us a 256 KB tile against 16); past kPoolMax bytes free buffers go back to the OS. The budget counts a
+// copy's whole pages. Under ASan buffers come from operator new, for its redzones, and wait poisoned. Any thread.
+// ponytail: a mapping a buffer, the kernel merging neighbours (D2 under 3 GB: 6,168 at most); Linux caps a process at
+// vm.max_map_count, 65,530 where distros keep the kernel's default, which a budget past some 30 GB might reach: carve
+// buffers out of large slabs then.
+constexpr size_t kPage = 4096, kPoolMax = size_t(32) << 20;
+constexpr size_t kMostPages = kPixels * 8 / kPage;  // a raw RGBA U16 tile's
+size_t paged(size_t n) { return (n + kPage - 1) / kPage * kPage; }
+struct Pool {
+  std::mutex m;
+  uint8_t* free[kMostPages + 1] = {};  // by pages: each a list linked through its buffers' first bytes
+  size_t bytes = 0;                    // theirs
+};
+Pool& pool() {
+  static Pool* p = new Pool;  // never destroyed, as the store
+  return *p;
+}
+
+uint8_t* take(size_t n) {  // whole pages for n bytes, at most kMostPages
+  n = paged(n);
+  Pool& p = pool();
+  {
+    const std::lock_guard<std::mutex> l(p.m);
+    if (uint8_t*& head = p.free[n / kPage]) {
+      uint8_t* r = head;
+#ifdef PB_ASAN
+      ASAN_UNPOISON_MEMORY_REGION(r, n);
+#endif
+      std::memcpy(&head, r, sizeof(uint8_t*));
+      p.bytes -= n;
+      return r;
+    }
+  }
+#ifdef PB_ASAN
+  return static_cast<uint8_t*>(::operator new(n, std::align_val_t(64)));
+#elif defined(_WIN32)
+  void* r = VirtualAlloc(nullptr, n, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  if (!r) throw std::bad_alloc();
+  return static_cast<uint8_t*>(r);
+#else
+  void* r = mmap(nullptr, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (r == MAP_FAILED) throw std::bad_alloc();
+  return static_cast<uint8_t*>(r);
+#endif
+}
+
+void give(uint8_t* r, size_t n) {  // a buffer of take(n)
+  n = paged(n);
+  Pool& p = pool();
+  {
+    const std::lock_guard<std::mutex> l(p.m);
+    if (p.bytes + n <= kPoolMax) {
+      uint8_t*& head = p.free[n / kPage];
+      std::memcpy(r, &head, sizeof(uint8_t*));
+      head = r;
+      p.bytes += n;
+#ifdef PB_ASAN
+      ASAN_POISON_MEMORY_REGION(r + sizeof(uint8_t*), n - sizeof(uint8_t*));
+#endif
+      return;
+    }
+  }
+#ifdef PB_ASAN
+  ::operator delete(r, std::align_val_t(64));
+#elif defined(_WIN32)
+  VirtualFree(r, 0, MEM_RELEASE);
+#else
+  munmap(r, n);
+#endif
+}
 
 // What a thread compresses and decompresses with.
 struct Zstd {
@@ -64,16 +148,16 @@ Zstd& zstd() {
   return z;
 }
 
-// n raw bytes as a zstd frame (new[], `size` bytes) when that saves an eighth, else null.
-std::unique_ptr<uint8_t[]> squeeze(const uint8_t* raw, size_t n, size_t& size) noexcept {
+// n raw bytes as a zstd frame (take(size), `size` bytes) when that saves an eighth, else null.
+uint8_t* squeeze(const uint8_t* raw, size_t n, size_t& size) noexcept {
   PROFILE_ZONE("tile_compress");
   try {
     Zstd& z = zstd();
     z.frame.resize(ZSTD_compressBound(n));
     const size_t c = z.c ? ZSTD_compressCCtx(z.c, z.frame.data(), z.frame.size(), raw, n, kLevel) : 0;
-    if (!c || ZSTD_isError(c) || c > n - n / 8) return nullptr;
-    std::unique_ptr<uint8_t[]> out(new uint8_t[c]);
-    std::memcpy(out.get(), z.frame.data(), c);
+    if (!c || ZSTD_isError(c) || paged(c) > n - n / 8) return nullptr;
+    uint8_t* out = take(c);
+    std::memcpy(out, z.frame.data(), c);
     size = c;
     return out;
   } catch (...) {  // out of memory: scratch takes it raw
@@ -188,11 +272,13 @@ struct Scratch {
 // What to free once the store's lock is released: free() it after unlocking.
 struct Garbage {
   uint8_t* raw = nullptr;
+  size_t raw_size = 0;
   const uint8_t* zstd = nullptr;
+  size_t zstd_size = 0;
   std::shared_ptr<const void> owner;
   void free() {
-    if (raw) free_raw(std::exchange(raw, nullptr));
-    delete[] std::exchange(zstd, nullptr);
+    if (raw) give(std::exchange(raw, nullptr), raw_size);
+    if (zstd) give(const_cast<uint8_t*>(std::exchange(zstd, nullptr)), zstd_size);
     owner.reset();
   }
   ~Garbage() { free(); }
@@ -269,8 +355,8 @@ struct TileStore {
         return;
       case Tile::Packed::Ram:
         rams.erase(t);
-        ram -= t->size_;
-        g.zstd = t->bytes_;
+        ram -= paged(t->size_);
+        g.zstd = t->bytes_, g.zstd_size = t->size_;
         break;
       case Tile::Packed::Scratch:
         scratch.release(t->size_);
@@ -310,7 +396,7 @@ struct TileStore {
       const bool tier = compress;
       l.unlock();
       size_t size = 0;
-      std::unique_ptr<uint8_t[]> z = tier ? squeeze(t->raw_, n, size) : nullptr;
+      uint8_t* z = tier ? squeeze(t->raw_, n, size) : nullptr;
       l.lock();
       uint64_t at = 0;
       bool spilled = false;
@@ -329,14 +415,14 @@ struct TileStore {
       if (!z) {
         t->packed_ = Tile::Packed::Scratch, t->zstd_ = false, t->size_ = uint32_t(n), t->offset_ = at;
       } else if (!t->pins_) {
-        t->packed_ = Tile::Packed::Ram, t->zstd_ = true, t->size_ = uint32_t(size), t->bytes_ = z.release();
-        ram += size;
+        t->packed_ = Tile::Packed::Ram, t->zstd_ = true, t->size_ = uint32_t(size), t->bytes_ = z;
+        ram += paged(size);
       } else {
-        g.zstd = z.release();  // pinned meanwhile: kept raw, without the copy
+        g.zstd = z, g.zstd_size = size;  // pinned meanwhile: kept raw, without the copy
       }
     }
     if (t->packed_ != Tile::Packed::None && !t->pins_) {
-      g.raw = std::exchange(t->raw_, nullptr);
+      g.raw = std::exchange(t->raw_, nullptr), g.raw_size = n;
       raw -= n;
     }
     settle(t);
@@ -363,9 +449,9 @@ struct TileStore {
     evicting--;
     Garbage g;
     if (ok) {
-      g.zstd = std::exchange(t->bytes_, nullptr);
+      g.zstd = std::exchange(t->bytes_, nullptr), g.zstd_size = size;
       t->packed_ = Tile::Packed::Scratch, t->offset_ = at;
-      ram -= size;
+      ram -= paged(size);
     } else {
       scratch.release(size), scratch.fail("cannot write to a file in");
     }
@@ -422,7 +508,7 @@ Tile::~Tile() {
   s.hot.erase(this);
   if (raw_) {
     s.raw -= raw_size(format_);
-    g.raw = raw_;
+    g.raw = raw_, g.raw_size = raw_size(format_);
   }
   s.drop_packed(this, g);
 }
@@ -453,7 +539,7 @@ Pin Tile::pin() const {
   uint8_t* raw = nullptr;
   bool ok = false;
   try {
-    raw = new_raw(n);
+    raw = take(n);
     switch (packed_) {
       case Packed::None:  // fresh
         fill(raw);
@@ -487,7 +573,7 @@ Pin Tile::pin() const {
   s.settle(this);
   l.unlock();
   if (!ok) {
-    if (raw) free_raw(raw);
+    if (raw) give(raw, n);
     throw std::runtime_error("pb: a tile's pixels could not be read back");
   }
   return Pin(this, raw);
@@ -525,7 +611,7 @@ WritePin Tile::writable() {
 
 WritePin Tile::write_copy(const uint8_t* from) {
   const size_t n = raw_size(format_);
-  uint8_t* raw = new_raw(n);
+  uint8_t* raw = take(n);
   std::memcpy(raw, from, n);
   TileStore& s = store();
   const std::lock_guard l(s.m);
