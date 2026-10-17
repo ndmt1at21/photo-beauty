@@ -17,7 +17,7 @@ build/default/pb-tests test_smoke   # test theo tên; build/default/pb-bench [t�
 ```
 
 - `tools/configure.sh` dựng `build/<preset>` của worktree chứa nó: `vcpkg_installed` chung mọi worktree (chỉ cài khi thiếu gói), ccache riêng `~/.cache/ccache-pb`, slangc chạy được trên glibc 2.31, `libtsan_preinit.o` cho TSan của GCC 9, link `samples/`.
-- Build, bộ test sanitizer, test GPU dài, bench: qua `tools/heavy.sh` (một việc nặng mỗi lúc, chờ RAM trống 4 GB, `-j4`). Worktree chỉ giữ `build/default`; xóa `build/asan`, `build/tsan`, `build/mingw` ngay sau khi dùng; `df -h /mnt/c` dưới 2 GB thì dừng, báo lead.
+- Build, bộ test sanitizer, test GPU dài, bench: qua `tools/heavy.sh` (một việc nặng mỗi lúc, chờ RAM trống 4 GB, `-j4`). Worktree chỉ giữ `build/default`; xóa `build/asan`, `build/tsan`, `build/mingw` ngay sau khi dùng; `df -h /mnt/c` dưới 2 GB thì dừng, báo lead. Tiến trình crash (đột biến, fuzz) để lại dump khoảng 200 MB ở `/mnt/c/Users/Teko/AppData/Local/Temp/wsl-crashes/` (tên chứa đường dẫn worktree): xóa dump của mình sau mỗi đợt, bằng đường dẫn đầy đủ.
 - Sanitizer: chạy qua `setarch $(uname -m) -R` (runtime cũ hỏng với ASLR của kernel 6.6), cắt log (`| head -c 200000`):
   `setarch $(uname -m) -R env ASAN_OPTIONS=quarantine_size_mb=0:thread_local_quarantine_size_kb=0:detect_leaks=0 ctest --test-dir build/asan --output-on-failure`;
   `setarch $(uname -m) -R env TSAN_OPTIONS=suppressions=$PWD/tests/tsan.supp ctest --test-dir build/tsan --output-on-failure`.
