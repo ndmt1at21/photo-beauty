@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import "Fmt.js" as Fmt
+import "ToolSpec.js" as ToolSpec
 
 // The status bar, 24 high (docs/ui-tasks.md, U4; artboard Main): the zoom to type ("12,5%", Enter or leaving the box
 // sets it, Esc gives it back), the box Thông tin picks (Tools.statInfo), the document's size and resolution, its mode,
@@ -12,11 +13,6 @@ Rectangle {
     readonly property Doc doc: Docs.current
     readonly property bool popupOpen: info.popup.visible
     readonly property var infos: [qsTr("Tài liệu"), qsTr("Hồ sơ màu"), qsTr("Kích thước"), qsTr("RAM, scratch"), qsTr("Thời gian thao tác"), qsTr("Công cụ đang dùng")]
-    // ponytail: the tools' names copied from GROUPS of Main.dc.html; read them from ToolSpec.js once U5 has it.
-    readonly property var toolNames: ({ move: "Move", rect: "Rectangular Marquee", ellip: "Elliptical Marquee", lasso: "Lasso", plasso: "Polygonal Lasso", wand: "Magic Wand",
-        selbrush: "Selection Brush", crop: "Crop", pcrop: "Perspective Crop", eyedrop: "Eyedropper", spot: "Spot Healing Brush", heal: "Healing Brush", patch: "Patch", brush: "Brush",
-        pencil: "Pencil", clone: "Clone Stamp", eraser: "Eraser", gradient: "Gradient", bucket: "Paint Bucket", dodge: "Dodge", burn: "Burn", sponge: "Sponge", type: "Horizontal Type",
-        rectS: "Rectangle", ellipS: "Ellipse", tri: "Triangle", poly: "Polygon", line: "Line", hand: "Hand", rot: "Rotate View", zoom: "Zoom" })
     readonly property var system: Prefs.system
     readonly property string infoText: {
         const d = doc
@@ -28,7 +24,7 @@ Rectangle {
         case 2: return qsTr("%1 × %2 cm").arg(Fmt.vn(d.w / d.ppi * 2.54, 2)).arg(Fmt.vn(d.h / d.ppi * 2.54, 2))
         case 3: return qsTr("%1 GB · %2 GB").arg(Fmt.vn(system.ramUsed, 1)).arg(Fmt.vn(system.scratchUsed, 1))
         case 4: return qsTr("%1 giây").arg(Fmt.vn(0.4, 1))
-        default: return Tools.xf ? qsTr("Free Transform") : toolNames[Tools.tool] || Tools.tool
+        default: return Tools.xf ? qsTr("Free Transform") : ToolSpec.name(Tools.tool)
         }
     }
     readonly property string zoomText: doc ? Fmt.zt(doc.view.zoom * 100) : ""
