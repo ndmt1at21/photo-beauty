@@ -15,14 +15,14 @@ Lập 17/10/2026 từ các mục P0, Kiến trúc, Chỉ tiêu hiệu năng, 30 
 | --- | --- | --- | --- |
 | R · Repo, build, CI | R0 (bạn), R1, R1b, R2 | Build | R1 xong |
 | A · Hợp đồng lõi, ô | A1 | Lõi | Xong |
-| K · Kho ô | K1, K2 | Lõi | Xong |
-| T · Tài liệu, lịch sử | T1, T2 | Lõi | T1 xong |
+| K · Kho ô | K1, K1b, K2 | Lõi | K1, K2 xong; K1b đang làm |
+| T · Tài liệu, lịch sử | T1, T2 | Lõi | Xong |
 | B · Ghép | B1–B4 | Lõi (CPU, GPU) | B1, B1b, B2 xong; B4 chờ Photoshop |
 | C · Cọ | C1–C4 | Lõi, giao diện | C1, C2, C4 xong |
 | V · Canvas | V1, V2 | Giao diện, GPU | Chưa làm |
 | M · Mở, lưu | M1–M3 | Lõi | M1 xong |
 | U · Khung giao diện | U1–U4 | Giao diện | Chưa làm |
-| E · Đo, cổng G1 | E1, E2 (bạn), E3, E4 | Bench | Chưa làm |
+| E · Đo, cổng G1 | E1, E2 (bạn), E3, E4 | Bench | E1 bước 1 xong |
 
 ## Cách phối hợp
 
@@ -113,7 +113,7 @@ Trong ngoặc sau tên: phần; cỡ (như snapone: Nhỏ là vài trăm dòng, 
 
 - [x] **T1 · Mô hình tài liệu** (17/10/2026, 38f9924, cba38c7: lệnh trên cây 1.000 layer 0,02–0,13 ms; 38/38 đột biến bị bắt; thêm `validate(DocState)` cho M2; lõi; Vừa; cần A1; file `core/doc.cpp`, `tests/test_doc.cpp`): `DocState` theo `doc.h`: cỡ, mode (RGB, Grayscale), bit (8, 16), ICC, nhóm gốc, layer đang chọn. Thuộc tính layer: tên, ẩn hiện, opacity, fill, blend, 4 khóa (lưu lại, chưa cưỡng chế ở P0) ↔ JSON. Lệnh: thêm layer điểm ảnh, thêm nhóm, xóa, nhân bản (dùng chung ô), dời thứ tự, đổi nhóm cha, gom vào nhóm, rã nhóm, đặt thuộc tính, thay lưới điểm ảnh. Bất biến: `id` duy nhất, Pass Through chỉ ở nhóm, định dạng lưới khớp mode và bit.
   **Xong khi:** test: nhân bản không tạo ô mới (cùng `id`); cây 1.000 layer lồng 6 cấp (dáng D4): mỗi lệnh ≤ 1 ms (in ra); `DocState` cũ không đổi sau lệnh; JSON đọc rồi ghi trùng từng byte, kể cả khóa lạ; lệnh phạm bất biến báo lỗi, trạng thái không hỏng.
-- [ ] **T2 · Lịch sử: undo, redo** (đang làm: worktree `t2`, 17/10; gộp thêm: cache mip của K2 đặt trần theo `tile_budget()`, đăng ký `BudgetUser`, cache không hủy lúc thoát (`core/mip.*`, `tests/test_mip.cpp`); nhả bút của C2 thành một bước; lõi; Nhỏ; cần T1, K1; file `core/history.h`, `core/history.cpp`, `tests/test_history.cpp`): `Document` = `DocState` hiện tại cộng các bước {tên, lệnh JSON, `DocState`}; undo, redo, nhảy tới bước; `begin_gesture()`, `end_gesture()` gộp một lần kéo thanh, một nét cọ thành một bước; mỗi bước biết số byte ô chỉ nó giữ; tổng vượt 25% ngân sách ô (K1) thì bỏ bước cũ nhất; snapshot có tên nằm ngoài dãy bước (panel History ở P1).
+- [x] **T2 · Lịch sử: undo, redo** (17/10/2026, e745809, 6751850: lệnh ngẫu nhiên xen undo, redo, nhảy bước, gesture, snapshot khớp bản chạy lại (JSON, `id` ô); byte lịch sử đếm chính xác, vượt `tile_budget()` / 4 thì bỏ bước cũ nhất; undo, redo một nét 0,012 ms, không chép điểm ảnh; mỗi lệnh trên cây dáng D4 qua lịch sử 0,03–0,34 ms; 14/14 đột biến bị bắt; asan, tsan qua; theo `Doc` giả của U3: `SelectLayers` nhập vào bước hiện tại (không tạo bước), `delete_step()`, `restore(i)`, `Step::serial` cho chấm chưa lưu, JSON của gesture là mảng lệnh; N1 cần biết: `jump()`, `undo()` giữa gesture chỉ kết thúc bước đó, lệnh sau của gesture gộp thành bước mới (mock: mỗi lệnh một bước); ponytail: mỗi tài liệu 1/4 ngân sách riêng (nhiều tab ở P1 chia chung), ô `.pbd` tính theo cỡ thô; gộp thêm: cache mip của K2 tự giữ LRU, trần 1/8 ngân sách (mức 1–2), 1/16 (mức 3 trở lên), `BudgetUser` thả ô chỉ cache giữ, cache không hủy lúc thoát, `set_mip_budget()` thành `clear_mips()`; lõi; Nhỏ; cần T1, K1; file `core/history.h`, `core/history.cpp`, `tests/test_history.cpp`): `Document` = `DocState` hiện tại cộng các bước {tên, lệnh JSON, `DocState`}; undo, redo, nhảy tới bước; `begin_gesture()`, `end_gesture()` gộp một lần kéo thanh, một nét cọ thành một bước; mỗi bước biết số byte ô chỉ nó giữ; tổng vượt 25% ngân sách ô (K1) thì bỏ bước cũ nhất; snapshot có tên nằm ngoài dãy bước (panel History ở P1).
   **Xong khi:** test: 1.000 lệnh ngẫu nhiên xen undo, redo, nhảy bước khớp bản chạy lại tham chiếu (JSON và `id` ô); kéo opacity qua 100 giá trị là một bước; ngân sách nhỏ thì bước cũ bị bỏ và số ô trong kho giảm; undo một nét cọ không chép điểm ảnh (trả lại đúng `id` ô cũ).
 
 ### B · Ghép
@@ -171,7 +171,7 @@ Theo quyết định 1. Prototype là [canvas thiết kế](https://claude.ai/ar
 
 ### E · Đo, cổng G1
 
-- [ ] **E1 · Tài liệu đo D1, D2, D4** (đang làm: worktree `e1`, 17/10; bench; Vừa; cần T1, K1; M2 để ghi file, C2 nếu đã có; file `bench/docs.h`, `bench/docs.cpp`, `bench/make.cpp`): `pb-bench make d1|d2|d2mini|d4 <out.pbd>`, hạt giống cố định.
+- [ ] **E1 · Tài liệu đo D1, D2, D4** (đang làm: worktree `e1`, 17/10; bước 1 vào main 83dd215: bốn tài liệu trong RAM, `bench/docs.h`, `pb-bench make`; D1 15 layer 2,7 GB dựng 13 s, ảnh nền từ JPEG nhúng trong NEF; D2 40 layer phủ 30,0% 18,8 GB dựng dưới ngân sách 3.072 MB qua scratch (tối đa 5,9 GB) trong 60 s; D4 1.000 layer, 143 nhóm, sâu 6; chờ M2 để ghi `.pbd`; bench; Vừa; cần T1, K1; M2 để ghi file, C2 nếu đã có; file `bench/docs.h`, `bench/docs.cpp`, `bench/make.cpp`): `pb-bench make d1|d2|d2mini|d4 <out.pbd>`, hạt giống cố định.
   - **D1:** ảnh nền 8256 × 5504, 16 bit, sRGB: `samples/photo16.tif` (TIFF 16 bit, bạn xuất từ RAW khi muốn) khi có; không thì JPEG cỡ gốc nhúng trong `samples/Nikon_D850_Nikon-D850-14bit-lossless-compressed.NEF` (không vào git), nâng lên 16 bit với nhiễu xác định ở byte thấp (không còn `Engine` của snapone để giải mã RAW). Thấp = Gaussian r ≈ 8 px; Cao = (ảnh − Thấp)/2 + 0,5 ở Linear Light; 5 layer vẽ phủ khoảng 20% (nét tổng hợp qua C2 nếu đã có, không thì vệt mềm ngẫu nhiên). P0 chưa có adjustment, chữ: 5 adjustment layer thay bằng layer điểm ảnh Soft Light, Overlay, Multiply phủ một phần; 1 chữ thay bằng layer nhỏ; 1 nhóm.
   - **D2:** 20.000 × 15.000, 8 bit, 40 layer phủ trung bình 30%, cắt từ ảnh của `samples/` (giải mã cỡ nhỏ); dựng dưới ngân sách của K1 (chảy qua scratch); cần khoảng 20 GB đĩa trống, nên D2 đủ cỡ chờ ổ C: có chỗ (bạn); trước đó chỉ D2-mini. **D2-mini:** 1/16 diện tích, cùng cấu trúc, cho CI.
   - **D4 dạng P0:** 6000 × 4000, 8 bit, 1.000 layer điểm ảnh nhỏ đứng thay 300 chữ, 300 hình, 100 smart object, 300 layer điểm ảnh; nhóm lồng 6 cấp. Bản đủ (chữ, hình, smart object, layer style thật) ở P1.
