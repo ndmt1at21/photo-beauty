@@ -13,6 +13,8 @@ if(MSVC)
   add_compile_options(/W4 /utf-8)
 else()
   add_compile_options(-Wall -Wextra -Wno-missing-field-initializers)  # Vulkan `Info x{sType}` idiom
+  # No fused multiply-add: ARM and FMA targets would round differently from x86-64, the GPU and the CPU references.
+  add_compile_options(-ffp-contract=off)
 endif()
 
 # Override with -DSLANGC=... where vcpkg's prebuilt slangc cannot run (glibc < 2.34).
