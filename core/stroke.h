@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "doc.h"
+#include "render.h"  // StrokeOverlay
 #include "tile.h"
 
 namespace pb {
@@ -37,10 +38,20 @@ struct StrokeState {
   std::shared_ptr<const TileGrid> buffer;  // coverage so far, as StrokeOverlay::buffer: changed tiles have new ids
   size_t events = 0;                       // events applied so far, in the order added
   std::shared_ptr<const TileGrid> pixels;  // once merged: the layer's pixels with the stroke (SetPixels), else null
+  // What frames composite (RenderInput::stroke), as pen-up merges it: the brush's colour, opacity and mode, clamped
+  // to 0..1, over `buffer` with the stroke's tail stamped in too. The tail is the dabs from the event before the
+  // newest to the newest: DabPlacer (dab.h) gives those only with the next event, as the curve depends on it, so these
+  // are where they would fall were the pen lifted now, and the next state moves them. A frame thus shows every event
+  // applied without waiting for the next (5 ms at 200 Hz). The buffer is `buffer` itself where the tail has no dabs,
+  // and once merged.
+  StrokeOverlay overlay;
 };
 
 // One stroke on one pixel layer, pen down to pen up. The UI thread makes, feeds and finishes it; Interactive jobs
 // apply the events in order (never Latest: no event is dropped), alone write the stroke buffer, and publish copies.
+// The buffer holds coverage B of canvas pixels only (as Photoshop paints): each dab takes B toward its cap by its
+// mask d times its flow, B = B + d x flow x (cap - B) rounded up to 1/65535, cap 1 but where the pen's pressure sets
+// the opacity (then the dab's opacity over the stroke's): the stroke covers at most its opacity, as Photoshop's.
 class Stroke {
  public:
   // `doc` as the stroke starts, `layer` one of its pixel layers (else std::invalid_argument). on_publish runs on the
@@ -57,5 +68,9 @@ class Stroke {
   struct Impl;
   std::shared_ptr<Impl> impl_;  // shared with the stroke's jobs
 };
+
+// How many threads strokes stamp and merge on: 1, each stroke's job alone; anything else (0 by default) the pool's.
+// What they make never depends on it, each tile taking its dabs in order: tests and replays (C4) compare. Any thread.
+void set_stroke_threads(int n);
 
 }  // namespace pb
