@@ -22,7 +22,7 @@ Lập 17/10/2026 từ các mục P0, Kiến trúc, Chỉ tiêu hiệu năng, 30 
 | V · Canvas | V1, V2a, V2b | Giao diện, GPU | V1, V2a đang làm |
 | M · Mở, lưu | M1–M3 | Lõi | M1, M2 xong; M3 đang làm |
 | U · Khung giao diện | U1–U4 | Giao diện | Chưa làm |
-| E · Đo, cổng G1 | E1, E2 (bạn), E3, E4 | Bench | E1 bước 1 xong |
+| E · Đo, cổng G1 | E1, E2 (bạn), E3, E4 | Bench | E1 xong |
 
 ## Cách phối hợp
 
@@ -174,7 +174,7 @@ Theo quyết định 1. Prototype là [canvas thiết kế](https://claude.ai/ar
 
 ### E · Đo, cổng G1
 
-- [ ] **E1 · Tài liệu đo D1, D2, D4** (đang làm: worktree `e1`, 17/10; bước 1 vào main 83dd215: bốn tài liệu trong RAM, `bench/docs.h`, `pb-bench make`; D1 15 layer 2,7 GB dựng 13 s, ảnh nền từ JPEG nhúng trong NEF; D2 40 layer phủ 30,0% 18,8 GB dựng dưới ngân sách 3.072 MB qua scratch (tối đa 5,9 GB) trong 60 s; D4 1.000 layer, 143 nhóm, sâu 6; chờ M2 để ghi `.pbd`; bench; Vừa; cần T1, K1; M2 để ghi file, C2 nếu đã có; file `bench/docs.h`, `bench/docs.cpp`, `bench/make.cpp`): `pb-bench make d1|d2|d2mini|d4 <out.pbd>`, hạt giống cố định.
+- [x] **E1 · Tài liệu đo D1, D2, D4** (18/10/2026, 83dd215, 849966a: bốn file `.pbd` ở `build/docs/` của thư mục chính (không vào git), mở lại đọc hết ô ra đúng băm. D1 8256 × 5504 16 bit, 15 layer (1 nhóm), phủ 41,05%, 5.440 ô 2.720 MB, file 1.074 MB, dựng 13 s, lưu 12,5 s, ảnh nền là JPEG nhúng trong NEF. D2 20.000 × 15.000, 40 layer phủ 30,0003%, 75.319 ô 18.830 MB, file 7.586 MB, dựng dưới ngân sách 3.072 MB trong 61 s (RSS đỉnh 3.181 MB, scratch tối đa 5,9 GB), lưu 127 s. D2-mini 8.028 ô, file 391 MB. D4 1.143 layer (143 nhóm, sâu 6), phủ 1,08%, file 175 MB. Đọc lại từ file: trang của file map tính vào RSS (D2 đỉnh 8.789 MB, trong đó 6.011 MB là file, kernel lấy lại được), nên E3 đo RSS ẩn danh (Windows: bộ nhớ riêng) và in riêng phần file. Ngân sách mặc định 60% RAM làm D4 bị OOM khi lưu trên máy dùng chung: bench trên máy dev truyền `--budget`. `pb-bench make` không có đối số out thì ghi `build/docs/<tên>.pbd`; bench; Vừa; cần T1, K1; M2 để ghi file, C2 nếu đã có; file `bench/docs.h`, `bench/docs.cpp`, `bench/make.cpp`): `pb-bench make d1|d2|d2mini|d4 <out.pbd>`, hạt giống cố định.
   - **D1:** ảnh nền 8256 × 5504, 16 bit, sRGB: `samples/photo16.tif` (TIFF 16 bit, bạn xuất từ RAW khi muốn) khi có; không thì JPEG cỡ gốc nhúng trong `samples/Nikon_D850_Nikon-D850-14bit-lossless-compressed.NEF` (không vào git), nâng lên 16 bit với nhiễu xác định ở byte thấp (không còn `Engine` của snapone để giải mã RAW). Thấp = Gaussian r ≈ 8 px; Cao = (ảnh − Thấp)/2 + 0,5 ở Linear Light; 5 layer vẽ phủ khoảng 20% (nét tổng hợp qua C2 nếu đã có, không thì vệt mềm ngẫu nhiên). P0 chưa có adjustment, chữ: 5 adjustment layer thay bằng layer điểm ảnh Soft Light, Overlay, Multiply phủ một phần; 1 chữ thay bằng layer nhỏ; 1 nhóm.
   - **D2:** 20.000 × 15.000, 8 bit, 40 layer phủ trung bình 30%, cắt từ ảnh của `samples/` (giải mã cỡ nhỏ); dựng dưới ngân sách của K1 (chảy qua scratch); cần khoảng 20 GB đĩa trống, nên D2 đủ cỡ chờ ổ C: có chỗ (bạn); trước đó chỉ D2-mini. **D2-mini:** 1/16 diện tích, cùng cấu trúc, cho CI.
   - **D4 dạng P0:** 6000 × 4000, 8 bit, 1.000 layer điểm ảnh nhỏ đứng thay 300 chữ, 300 hình, 100 smart object, 300 layer điểm ảnh; nhóm lồng 6 cấp. Bản đủ (chữ, hình, smart object, layer style thật) ở P1.
