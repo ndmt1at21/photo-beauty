@@ -165,6 +165,27 @@ float composite_channel(uint mode, float cb_p, float ab, float cs, float as) {
     return over(cb_p, ab, cs, as, separable(mode, unpremultiply(cb_p, ab), cs));
 }
 
+// blend.h's mix(): a Pass Through group below full opacity o, a channel premultiplied (mix is a GLSL intrinsic's name).
+float mix_group(float before, float after, float o) {
+    precise float r = (1 - o) * before + o * after;
+    return r;
+}
+
+// The stroke over its layer's pixel, k = its opacity x coverage there.
+float paint_alpha(float a, float k) {
+    precise float r = k + a * (1 - k);
+    return r;
+}
+float paint(float c, float color, float k, float a_out) {
+    if (!(k > 0)) return c;
+    precise float r = c + (color - c) * div(k, a_out);
+    return r;
+}
+float erase_alpha(float a, float k) {
+    precise float r = a * (1 - k);
+    return r;
+}
+
 // tile.h's from_unit() into 16 bits: the nearest level, clamped.
 uint from_unit16(float f) {
     precise float v = f * 65535 + 0.5;

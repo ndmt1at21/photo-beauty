@@ -1,6 +1,7 @@
 // GpuComposite (gpu_composite.h): each output tile's plan (composite_plan(), the one composite_tile() runs) becomes a
-// list of atlas slots and solid values, the tiles made resident in the atlas, and composite.slang runs over all the
-// tiles of a frame in one dispatch.
+// list of steps over atlas slots and solid values, the tiles made resident in the atlas, and composite.slang runs over
+// all the tiles of a frame in one dispatch. Where the stroke paints, the accumulators below its layer go to a cache
+// for the next frames to start from.
 #include "gpu_composite.h"
 
 #include <algorithm>
@@ -9,34 +10,49 @@
 #include <map>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "composite.h"
 #include "composite.spv.h"
+#include "composite_copy.spv.h"
 #include "profile.h"
+#include "tilecache.h"
 
 namespace pb {
 namespace {
 
 constexpr int S = kTileSize;
 constexpr size_t kPixels = size_t(S) * S;
-constexpr size_t kOutBytes = kPixels * 8;  // an RGBA U16 tile
-constexpr uint32_t kSolid = ~0u;
+constexpr size_t kOutBytes = kPixels * 8;     // an RGBA U16 tile
+constexpr size_t kBelowBytes = kPixels * 16;  // an accumulator: premultiplied float R, G, B, alpha
+constexpr int kMaxDepth = 10;                 // composite.slang's: groups open at once on the GPU
 
 // composite.slang's push constants and buffers.
 struct Consts {
-  uint32_t log2, channels, u16;
+  uint32_t log2, channels, u16, erase;
+  float color[3], opacity;
 };
 struct Job {
   uint32_t first, count, out, x, y;
 };
 struct Entry {
-  uint32_t slot, blend;
+  uint32_t op, slot, blend;
   float alpha;
-  uint32_t pad;
   float solid[4];
+  uint32_t cover;
+  float cover_solid;
+  uint32_t level, pad;
 };
-static_assert(sizeof(Job) == 20 && sizeof(Entry) == 32, "composite.slang's layout");
+static_assert(sizeof(Consts) == 32 && sizeof(Job) == 20 && sizeof(Entry) == 48, "composite.slang's layout");
+constexpr uint32_t kSolid = ~0u, kNone = ~0u - 1;
+constexpr uint32_t kLayer = 0, kPush = 1, kPop = 2, kSave = 3, kLoad = 4, kPass = 8;  // Entry::op
+
+// composite_copy.slang's.
+struct CopyConsts {
+  uint32_t n, row;
+};
+constexpr uint32_t kCopyRow = 64 * 1024;
 
 // The modes P0 composites, as blend.slang numbers them (Blend's values); composite.cpp takes the others as Normal.
 Blend p0_mode(Blend b) {
@@ -53,12 +69,10 @@ static_assert(int(Blend::Normal) == 1 && int(Blend::Darken) == 3 && int(Blend::M
                   int(Blend::LinearLight) == 17 && int(Blend::Difference) == 20,
               "blend.slang's kNormal...");
 
-// Whether composite.slang runs the plan: Layer steps only, without the stroke; groups (Push, Pop) and the stroke wait for
-// B3.
-bool flat(const CompositePlan& plan) {
-  for (const CompositeStep& s : plan.steps)
-    if (s.type != CompositeStep::Layer || s.cover) return false;
-  return true;
+uint32_t bits(float f) {
+  uint32_t u;
+  std::memcpy(&u, &f, 4);
+  return u;
 }
 
 // n slots of a device buffer keyed by Index::key_type, least recently used out first. A slot used at the current
@@ -67,10 +81,13 @@ template <class Index>
 class Slots {
  public:
   using Key = typename Index::key_type;
-  explicit Slots(int n = 0) : pos_(size_t(n)), stamp_(size_t(n)), keys_(size_t(n)), held_(size_t(n)) {
-    for (int i = 0; i < n; i++) pos_[size_t(i)] = order_.insert(order_.end(), i);
-  }
   int size() const { return int(pos_.size()); }
+  void grow(int n) {  // to n slots, the new ones least recently used
+    for (int s = size(); s < n; s++) {
+      pos_.push_back(order_.insert(order_.end(), s));
+      stamp_.push_back(0), keys_.emplace_back(), held_.push_back(false);
+    }
+  }
   int find(const Key& key, uint64_t stamp) {  // the slot holding key, used now; -1 if none
     const auto it = index_.find(key);
     if (it == index_.end()) return -1;
@@ -80,12 +97,11 @@ class Slots {
   int take(uint64_t stamp) {  // the least recently used slot, emptied and used now; -1 when all are in use now
     const int s = order_.empty() ? -1 : order_.back();
     if (s < 0 || stamp_[size_t(s)] == stamp) return -1;
-    if (held_[size_t(s)]) index_.erase(keys_[size_t(s)]);
-    held_[size_t(s)] = false;
+    if (held_[size_t(s)]) index_.erase(keys_[size_t(s)]), held_[size_t(s)] = false;
     touch(s, stamp);
     return s;
   }
-  void put(int s, const Key& key) {  // s holds key from now on, instead of any slot that did
+  void put(int s, const Key& key) {  // s, just taken, holds key from now on, instead of any slot that did
     const auto [it, fresh] = index_.try_emplace(key, s);
     if (!fresh) held_[size_t(it->second)] = false, it->second = s;
     keys_[size_t(s)] = key, held_[size_t(s)] = true;
@@ -104,6 +120,17 @@ class Slots {
   Index index_;
 };
 
+// A device buffer of slots of `size` bytes, LRU, that takes memory as frames need it, up to `cap` slots.
+template <class Index>
+struct Store {
+  size_t size = 0;
+  int cap = 0;
+  gpu::BufferPtr buf;  // null while it has no slots
+  Slots<Index> slots;
+  size_t bytes() const { return size_t(slots.size()) * size; }
+};
+using Keys = std::map<std::vector<uint64_t>, int>;
+
 // A buffer of at least `bytes`, grown by doubling.
 void reserve(gpu::Device& dev, gpu::BufferPtr& buf, size_t& cap, size_t bytes) {
   if (buf && cap >= bytes) return;
@@ -112,70 +139,178 @@ void reserve(gpu::Device& dev, gpu::BufferPtr& buf, size_t& cap, size_t bytes) {
   buf = dev.buffer(cap);
 }
 
+// An output tile to composite: its plan, the output cache's key, and where the cache below the stroke's layer comes in.
+struct Todo {
+  size_t i = 0;  // in the call's tiles
+  CompositePlan plan;
+  std::vector<uint64_t> key;
+  size_t at = 0;    // the stroke's layer's step, when a layer lies below it
+  int levels = 0;   // accumulators open there: one, and one for each group around the layer; 0: no cache
+  std::vector<uint64_t> below;  // the cache's key of steps before `at`, an accumulator's level to append
+  std::vector<int> load;        // their slots in the cache when it has them all, bottom first
+};
+
 }  // namespace
 
 struct GpuComposite::Impl {
   gpu::Device& dev;
   size_t budget = 0;
-  gpu::KernelPtr kernel;
-  gpu::BufferPtr out;  // composite tiles
-  Slots<std::map<std::vector<uint64_t>, int>> out_slots;
-  Format format{Depth::U8, 0};  // the atlas's; none yet
-  gpu::BufferPtr atlas;
-  size_t tile_bytes = 0;
-  // By tile id. ponytail: a frame needing more tiles than the atlas holds uploads them all every frame (least recently
-  // used out first, in the same order each time); keep the slots of its last batch if that ever shows.
-  Slots<std::unordered_map<uint64_t, int>> atlas_slots;
+  gpu::KernelPtr kernel, copy;
+  gpu::BufferPtr none;  // bound in place of a store without a buffer yet
+  Store<Keys> out;      // composite tiles, by the steps that make them
+  Store<Keys> below;    // accumulators below the stroke's layer, by the steps before it and the level
+  // Tiles of the document's format, and the stroke buffer's (smaller), by id. ponytail: a frame needing more tiles
+  // than its cap uploads them all every frame (least recently used out first, in the same order each time); keep the
+  // slots of its last batch if that ever shows.
+  Store<std::unordered_map<uint64_t, int>> atlas;
+  Format format;  // the atlas's
   gpu::BufferPtr job_buf, entry_buf;
   size_t job_cap = 0, entry_cap = 0;
-  // The batch: tiles to composite at the next dispatch, their layers, and the cache keys of their slots.
+  Consts consts{};
+  std::vector<uint64_t> stroke_key;  // the stroke's colour, opacity and mode, in the key of a tile it paints
+  // The batch: tiles to composite at the next dispatch, their steps, and the cache keys of their slots.
   std::vector<Job> jobs;
   std::vector<Entry> entries;
-  std::vector<std::pair<int, std::vector<uint64_t>>> keys;
+  std::vector<std::pair<int, std::vector<uint64_t>>> keys, below_keys;
   uint64_t batch = 1, call = 0;  // stamps
   Stats stats;
+  // K1's tile budget counts bytes(). ponytail: no release(): it would run on the store's Background job while the
+  // device is the frame's thread's; shrink the stores at the next composite() on request if budgets run short.
+  BudgetUser user;
+  size_t charged = 0;
 
   explicit Impl(gpu::Device& d) : dev(d) {}
 
-  // The atlas for tiles of f, the one of another format going (one document shows at a time).
-  void use(Format f) {
-    if (atlas && format == f) return;
-    atlas = nullptr;
-    tile_bytes = kPixels * size_t(f.bytes());
-    const size_t room = budget > out_slots.size() * kOutBytes ? budget - out_slots.size() * kOutBytes : 0;
-    const size_t n = std::max<size_t>(1, std::min(room, dev.max_buffer()) / tile_bytes);
-    atlas = dev.buffer(n * tile_bytes);
-    atlas_slots = decltype(atlas_slots)(int(n));
-    format = f;
+  size_t bytes() const { return out.bytes() + atlas.bytes() + below.bytes() + job_cap + entry_cap; }
+  void charge() {  // the store's lock: only on a change
+    const size_t now = bytes();
+    if (now != charged) user.charge(ptrdiff_t(now) - ptrdiff_t(charged));
+    charged = now;
   }
 
-  // The entries of a flat plan's layers, their tiles resident in the atlas; false, entries as they were, when the atlas
-  // lacks room beside the tiles the batch uses.
-  bool add_entries(const CompositePlan& plan) {
+  // Room in s for the `need` slots a call uses: as many, or twice what it had, up to its cap, what it held copied
+  // over; otherwise its least recently used slots go. ponytail: each time a copy and an allocation the size of the
+  // whole, a few times a session (as the view shows more tiles); separate chunks if that hitch shows.
+  template <class Index>
+  void fit(Store<Index>& s, int need) {
+    const int n = std::min(s.cap, std::max(need, 2 * s.slots.size()));
+    if (need <= s.slots.size() || n <= s.slots.size()) return;
+    PROFILE_ZONE("gpu_composite_grow");
+    gpu::BufferPtr to = dev.buffer(size_t(n) * s.size);
+    if (s.buf) {
+      const CopyConsts c{uint32_t(s.bytes() / 16), kCopyRow};
+      dev.dispatch(*copy, {s.buf.get(), to.get()}, &c, sizeof c, kCopyRow / 64, (c.n + kCopyRow - 1) / kCopyRow);
+    }
+    s.buf = std::move(to);
+    s.slots.grow(n);
+    charge();
+  }
+
+  // The atlas for tiles of f, the one of another format going (one document shows at a time).
+  void use(Format f) {
+    if (atlas.size && format == f) return;
+    atlas.buf = nullptr;
+    atlas.slots = {};
+    atlas.size = kPixels * size_t(f.bytes());  // a stroke buffer's tile, 2 bytes a pixel, fits any
+    atlas.cap = int(std::max<size_t>(1, std::min(budget / 2, dev.max_buffer()) / atlas.size));
+    format = f;
+    charge();
+  }
+
+  // The stroke's push constants, and what it adds to the key of a tile it paints.
+  void set_stroke(const RenderInput& in) {
+    consts = {uint32_t(kTileLog2), uint32_t(format.channels), format.depth == Depth::U16 ? 1u : 0u, 0, {}, 0};
+    stroke_key.clear();
+    if (!in.stroke) return;
+    const StrokeOverlay& o = *in.stroke;
+    const bool grey = in.doc->mode == Mode::Gray;  // composite.cpp's colour: R, G, B
+    consts.erase = o.erase;
+    consts.color[0] = o.color[0], consts.color[1] = grey ? o.color[0] : o.color[1];
+    consts.color[2] = grey ? o.color[0] : o.color[2], consts.opacity = o.opacity;
+    for (const float f : consts.color) stroke_key.push_back(bits(f));
+    stroke_key.push_back(bits(o.opacity) | uint64_t(o.erase) << 32);
+  }
+
+  // A cache key: steps [begin, end) of a plan over the tile's part of the canvas, the stroke's colour if it paints.
+  std::vector<uint64_t> key(const CompositePlan& p, size_t begin, size_t end) const {
+    std::vector<uint64_t> k{uint64_t(p.x0) | uint64_t(p.x1) << 16 | uint64_t(p.y0) << 32 | uint64_t(p.y1) << 48};
+    bool stroked = false;
+    for (size_t i = begin; i < end; i++) {
+      const CompositeStep& s = p.steps[i];
+      k.push_back(uint64_t(s.type) | uint64_t(s.pass) << 8 | uint64_t(p0_mode(s.blend)) << 16 | uint64_t(bits(s.alpha)) << 32);
+      if (s.type != CompositeStep::Layer) continue;
+      k.push_back(s.tile ? s.tile->id() : 0);
+      k.push_back(s.cover ? s.cover->id() : 0);
+      stroked |= bool(s.cover);
+    }
+    if (stroked) k.insert(k.end(), stroke_key.begin(), stroke_key.end());
+    return k;
+  }
+
+  // Where the cache below the stroke's layer comes in: at the layer's step, when a layer lies below it; loaded when
+  // the cache has every accumulator open there.
+  void split(Todo& t) {
+    const std::vector<CompositeStep>& steps = t.plan.steps;
+    int depth = 0;
+    bool layers = false;
+    size_t at = 0;
+    for (; at < steps.size() && !steps[at].cover; at++) {
+      layers |= steps[at].type == CompositeStep::Layer;
+      depth += steps[at].type == CompositeStep::Push ? 1 : steps[at].type == CompositeStep::Pop ? -1 : 0;
+    }
+    if (at == steps.size() || !layers || !below.cap) return;
+    t.at = at, t.levels = depth + 1, t.below = key(t.plan, 0, at);
+    for (int j = 0; j < t.levels; j++) {
+      t.below.push_back(uint64_t(j));
+      const int s = below.slots.find(t.below, call);
+      t.below.pop_back();
+      if (s < 0) return t.load.clear();
+      t.load.push_back(s);
+    }
+  }
+
+  // The atlas slot holding t (`bytes` of it), uploaded if it was not there; -1 when the batch uses every slot.
+  int resident(const Tile& t, size_t bytes) {
+    int s = atlas.slots.find(t.id(), batch);
+    if (s >= 0 || (s = atlas.slots.take(batch)) < 0) return s;
+    PROFILE_ZONE("gpu_composite_upload");
+    const Pin pin = t.pin();
+    dev.upload(*atlas.buf, pin.data(), bytes, size_t(s) * atlas.size);
+    atlas.slots.put(s, t.id());
+    stats.uploaded++;
+    return s;
+  }
+
+  // The entries of the steps the GPU runs for t, their tiles resident in the atlas: from the accumulators the cache
+  // has below the stroke's layer, else from the start, saving them into `save` (bottom first) on the way. False,
+  // entries as they were, when the atlas lacks room beside the tiles the batch uses.
+  bool add_entries(const Todo& t, const std::vector<int>& save) {
     const size_t first = entries.size();
-    const double unit = 1.0 / max_value(format.depth);
-    for (const CompositeStep& step : plan.steps) {
-      const Tile& t = *step.tile;
-      Entry e{kSolid, uint32_t(p0_mode(step.blend)), step.alpha, 0, {}};
-      if (t.is_solid()) {  // composite.cpp's unit(): R, G, B (grey thrice), alpha
-        const Pixel v = t.value();
+    const double unit = 1.0 / max_value(format.depth);  // composite.cpp's unit()
+    for (size_t j = 0; j < t.load.size(); j++) entries.push_back({kLoad, uint32_t(t.load[j]), 0, 0, {}, kNone, 0, uint32_t(j), 0});
+    for (size_t i = t.load.empty() ? 0 : t.at; i < t.plan.steps.size(); i++) {
+      const CompositeStep& step = t.plan.steps[i];
+      for (size_t j = 0; i == t.at && j < save.size(); j++)
+        entries.push_back({kSave, uint32_t(save[j]), 0, 0, {}, kNone, 0, uint32_t(j), 0});
+      Entry e{kLayer, kSolid, uint32_t(p0_mode(step.blend)), step.alpha, {}, kNone, 0, 0, 0};
+      if (step.type != CompositeStep::Layer) {
+        e.op = (step.type == CompositeStep::Push ? kPush : kPop) | (step.pass ? kPass : 0);
+      } else if (step.tile && step.tile->is_solid()) {  // R, G, B (grey thrice), alpha
+        const Pixel v = step.tile->value();
         const bool rgb = format.channels == 4;
         const int at[4] = {0, rgb ? 1 : 0, rgb ? 2 : 0, format.channels - 1};
         for (int c = 0; c < 4; c++) e.solid[c] = float(double(v[size_t(at[c])]) * unit);
-      } else {
-        int s = atlas_slots.find(t.id(), batch);
-        if (s < 0) {
-          if ((s = atlas_slots.take(batch)) < 0) {
-            entries.resize(first);
-            return false;
-          }
-          PROFILE_ZONE("gpu_composite_upload");
-          const Pin pin = t.pin();
-          dev.upload(*atlas, pin.data(), tile_bytes, size_t(s) * tile_bytes);
-          atlas_slots.put(s, t.id());
-          stats.uploaded++;
-        }
+      } else if (step.tile) {
+        const int s = resident(*step.tile, atlas.size);
+        if (s < 0) return entries.resize(first), false;
         e.slot = uint32_t(s);
+      }  // else transparent, where the stroke paints
+      if (step.cover && step.cover->is_solid()) {
+        e.cover = kSolid, e.cover_solid = float(double(step.cover->value()[0]) * (1.0 / 65535));
+      } else if (step.cover) {
+        const int s = resident(*step.cover, kPixels * 2);
+        if (s < 0) return entries.resize(first), false;
+        e.cover = uint32_t(s);
       }
       entries.push_back(e);
     }
@@ -189,14 +324,17 @@ struct GpuComposite::Impl {
     reserve(dev, entry_buf, entry_cap, entries.size() * sizeof(Entry));
     dev.upload(*job_buf, jobs.data(), jobs.size() * sizeof(Job));
     dev.upload(*entry_buf, entries.data(), entries.size() * sizeof(Entry));
-    const Consts c{uint32_t(kTileLog2), uint32_t(format.channels), format.depth == Depth::U16 ? 1u : 0u};
-    dev.dispatch(*kernel, {job_buf.get(), entry_buf.get(), atlas.get(), out.get()}, &c, sizeof c,
-                 uint32_t(kPixels / 64), uint32_t(jobs.size()));
-    for (const auto& [s, key] : keys) out_slots.put(s, key);
+    dev.dispatch(*kernel,
+                 {job_buf.get(), entry_buf.get(), atlas.buf ? atlas.buf.get() : none.get(), out.buf.get(),
+                  below.buf ? below.buf.get() : none.get()},
+                 &consts, sizeof consts, uint32_t(kPixels / 64), uint32_t(jobs.size()));
+    for (const auto& [s, key] : keys) out.slots.put(s, key);
+    for (const auto& [s, key] : below_keys) below.slots.put(s, key);
     stats.composited += int(jobs.size());
     stats.dispatches++;
-    jobs.clear(), entries.clear(), keys.clear();
+    jobs.clear(), entries.clear(), keys.clear(), below_keys.clear();
     batch++;
+    charge();
   }
 
   // composite_tile()'s tile into slot o of the output.
@@ -207,27 +345,25 @@ struct GpuComposite::Impl {
     } else if (t) {
       std::memcpy(px.data(), t->pin().data(), kOutBytes);
     }
-    dev.upload(*out, px.data(), kOutBytes, size_t(o) * kOutBytes);
+    dev.upload(*out.buf, px.data(), kOutBytes, size_t(o) * kOutBytes);
   }
 };
 
 GpuComposite::GpuComposite(gpu::Device& dev, size_t bytes) : impl_(std::make_unique<Impl>(dev)) {
   Impl& m = *impl_;
   m.budget = bytes ? bytes : std::min<size_t>(size_t(1) << 30, dev.memory() / 4);
-  const size_t n = std::max<size_t>(1, std::min(m.budget / 4, dev.max_buffer()) / kOutBytes);
-  m.out = dev.buffer(n * kOutBytes);
-  m.out_slots = decltype(m.out_slots)(int(n));
-  m.kernel = dev.kernel("composite", composite_spv, composite_spv_sizeInBytes, 4, sizeof(Consts));
+  const size_t quarter = std::min(m.budget / 4, dev.max_buffer());
+  m.out.size = kOutBytes, m.out.cap = int(std::max<size_t>(1, quarter / kOutBytes));
+  m.below.size = kBelowBytes, m.below.cap = int(quarter / kBelowBytes);
+  m.kernel = dev.kernel("composite", composite_spv, composite_spv_sizeInBytes, 5, sizeof(Consts));
+  m.copy = dev.kernel("composite_copy", composite_copy_spv, composite_copy_spv_sizeInBytes, 2, sizeof(CopyConsts));
+  m.none = dev.buffer(16);
 }
 GpuComposite::~GpuComposite() = default;
 
-gpu::Buffer& GpuComposite::output() const { return *impl_->out; }
-int GpuComposite::output_tiles() const { return impl_->out_slots.size(); }
-size_t GpuComposite::bytes() const {
-  const Impl& m = *impl_;
-  return size_t(m.out_slots.size()) * kOutBytes + (m.atlas ? size_t(m.atlas_slots.size()) * m.tile_bytes : 0) +
-         m.job_cap + m.entry_cap;
-}
+gpu::Buffer& GpuComposite::output() const { return impl_->out.buf ? *impl_->out.buf : *impl_->none; }
+int GpuComposite::output_tiles() const { return impl_->out.slots.size(); }
+size_t GpuComposite::bytes() const { return impl_->bytes(); }
 GpuComposite::Stats GpuComposite::stats() const { return impl_->stats; }
 
 std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const std::vector<TileXY>& tiles) {
@@ -235,43 +371,74 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   Impl& m = *impl_;
   if (!in.doc) throw std::invalid_argument("pb: GpuComposite: no document");
   m.use(pixel_format(*in.doc));
+  m.set_stroke(in);
   m.stats = {};
   m.call++;
-  m.batch++, m.jobs.clear(), m.entries.clear(), m.keys.clear();  // what a call that threw left
+  m.batch++, m.jobs.clear(), m.entries.clear(), m.keys.clear(), m.below_keys.clear();  // what a call that threw left
+
+  // Each tile's plan, and the keys of what the caches have; what the stores lack for the rest.
   std::vector<int> slots(tiles.size(), -1);
+  std::vector<Todo> todo;
   for (size_t i = 0; i < tiles.size(); i++) {
-    const int tx = tiles[i].x, ty = tiles[i].y;
-    const CompositePlan plan = composite_plan(in, level, tx, ty);  // the tiles composite_tile() reads
-    if (plan.steps.empty()) continue;
-    const bool gpu = flat(plan);
-    std::vector<uint64_t> key;
-    if (gpu) {
-      key.push_back(uint64_t(plan.x0) | uint64_t(plan.x1) << 16 | uint64_t(plan.y0) << 32 | uint64_t(plan.y1) << 48);
-      for (const CompositeStep& s : plan.steps) {
-        uint32_t a;
-        std::memcpy(&a, &s.alpha, 4);
-        key.push_back(s.tile->id());
-        key.push_back(uint64_t(p0_mode(s.blend)) << 32 | a);
-      }
-      if ((slots[i] = m.out_slots.find(key, m.call)) >= 0) {
-        m.stats.cached++;
-        continue;
-      }
+    Todo t{i, composite_plan(in, level, tiles[i].x, tiles[i].y)};  // the tiles composite_tile() reads
+    if (t.plan.steps.empty()) continue;
+    t.key = m.key(t.plan, 0, t.plan.steps.size());
+    if ((slots[i] = m.out.slots.find(t.key, m.call)) >= 0) {
+      m.stats.cached++;
+      continue;
     }
-    const int o = slots[i] = m.out_slots.take(m.call);
+    if (t.plan.depth <= kMaxDepth) m.split(t);
+    todo.push_back(std::move(t));
+  }
+  int levels = 0;                      // accumulators the cache below the stroke's layer gives or takes
+  std::unordered_set<uint64_t> reads;  // the atlas's tiles the GPU reads
+  for (const Todo& t : todo) {
+    if (t.plan.depth > kMaxDepth) continue;
+    levels += t.levels;
+    for (size_t i = t.load.empty() ? 0 : t.at; i < t.plan.steps.size(); i++)
+      for (const Tile* tile : {t.plan.steps[i].tile.get(), t.plan.steps[i].cover.get()})
+        if (tile && !tile->is_solid()) reads.insert(tile->id());
+  }
+  m.fit(m.out, m.stats.cached + int(todo.size()));
+  m.fit(m.atlas, int(reads.size()));
+  m.fit(m.below, levels);
+  if (int(reads.size()) <= m.atlas.slots.size())  // one batch: those there stay while the others go up
+    for (const uint64_t id : reads) m.atlas.slots.find(id, m.batch);
+
+  for (Todo& t : todo) {
+    const int o = slots[t.i] = m.out.slots.take(m.call);
     if (o < 0) throw std::length_error("pb: GpuComposite: more tiles than output_tiles()");
-    if (!gpu) {  // ponytail: B3 composites groups and the stroke on the GPU
-      m.upload_cpu(composite_tile(in, level, tx, ty), o);
+    if (t.plan.depth > kMaxDepth) {  // ponytail: groups nested deeper than Photoshop's go through the CPU
+      m.upload_cpu(composite_tile(in, level, tiles[t.i].x, tiles[t.i].y), o);
+      m.out.slots.put(o, t.key);  // its upload recorded already
       m.stats.cpu++;
       continue;
     }
-    if (!m.add_entries(plan)) {
-      m.flush();  // the batch so far, so that its tiles can go
-      if (!m.add_entries(plan)) throw std::length_error("pb: GpuComposite: a tile has more layers than the atlas holds");
+    std::vector<int> save;  // the accumulators below the stroke's layer, into the cache: all or none
+    for (int j = 0; t.load.empty() && j < t.levels; j++) {
+      const int s = m.below.slots.take(m.call);
+      if (s < 0) {
+        save.clear();
+        break;
+      }
+      save.push_back(s);
     }
-    m.jobs.push_back({uint32_t(m.entries.size() - plan.steps.size()), uint32_t(plan.steps.size()), uint32_t(o),
-                      uint32_t(plan.x0 | plan.x1 << 16), uint32_t(plan.y0 | plan.y1 << 16)});
-    m.keys.emplace_back(o, std::move(key));
+    size_t first = m.entries.size();
+    if (!m.add_entries(t, save)) {
+      m.flush();  // the batch so far, so that its tiles can go
+      first = 0;
+      if (!m.add_entries(t, save)) throw std::length_error("pb: GpuComposite: a tile has more layers than the atlas holds");
+    }
+    for (size_t i = first; i < m.entries.size(); i++) m.stats.layers += m.entries[i].op == kLayer;
+    m.jobs.push_back({uint32_t(first), uint32_t(m.entries.size() - first), uint32_t(o),
+                      uint32_t(t.plan.x0 | t.plan.x1 << 16), uint32_t(t.plan.y0 | t.plan.y1 << 16)});
+    m.keys.emplace_back(o, std::move(t.key));
+    for (size_t j = 0; j < save.size(); j++) {
+      t.below.push_back(uint64_t(j));
+      m.below_keys.emplace_back(save[j], t.below);
+      t.below.pop_back();
+    }
+    m.stats.below += !t.load.empty();
   }
   m.flush();
   return slots;

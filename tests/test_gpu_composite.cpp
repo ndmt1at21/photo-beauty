@@ -264,8 +264,11 @@ TEST(test_gpu_composite_matches_cpu) {
   }
 }
 
-// The atlas uploads a tile once and the cache keeps a composite tile until its tiles or layers change; an atlas smaller
-// than a frame's tiles takes a dispatch for each part it holds; groups and the stroke go to the CPU till B3; the errors.
+
+// The atlas uploads a tile once and the cache keeps a composite tile until its tiles or layers change; the stores take
+// memory as frames need it, keeping what they held, within the budget, counted in K1's; an atlas smaller than a frame's
+// tiles takes a dispatch for each part it holds; groups and the stroke on the GPU, groups nested past 10 on the CPU;
+// another format; the errors.
 TEST(test_gpu_composite_cache) {
   auto dev = pb::test::gpu_device();
   if (!dev) return;
@@ -293,30 +296,79 @@ TEST(test_gpu_composite_cache) {
     return s.uploaded == uploaded && s.composited == composited && s.cached == cached && s.dispatches == dispatches && !s.cpu;
   };
 
-  GpuComposite gc(*dev, 16 << 20);
-  RenderInput in = with(0, grids[0], 0.7f);
-  CHECK(max_diff(*dev, gc, in, tiles) == 0);
-  CHECK(stats(gc, 20, 4, 0, 1));
-  CHECK(max_diff(*dev, gc, in, tiles) == 0);  // the second frame: nothing to do
-  CHECK(stats(gc, 0, 0, 4, 0));
-  in = with(2, grids[2], 0.3f);  // another opacity: every tile again, out of the atlas
-  CHECK(max_diff(*dev, gc, in, tiles) == 0);
-  CHECK(stats(gc, 0, 4, 0, 1));
-  auto g = std::make_shared<TileGrid>(*grids[3]);  // a new tile: it alone goes up, its output tile alone composites
-  g->set(1, 0, data());
-  in = with(3, g, 0.7f);
-  CHECK(max_diff(*dev, gc, in, tiles) == 0);
-  CHECK(stats(gc, 1, 1, 3, 1));
+  const size_t charged = tile_stats().charged;
+  {
+    // 32 MB: 16 output tiles, 8 accumulators, an atlas of 32 tiles; none of it until a frame needs it.
+    GpuComposite gc(*dev, 32 << 20);
+    CHECK(gc.bytes() == 0 && gc.output_tiles() == 0);
+    // A U16 RGBA tile, out or in the atlas, is kOutBytes; the jobs' and entries' buffers take 8 KB more.
+    const auto bytes = [&](int tiles) { return gc.bytes() >= tiles * kOutBytes && gc.bytes() <= tiles * kOutBytes + 8192; };
+    RenderInput in = with(0, grids[0], 0.7f);
+    CHECK(max_diff(*dev, gc, in, {{0, 0}}) == 0);  // a tile: room for it alone
+    CHECK(stats(gc, 5, 1, 0, 1) && gc.output_tiles() == 1 && bytes(1 + 5));
+    CHECK(tile_stats().charged == charged + gc.bytes());
+    in = with(0, grids[0], 0.6f);  // it again, out of an atlas grown for the next one: what it held kept
+    CHECK(max_diff(*dev, gc, in, rect(0, 0, 2, 1)) == 0);
+    CHECK(stats(gc, 5, 2, 0, 1) && gc.output_tiles() == 2 && bytes(2 + 10));
+    CHECK(max_diff(*dev, gc, in, tiles) == 0);  // all four: the two in the cache kept as it grows
+    CHECK(stats(gc, 10, 2, 2, 1) && gc.output_tiles() == 4 && bytes(4 + 10));
+    CHECK(tile_stats().charged == charged + gc.bytes());
+    CHECK(max_diff(*dev, gc, in, tiles) == 0);  // the second frame: nothing to do
+    CHECK(stats(gc, 0, 0, 4, 0));
+    in = with(2, grids[2], 0.3f);  // another opacity: every tile again, room for the 20 tiles at once
+    CHECK(max_diff(*dev, gc, in, tiles) == 0);
+    CHECK(stats(gc, 10, 4, 0, 1) && bytes(4 + 20));
+    in = with(2, grids[2], 0.4f);  // and again, out of the atlas; the cache's slots of the frame before go
+    CHECK(max_diff(*dev, gc, in, tiles) == 0);
+    CHECK(stats(gc, 0, 4, 0, 1) && bytes(4 + 20));
+    auto g = std::make_shared<TileGrid>(*grids[3]);  // a new tile: it alone goes up, its output tile alone composites
+    g->set(1, 0, data());
+    in = with(3, g, 0.7f);
+    CHECK(max_diff(*dev, gc, in, tiles) == 0);
+    CHECK(stats(gc, 1, 1, 3, 1));
+    CHECK(gc.bytes() <= size_t(32) << 20);
 
-  // 8 MB: 4 output tiles, an atlas of 12 tiles for the frame's 20, 5 a tile: two dispatches, the tiles of the second
+    // A group (but a full-opacity Pass Through) and the stroke where it has a tile: on the GPU too.
+    CHECK(max_diff(*dev, gc, {doc({layers[0], group(9, {layers[2], layers[3]}, Blend::Normal, 0.8f)}, f, 2 * S, 2 * S)}, tiles) == 0);
+    CHECK(gc.stats().composited == 4 && !gc.stats().cpu);
+    auto cover = std::make_shared<TileGrid>(Format{Depth::U16, 1});
+    cover->set(1, 1, make_tile({Depth::U16, 1}, [&](size_t) { return Pixel{uint16_t(rng())}; }));
+    const RenderInput stroked{doc(layers, f, 2 * S, 2 * S), StrokeOverlay{3, cover, {0.2f, 0.4f, 0.6f}, 0.5f, false}};
+    CHECK(max_diff(*dev, gc, stroked, tiles) == 0);
+    CHECK(gc.stats().composited + gc.stats().cached == 4 && !gc.stats().cpu);
+    // Groups nested 11 deep go through the CPU.
+    LayerPtr deep = pixel(20, grids[0], Blend::Multiply, 0.6f);
+    for (int j = 0; j < 11; j++) deep = group(LayerId(30 + j), {pixel(LayerId(50 + j), grids[4]), deep}, kModes[size_t(j)], 0.9f);
+    CHECK(max_diff(*dev, gc, {doc({layers[1], deep}, f, 2 * S, 2 * S)}, tiles) == 0);
+    CHECK(gc.stats().cpu == 4 && !gc.stats().composited);
+    CHECK(max_diff(*dev, gc, {doc({layers[1], deep}, f, 2 * S, 2 * S)}, tiles) == 0);  // kept as the others
+    CHECK(gc.stats().cached == 4 && !gc.stats().cpu);
+    // A document of another format: an atlas of its own.
+    const Format grey{Depth::U8, 2};
+    auto g8 = std::make_shared<TileGrid>(grey);
+    g8->set(0, 0, make_tile(grey, [&](size_t) { return Pixel{uint16_t(rng() % 256), uint16_t(rng() % 256)}; }));
+    CHECK(max_diff(*dev, gc, {doc({pixel(1, g8, Blend::Screen, 0.5f), pixel(2, g8, Blend::Multiply)}, grey, S, S)}, {{0, 0}}) == 0);
+    CHECK(gc.stats().uploaded == 1 && gc.stats().composited == 1);
+    bool threw = false;
+    try {
+      gc.composite(in, 32, tiles);
+    } catch (const std::invalid_argument&) {
+      threw = true;
+    }
+    CHECK(threw);
+  }
+  CHECK(tile_stats().charged == charged);  // given back
+
+  // 12 MB: 6 output tiles, an atlas of 12 tiles for the frame's 20, 5 a tile: two dispatches, the tiles of the second
   // in the slots of the first's. Least recently used out first, a frame larger than the atlas goes up whole each time.
-  GpuComposite small(*dev, 8 << 20);
-  CHECK(small.output_tiles() == 4);
+  GpuComposite small(*dev, 12 << 20);
+  RenderInput in = with(2, grids[2], 0.5f);
   CHECK(max_diff(*dev, small, in, tiles) == 0);
   CHECK(stats(small, 20, 4, 0, 2));
-  in = with(2, grids[2], 0.5f);
+  in = with(2, grids[2], 0.6f);
   CHECK(max_diff(*dev, small, in, tiles) == 0);
   CHECK(stats(small, 20, 4, 0, 2));
+  CHECK(small.bytes() <= size_t(12) << 20);
   // More tiles with something in them than output tiles; more data tiles in a tile than the atlas holds.
   const auto throws = [&](GpuComposite& c, const RenderInput& r, const std::vector<TileXY>& t) {
     try {
@@ -327,9 +379,9 @@ TEST(test_gpu_composite_cache) {
     return false;
   };
   auto band = std::make_shared<TileGrid>(f);
-  for (const TileXY t : rect(0, 0, 5, 1)) band->set(t.x, t.y, Tile::solid(f, {1, 2, 3, 65535}));
-  CHECK(throws(small, {doc({pixel(1, band)}, f, 5 * S, S)}, rect(0, 0, 5, 1)));
-  CHECK(!throws(small, {doc({pixel(1, band)}, f, 5 * S, S)}, rect(0, 0, 4, 2)));  // the second row is past the canvas
+  for (const TileXY t : rect(0, 0, 7, 1)) band->set(t.x, t.y, Tile::solid(f, {1, 2, 3, 65535}));
+  CHECK(throws(small, {doc({pixel(1, band)}, f, 7 * S, S)}, rect(0, 0, 7, 1)));
+  CHECK(!throws(small, {doc({pixel(1, band)}, f, 7 * S, S)}, rect(0, 0, 6, 2)));  // the second row is past the canvas
   std::vector<LayerPtr> many;
   for (int j = 0; j < 13; j++) {
     auto one = std::make_shared<TileGrid>(f);
@@ -338,25 +390,160 @@ TEST(test_gpu_composite_cache) {
   }
   CHECK(throws(small, {doc(many, f, S, S)}, {{0, 0}}));
   CHECK(max_diff(*dev, small, in, tiles) == 0);  // none the worse for it
+}
 
-  // A group (but a full-opacity Pass Through) where it has layers with pixels, and the stroke where it has a tile:
-  // composite_tile()'s pixels.
-  CHECK(max_diff(*dev, gc, {doc({layers[0], group(9, {layers[2], layers[3]}, Blend::Normal, 0.8f)}, f, 2 * S, 2 * S)}, tiles) == 0);
-  CHECK(gc.stats().cpu == 4);
-  auto corner = std::make_shared<TileGrid>(f);
-  corner->set(0, 0, data());
-  CHECK(max_diff(*dev, gc, {doc({layers[0], group(9, {pixel(10, corner)}, Blend::Screen)}, f, 2 * S, 2 * S)}, tiles) == 0);
-  CHECK(gc.stats().cpu == 1 && gc.stats().composited == 3);
-  auto cover = std::make_shared<TileGrid>(Format{Depth::U16, 1});
-  cover->set(1, 1, make_tile({Depth::U16, 1}, [&](size_t) { return Pixel{uint16_t(rng())}; }));
-  const RenderInput stroked{doc(layers, f, 2 * S, 2 * S), StrokeOverlay{3, cover, {0.2f, 0.4f, 0.6f}, 0.5f, false}};
-  CHECK(max_diff(*dev, gc, stroked, tiles) == 0);
-  CHECK(gc.stats().cpu == 1 && gc.stats().composited == 3);
-  bool threw = false;
-  try {
-    gc.composite(in, 32, tiles);
-  } catch (const std::invalid_argument&) {
-    threw = true;
+// Random trees of groups nested 4 deep, each isolated (a P0 mode, any opacity) or Pass Through (at full opacity or
+// not), with groups of their own beside, in both depths, RGB and grey, at levels 0 and 1; the stroke painting or
+// erasing on a layer at every depth, a first frame keeping what lies below its layer and a second starting from there:
+// composite_tile()'s pixels, to the bit where the CPU rounds as IEEE says (x86-64); G1 asks for a level of 8 bits.
+TEST(test_gpu_composite_groups) {
+  auto dev = pb::test::gpu_device();
+  if (!dev) return;
+  std::mt19937 rng(37);
+  const Format coverage{Depth::U16, 1};
+  int below = 0, painted = 0;  // tiles that started from the cache below the stroke's layer, of those it painted
+  GpuComposite gc(*dev, 64 << 20);
+  for (const Format f : {Format{Depth::U16, 4}, Format{Depth::U8, 4}, Format{Depth::U16, 2}, Format{Depth::U8, 2}}) {
+    // Tiles over the canvas's 2 x 1 and one past it: data, solid or (but for the stroke buffer) missing.
+    const auto grid = [&](Format g) {
+      const auto px = [&] {
+        Pixel v{};
+        for (int c = 0; c < g.channels; c++) v[size_t(c)] = sample(rng, g.depth);
+        return v;
+      };
+      auto out = std::make_shared<TileGrid>(g);
+      for (const TileXY t : rect(-1, 0, 2, 1)) {
+        const unsigned r = rng() % 8;
+        if (r < 5 || (r > 5 && g == coverage)) out->set(t.x, t.y, make_tile(g, [&](size_t) { return px(); }));
+        if (r == 5) out->set(t.x, t.y, Tile::solid(g, px()));
+      }
+      return std::shared_ptr<const TileGrid>(std::move(out));
+    };
+    const auto opacity = [&] { return rng() % 3 ? 0.05f + 0.95f * float(rng() % 1000) / 999 : 1.f; };
+    const auto mode = [&] { return kModes[rng() % std::size(kModes)]; };
+    for (int tree = 0; tree < 3; tree++) {
+      LayerId id = 1;
+      std::vector<LayerId> deep;  // a pixel layer at each depth, 0 to 4
+      const auto kind = [&](std::vector<LayerPtr> c) { return group(id++, std::move(c), rng() % 2 ? Blend::PassThrough : mode(), opacity()); };
+      // A group's children at `depth`: 1 to 3 layers, maybe a group of one beside them, the group below till depth 4.
+      const std::function<std::vector<LayerPtr>(int)> children = [&](int depth) {
+        std::vector<LayerPtr> c;
+        for (int n = 1 + int(rng() % 3); n > 0; n--) c.push_back(pixel(id++, grid(f), mode(), opacity(), opacity()));
+        deep.push_back(c[rng() % c.size()]->id);
+        if (rng() % 2) c.insert(c.begin() + ptrdiff_t(rng() % (c.size() + 1)), kind({pixel(id++, grid(f), mode(), opacity())}));
+        if (depth < 4) c.insert(c.begin() + ptrdiff_t(rng() % (c.size() + 1)), kind(children(depth + 1)));
+        return c;
+      };
+      const DocPtr d = doc(children(0), f, S + 37, 60);  // a band, for lavapipe's sake
+      CHECK(deep.size() == 5);
+      const int level = tree == 2;  // at level 1 the canvas is part of tile 0
+      const auto check = [&](const RenderInput& in) {
+        size_t differ = 0;
+        const int worst = max_diff(*dev, gc, in, {{0, 0}, {1, 0}, {-1, 0}}, &differ, level);
+        if (differ)
+          std::printf("test_gpu_composite_groups: %s %d channels, tree %d, the stroke at depth %d: %zu samples off, by up "
+                      "to %d 16-bit levels\n",
+                      f.depth == Depth::U16 ? "U16" : "U8", f.channels, tree, in.stroke ? int(std::find(deep.begin(), deep.end(), in.stroke->layer) - deep.begin()) : -1, differ, worst);
+        CHECK(worst <= 257);
+#if defined(__x86_64__) || defined(_M_X64)
+        CHECK(differ == 0);
+#endif
+      };
+      check({d});
+      for (int depth = 0; depth <= 4; depth++) {
+        const auto u = [&] { return float(rng() % 1001) / 1000; };
+        StrokeOverlay s{deep[size_t(depth)], grid(coverage), {u(), u(), u()}, opacity(), depth % 2 == 1};
+        check({d, s});  // the first frame: from the cache only where the steps below the layer were seen before
+        s.buffer = grid(coverage);  // the stroke moves on, everywhere
+        check({d, s});
+        below += gc.stats().below, painted += gc.stats().composited;
+      }
+    }
   }
-  CHECK(threw);
+  std::printf("test_gpu_composite_groups: %d of %d tiles the stroke painted started from the cache below its layer\n", below, painted);
+  CHECK(below > painted / 2);
+}
+
+// While the stroke paints layer k, the first frame composites every layer and keeps what lies below k; the next ones
+// read k and the layers above it only (counted), from an accumulator, and one more for each group around k; a change
+// below k misses the cache, one above k or in the opacity of a group around it does not.
+TEST(test_gpu_composite_below) {
+  auto dev = pb::test::gpu_device();
+  if (!dev) return;
+  std::mt19937 rng(41);
+  const Format f{Depth::U16, 4}, coverage{Depth::U16, 1};
+  const auto data = [&](Format g) {
+    return make_tile(g, [&](size_t) {
+      Pixel v{};
+      for (int c = 0; c < g.channels; c++) v[size_t(c)] = sample(rng, g.depth);
+      return v;
+    });
+  };
+  const auto grid = [&](Format g) {  // 2 x 1 tiles of data
+    auto out = std::make_shared<TileGrid>(g);
+    for (const TileXY t : rect(0, 0, 2, 1)) out->set(t.x, t.y, data(g));
+    return std::shared_ptr<const TileGrid>(std::move(out));
+  };
+  const auto changed = [&](const LayerPtr& l, int tx) {  // l with a new tile at (tx, 0)
+    auto g = std::make_shared<TileGrid>(*l->pixels);
+    g->set(tx, 0, data(f));
+    auto out = std::make_shared<Layer>(*l);
+    out->pixels = std::move(g);
+    return LayerPtr(std::move(out));
+  };
+  GpuComposite gc(*dev, 64 << 20);
+  StrokeOverlay s{3, grid(coverage), {0.3f, 0.6f, 0.9f}, 0.7f, false};
+  // A frame of 2 x 1 tiles: composite_tile()'s pixels, out of so many tiles composited, from the cache below k, and
+  // layer tiles read.
+  const auto frame = [&](const std::vector<LayerPtr>& layers, int composited, int below, int read) {
+    const bool same = max_diff(*dev, gc, {doc(layers, f, 2 * S, S), s}, rect(0, 0, 2, 1)) == 0;
+    const GpuComposite::Stats st = gc.stats();
+    if (!same || st.composited != composited || st.below != below || st.layers != read)
+      std::printf("test_gpu_composite_below: %s, %d composited, %d from below, %d layers read\n", same ? "same" : "different",
+                  st.composited, st.below, st.layers);
+    return same && st.composited == composited && st.below == below && st.layers == read;
+  };
+
+  // 6 layers, the stroke on the third.
+  std::vector<LayerPtr> flat;
+  for (LayerId j = 1; j <= 6; j++) flat.push_back(pixel(j, grid(f), kModes[j], 0.8f));
+  CHECK(frame(flat, 2, 0, 12));  // all 6, keeping what layers 1 and 2 make
+  s.buffer = grid(coverage);
+  CHECK(frame(flat, 2, 2, 8));  // layers 3 to 6
+  CHECK(frame(flat, 0, 0, 0) && gc.stats().cached == 2);
+  flat[4] = changed(flat[4], 1);  // above k: from the cache still
+  CHECK(frame(flat, 1, 1, 4));
+  flat[2] = pixel(3, flat[2]->pixels, Blend::Screen, 0.5f);  // k's own mode and opacity likewise
+  CHECK(frame(flat, 2, 2, 8));
+  flat[1] = changed(flat[1], 0);  // right below k: tile 0 anew, kept again
+  CHECK(frame(flat, 1, 0, 6));
+  s.buffer = grid(coverage);
+  CHECK(frame(flat, 2, 2, 8));
+  s.layer = 1;  // nothing below: no cache
+  CHECK(frame(flat, 2, 0, 12));
+  s.buffer = grid(coverage);
+  CHECK(frame(flat, 2, 0, 12));
+
+  // In a group: layers 1, 2, then 3, k = 4 and 5 in an isolated group, then 6: what lies below the group, and below k
+  // in it.
+  const auto in_group = [&](float opacity, Blend b) {
+    return std::vector<LayerPtr>{flat[0], flat[1], group(7, {flat[2], flat[3], flat[4]}, b, opacity), flat[5]};
+  };
+  s.layer = 4;
+  CHECK(frame(in_group(0.9f, Blend::Multiply), 2, 0, 12));
+  s.buffer = grid(coverage);
+  CHECK(frame(in_group(0.9f, Blend::Multiply), 2, 2, 6));  // layers 4, 5, 6
+  CHECK(frame(in_group(0.4f, Blend::Overlay), 2, 2, 6));   // the group's opacity and mode
+  // Two deep: 1, then 2 and a Pass Through group at 60 % of 3 = k and 4 in an isolated group, then 5, 6: three
+  // accumulators, the last a copy of the second.
+  const auto two_deep = std::vector<LayerPtr>{
+      flat[0], group(8, {flat[1], group(9, {flat[2], flat[3]}, Blend::PassThrough, 0.6f)}, Blend::Screen, 0.7f), flat[4],
+      flat[5]};
+  s.layer = 3;
+  CHECK(frame(two_deep, 2, 0, 12));
+  s.buffer = grid(coverage);
+  CHECK(frame(two_deep, 2, 2, 8));  // layers 3 to 6
+  // Erasing likewise.
+  s.erase = true, s.buffer = grid(coverage);
+  CHECK(frame(two_deep, 2, 2, 8));
 }
