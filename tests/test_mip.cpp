@@ -1,7 +1,8 @@
 // Mip levels (mip.h): 2 x 2 averages weighted by alpha against a plain reference in every format, empty and solid
-// tiles kept so without allocating, a changed tile rebuilding its ancestors only, what makes a key, the caps following
-// the tile budget, the store asking the cache to let go, tiles handed over from a file, several threads at once; times
-// levels 1-6 of a grid of data tiles the size of D1.
+// tiles kept so without allocating, a changed tile rebuilding its ancestors only (and mip_missing() counting them), what
+// makes a key, the caps following the tile budget, the store asking the cache to let go, tiles handed over from a file,
+// several threads at once; times levels 1-6 of a grid of data tiles the size of D1.
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -252,6 +253,33 @@ void check_rebuild() {
   for (const auto& [k, t] : after) CHECK((t == before.at(k)) == (k[1] != 2 >> k[0] || k[2] != -2 >> k[0]));
 }
 
+// mip_missing(): a grid never shown lacks every tile above its own, a changed tile only its ancestors; counting stops at
+// most + 1; asking builds nothing.
+void check_missing() {
+  reset();
+  const Format f{Depth::U8, 4};
+  TileGrid g(f);
+  for (int ty = 0; ty < 8; ty++)
+    for (int tx = 0; tx < 8; tx++) g.set(tx, ty, Tile::make(f));
+  const uint64_t built = mips_built();
+  CHECK(mip_missing(g, 0, 3, 3, 100) == 0);
+  CHECK(mip_missing(g, 3, 0, 0, 100) == 1 + 4 + 16);
+  CHECK(mip_missing(g, 4, 0, 0, 100) == 22);
+  CHECK(mip_missing(g, 2, 1, 1, 100) == 5);
+  CHECK(mip_missing(g, 3, 1, 0, 100) == 0 && mip_missing(g, 2, -1, 0, 100) == 0);  // nothing under them
+  for (int most = 0; most <= 25; most++) CHECK(mip_missing(g, 3, 0, 0, most) == std::min(21, most + 1));
+  CHECK(mips_built() == built);
+  mip(g, 3, 0, 0);
+  CHECK(mips_built() == built + 16);  // the averages of level 1, transparent: those above them come without any
+  CHECK(mip_missing(g, 3, 0, 0, 100) == 0 && mip_missing(g, 1, 3, 3, 100) == 0 && mip_missing(g, 4, 0, 0, 100) == 1);
+  g.set(5, 2, Tile::make(f));  // its ancestors: (2, 1) at level 1, (1, 0) at 2, (0, 0) at 3
+  CHECK(mip_missing(g, 3, 0, 0, 100) == 3);
+  CHECK(mip_missing(g, 2, 1, 0, 100) == 2 && mip_missing(g, 1, 2, 1, 100) == 1);
+  CHECK(mip_missing(g, 2, 0, 0, 100) == 0 && mip_missing(g, 2, 1, 1, 100) == 0 && mip_missing(g, 1, 3, 1, 100) == 0);
+  CHECK(mip_missing(g, 3, 0, 0, 1) == 2 && mip_missing(g, 3, 0, 0, 0) == 1);
+  CHECK(mips_built() == built + 16);
+}
+
 // The same tile one place over under a mip tile, or over another fill: other keys.
 void check_keys() {
   reset();
@@ -494,6 +522,7 @@ TEST(test_mip) {
     if (!f.alpha()) check_reference(f, Pixel{uint16_t(max_value(f.depth))}, seed++);  // a white mask
   }
   check_rebuild();
+  check_missing();
   check_keys();
   check_solid();
   check_caps();

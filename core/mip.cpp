@@ -272,6 +272,21 @@ TilePtr mip(const TileGrid& g, int level, int tx, int ty) {
   return t;
 }
 
+int mip_missing(const TileGrid& g, int level, int tx, int ty, int most) {
+  check_level(level, 0);
+  if (level == 0) return 0;
+  const Scan s = scan(g, level, tx, ty);
+  if (!s.tiles) return 0;
+  {
+    Cache& c = cache();
+    const std::lock_guard l(c.m);
+    if (c.at(level).index.count(s.key)) return 0;  // there, without marking it used as mip() does
+  }
+  int n = 1;  // this one; the four below it while n <= most, each counted up to what is left
+  for (int k = 0; k < 4 && n <= most; k++) n += mip_missing(g, level - 1, 2 * tx + (k & 1), 2 * ty + (k >> 1), most - n);
+  return n;
+}
+
 void prefetch(const TileGrid& g, int level, TileRect r) {
   check_level(level, 0);
   PROFILE_ZONE("mip_prefetch");

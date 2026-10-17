@@ -23,6 +23,13 @@ namespace pb {
 // Any thread, several at once, while `grid` stays as it is (a published copy).
 TilePtr mip(const TileGrid& grid, int level, int tx, int ty);
 
+// How many tiles mip() of tile (tx, ty) at `level` would average first: itself and those below it the cache lacks,
+// counted up to `most` + 1 (most >= 0), where it stops; 0 at level 0, where all of it is fill(), or cached. Builds and
+// allocates nothing. What a frame asks before it composites at a level (present.cpp): the few tiles above those a
+// stroke changed it builds itself, a level never shown it leaves to a Visible job. A guess once it returns: the cache
+// may push a tile out, another thread build one. Any thread, as mip(), whose std::invalid_argument it throws.
+int mip_missing(const TileGrid& grid, int level, int tx, int ty, int most);
+
 // Builds what the cache lacks of levels 1 to `level` under `rect` (tiles of `level`), a level at a time with
 // parallel_for, and returns when done: from a Visible job (tiles the view is about to show) or a Background one
 // (parents of tiles a stroke changed), whose priority parallel_for's helpers take. Any thread, as mip().
