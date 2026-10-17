@@ -17,7 +17,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Bước | Task | Phần | Trạng thái |
 | --- | --- | --- | --- |
 | Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | Xong (17/10) |
-| Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | U5 xong; U6, U7 đang làm (17/10) |
+| Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | U5, U6 xong; U7, U7b đang làm (18/10) |
 | Panel | U8–U14 | dock và 16 panel | U8, U10, U11, U13 xong; U9, U12, U14 đang làm (18/10) |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | U16–U19, U21 xong; U15, U20 đang làm (17/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10) |
@@ -102,7 +102,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
   - Phím của Hành vi chung: `[` `]` cỡ cọ, Shift `[` `]` độ cứng, phím số đặt opacity, Shift phím số đặt flow; giữ Space tạm Hand, giữ Alt khi đang dùng công cụ vẽ thì tạm Eyedropper, giữ Ctrl tạm Move, nhả thì trả công cụ cũ.
 
   **Xong khi:** `tst_u5`: mỗi phím, mỗi nút, mỗi nhóm bung đổi đúng `Tools`; mỗi thanh có đúng ô như artboard `OptionsBars`; ảnh chụp thanh công cụ (một cột, hai cột, nhóm bung) và 28 thanh cạnh artboard.
-- [ ] **U6 · Tab tài liệu, canvas giả, thước** (đang làm: worktree `u6`, 17/10; giao diện; Vừa; cần U4; file `ui/qml/DocTabs.qml`, `ui/qml/Viewport.qml`, `ui/qml/MockCanvas.qml`, `ui/qml/Ruler.qml`, `ui/qml/View.js`, file rỗng `ui/qml/Overlays.qml`, `ui/tests/tst_u6.qml`):
+- [x] **U6 · Tab tài liệu, canvas giả, thước** (18/10/2026, f002ed4, 3afed7b: tab tài liệu, `View.js`, canvas giả theo view (xoay, lật, caro, nền 4 mức xám), pan, zoom 1–12.800%, xoay view, thước 7 đơn vị, menu chuột phải theo công cụ, `Tools.pointer` cho Info (chỉ Viewport có con trỏ ghi); 22 hàm test; 26/26 đột biến bị bắt; lệch: pan có giới hạn như Photoshop, thước thêm Picas, con trỏ Zoom bằng icon; còn: Ctrl 0 khi view đang xoay chưa vừa hẳn (`Mock.fitZoom` không tính góc), đóng hết tài liệu rồi mở lại mà chuột đứng yên thì Info và vạch sáng của thước chờ chuột rời khung; giao diện; Vừa; cần U4; file `ui/qml/DocTabs.qml`, `ui/qml/Viewport.qml`, `ui/qml/MockCanvas.qml`, `ui/qml/Ruler.qml`, `ui/qml/View.js`, file rỗng `ui/qml/Overlays.qml`, `ui/tests/tst_u6.qml`):
   - Tab: "file @ zoom (layer đang chọn, RGB/16)", "Quick Mask/16", "Layer Mask/16"; chấm chưa lưu thành nút đóng khi rê; quá chỗ thì nút "+N" mở menu; chuột phải: Đóng, Đóng tab khác.
   - `View.js` theo mục Cách làm; canvas giả: ảnh mẫu (`Image`) theo `View`, xoay, lật canvas và layer như prototype, caro dưới phần trong suốt (cỡ, màu theo Thiết lập), nền quanh ảnh 4 mức xám theo chế độ màn hình; con trỏ theo công cụ.
   - Tương tác ở `Viewport.qml`: pan (giữ Space kéo, Hand, cuộn, nút giữa), zoom 1–12.800% (con lăn theo Thiết lập, Ctrl +/−, Ctrl 0 vừa màn hình, Ctrl 1 100%, Lấp đầy; Zoom nhấp, Alt nhấp thu, kéo khi Scrubby Zoom; quanh con trỏ; theo bậc `ZOOMS`), xoay view (R kéo, Shift bước 15°, Esc về 0°, ô góc của thanh tùy chọn).
