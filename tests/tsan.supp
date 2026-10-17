@@ -1,0 +1,5 @@
+# Races inside the lavapipe software driver (Mesa thread barriers), not photo-beauty code.
+race:libvulkan_lvp.so
+# LibRaw (snapone's Engine) reads EXIF dates with mktime. While TZ is unset, glibc's mktime frees and copies its
+# time zone name on every call, under a lock (tzset_lock) TSan cannot see.
+race:LibRaw::get_timestamp

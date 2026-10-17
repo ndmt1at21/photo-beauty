@@ -1,0 +1,44 @@
+{
+  "$comment": "snapone's manifest at the pinned commit (CMake reads only the top-level one), plus zstd. Keep builtin-baseline equal to snapone's.",
+  "name": "photo-beauty",
+  "version-string": "0.1.0",
+  "builtin-baseline": "2750401336fb7c95f6619657a46a7e798661341c",
+  "dependencies": [
+    "lcms",
+    "libjpeg-turbo",
+    { "name": "libraw", "features": ["dng-lossy"] },
+    "libjxl",
+    "libspng",
+    "nlohmann-json",
+    "pugixml",
+    { "name": "sqlite3", "features": ["fts5"] },
+    {
+      "$comment": "Deflate and JPEG; LZW and PackBits are built in. No lzma, zstd, webp, lerc (snapone's formats-plan F1.5).",
+      "name": "tiff",
+      "default-features": false,
+      "features": ["jpeg", "zip"]
+    },
+    "volk",
+    "zlib",
+    "zstd",
+    { "name": "shader-slang", "host": true }
+  ],
+  "features": {
+    "tracy": {
+      "description": "Tracy profiler zones",
+      "dependencies": ["tracy"]
+    },
+    "crash": {
+      "description": "Crash reports in pb-ui: Crashpad + Sentry",
+      "dependencies": [
+        "sentry-native",
+        {
+          "$comment": "No TLS: crashpad_handler uploads through the system's libcurl (Linux) or NSURLSession (macOS).",
+          "name": "curl",
+          "default-features": false,
+          "platform": "!windows"
+        }
+      ]
+    }
+  }
+}

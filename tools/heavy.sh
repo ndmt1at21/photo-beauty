@@ -4,7 +4,7 @@
 # Usage: tools/heavy.sh cmake --build build/default
 if [ -z "$PB_HEAVY_LOCKED" ]; then
   export PB_HEAVY_LOCKED=1
-  exec flock "$(git rev-parse --git-common-dir)/heavy.lock" "$0" "$@"
+  exec flock "$(cd "$(dirname "$0")" && cd "$(git rev-parse --git-common-dir)" && pwd)/heavy.lock" "$0" "$@"  # from any cwd
 fi
 until awk '/MemAvailable/ { exit !($2 > 4 * 1048576) }' /proc/meminfo; do sleep 5; done
 export CCACHE_DIR="$HOME/.cache/ccache-pb" CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
