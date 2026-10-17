@@ -26,3 +26,24 @@ Bốn header `core/tile.h`, `core/doc.h`, `core/render.h`, `core/stroke.h` là h
 | Background | áp full size, nén, scratch, lưu | đọc bản chụp; chạy dưới luồng giao diện (`lower_priority()`) |
 
 **Bộ nhớ.** Ô đếm tham chiếu, người giữ cuối cùng giải phóng; lưới nằm trong `Layer` qua `shared_ptr<const TileGrid>`; `DocState` dùng chung giữa lịch sử và các job; undo, nhân layer, snapshot, lưu nền chỉ chép con trỏ. `tile_stats()` đếm byte thô, nén, scratch, đang pin và phần các `BudgetUser` tính (cache mip, atlas GPU); một ngân sách chung cho mọi tài liệu (`tile_budget()`, mặc định 60% RAM).
+
+## File riêng `.pbd`
+
+Định dạng v1 (M2: `core/pbd.*`, `core/mapped.*`). Số nguyên little-endian. Mẫu U16 trong ô ghi đúng như `pin()` trả, tức theo thứ tự byte của máy: mọi máy đích (x86-64, ARM64) little-endian, `pbd.cpp` kiểm bằng `static_assert`.
+
+| Phần | Nội dung |
+| --- | --- |
+| Header, 32 byte đầu | magic `\x89PBD\r\n\x1a\n`, phiên bản định dạng (u32, 1), 0 (u32), phiên bản app (`version()`, 16 byte đệm 0) |
+| Chunk, nối tiếp từ byte 32 | mỗi ô dữ liệu một frame zstd (mức 1, có checksum), rồi hồ sơ ICC, ảnh xem trước (JPEG), JSON |
+| Index | số chunk (u32), rồi từng chunk: offset (u64), cỡ (u32), CRC32 (u32); chunk 0 là JSON |
+| Footer, 24 byte cuối | offset index (u64), cỡ index (u32), CRC32 của index (u32), magic `PBDINDEX` |
+
+**JSON** (chunk 0): cỡ, mode, bit, `nextId`, layer đang chọn, chunk ICC (không có khi tài liệu không có hồ sơ), ảnh xem trước (chunk, mức), cây layer từ dưới lên. Mỗi layer: `id`, `kind`, `props` (JSON của T1, khóa lạ giữ nguyên); nhóm thêm `layers`; layer điểm ảnh thêm `fill`, `tiles` (`[tx, ty, chunk]`, hay `[tx, ty, [mẫu…]]` cho ô một màu; ô trống không ghi) và `mips` (`[mức, tx, ty, chunk | [mẫu…] | null]`). Khóa lạ bị bỏ qua: thêm khóa không cần đổi phiên bản.
+
+**Ô.** Frame zstd của đúng các byte `pin()` trả, nên `Tile::elsewhere()` của K1 trỏ thẳng vào file; checksum của zstd làm ô hỏng lộ ra ở lần pin đầu (`pin()` ném). Ô dùng chung giữa các layer (nhân bản) ghi một lần và mở ra lại dùng chung. Ô mip từ mức 3 tới mức một ô phủ cả canvas (D1: 3–6), lấy bằng `mip()` lúc lưu, gắn lại bằng `attach_mip()` lúc mở: xem cả ảnh không đọc ô gốc nào. Ảnh xem trước là ảnh ghép ở mức mip đầu tiên có cả hai cạnh ≤ 2048 (D1: mức 3, 1032 × 688), trộn lên nền trắng, 8 bit theo mã hóa của tài liệu, JPEG chất lượng 90 kèm ICC của tài liệu, cho frame đầu và thumbnail.
+
+**Lưu** (`save_pbd()`): hàm chặn, chạy được thẳng (bench, test) hay trong job Background (giao diện: luồng giao diện chỉ đưa bản chụp `DocState`). Ô nén theo lô 64 ô bằng `parallel_for`, ghi theo thứ tự (cùng tài liệu ra cùng file từng byte); ô còn nguyên như trong một `.pbd` đang mở thì chép frame (kiểm CRC), không nén lại. Ghi vào file tạm cạnh đích, `fsync` (`F_FULLFSYNC` trên macOS, `FlushFileBuffers` trên Windows) trước và sau footer, rồi đổi tên đè đích (`MoveFileEx` trên Windows): đích hoặc như cũ, hoặc là file mới trọn vẹn. Có tiến độ, hủy được (ném `Cancelled`, xóa file tạm).
+
+**Mở** (`open_pbd()`): map cả file chỉ đọc (`mmap`, `MapViewOfFile`), đọc header, footer, index, JSON, ICC, ảnh xem trước, kiểm CRC từng phần (`bytes_read` đếm số byte đó), dựng `DocState` với ô `Tile::elsewhere()` trỏ vào vùng map mà không đọc ô nào; vùng map sống tới khi ô cuối của nó chết. Lỗi là `DecodeError` của `open.h`: Corrupt cho file hỏng, cụt; Codec `pbd_version` cho định dạng mới hơn. Mỗi ô mở ra được ghi vào sổ theo `id`, cùng chỗ của nó (file, offset, cỡ, CRC): `id` đổi khi điểm ảnh đổi, nên ô còn trong sổ là ô còn nguyên như trong file.
+
+**M3 thêm:** lưu tăng dần vào chính file: nối thêm chunk của ô chưa có chỗ trong file (tra sổ theo `id`), ảnh xem trước, JSON, index mới (liệt kê cả chunk cũ còn dùng), footer mới; footer cũ vẫn đúng. Mở lấy footer hợp lệ cuối (đuôi rách thì dò lùi tìm magic, kiểm CRC của index). Sau khi lưu, map phần mới, `also_elsewhere()` cho ô vừa lưu và ghi chúng vào sổ; số byte thừa ghi trong JSON. Lưu đầy đủ đè lên file mà tài liệu đang sống được mở từ đó vẫn thay được file, cả trên Windows (file map mở với `FILE_SHARE_DELETE`): tài liệu đọc tiếp từ file cũ còn map. Nhưng Windows không cho ghi, cắt ngắn tại chỗ một file đang map, và ô mip đã gắn nằm trong cache của K2 giữ vùng map tới khi cache bỏ chúng, kể cả sau khi tài liệu đóng: M3 nối thêm vào file qua một handle ghi riêng (map mở với `FILE_SHARE_WRITE`), không cắt ngắn nó.
