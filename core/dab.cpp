@@ -205,8 +205,10 @@ DabMask make_dab_mask(const Dab& d, float hardness) {
 }
 
 DabMask dab_mask(const Dab& d, float hardness) {
-  static std::mutex mutex;
-  static Lru<uint64_t, DabMask> cache(kCacheBytes);
+  // Never destroyed: at exit the pool's threads finish the jobs they hold (a dropped stroke's too) after statics made
+  // later than the pool, as these are, have gone.
+  static auto& mutex = *new std::mutex;
+  static auto& cache = *new Lru<uint64_t, DabMask>(kCacheBytes);
   const Key k = key(d, hardness);
   if (k.size4 == 0) return {};
   DabMask m;
