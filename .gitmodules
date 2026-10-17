@@ -1,0 +1,3 @@
+[submodule "external/snapone"]
+	path = external/snapone
+	url = https://github.com/ndmt1at21/snapone.git
