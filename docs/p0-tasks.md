@@ -13,7 +13,7 @@ Lập 17/10/2026 từ các mục P0, Kiến trúc, Chỉ tiêu hiệu năng, 30 
 
 | Bước | Task | Phần | Trạng thái |
 | --- | --- | --- | --- |
-| R · Repo, build, CI | R0 (bạn), R1, R1b, R2 | Build | R1 đang làm |
+| R · Repo, build, CI | R0 (bạn), R1, R1b, R2 | Build | R1 xong |
 | A · Hợp đồng lõi, ô | A1 | Lõi | Đang làm |
 | K · Kho ô | K1, K2 | Lõi | K1, K2 đang làm |
 | T · Tài liệu, lịch sử | T1, T2 | Lõi | T1 đang làm |
@@ -72,7 +72,7 @@ Trong ngoặc sau tên: phần; cỡ (như snapone: Nhỏ là vài trăm dòng, 
 
 - [ ] **R0 · (bạn) Repo GitHub, quyền CI:** tạo repo riêng, private (tên tạm `photo-beauty`); secret `SNAPONE_TOKEN` (fine-grained token chỉ đọc nội dung repo snapone) để CI lấy submodule; quyền push cho phiên làm R1, R2.
   **Xong khi:** R2 lấy được snapone trong CI.
-- [ ] **R1 · Khung repo, build** (đang làm: worktree `r1`, 17/10/2026; build; Nhỏ; file `.gitignore`, `.gitmodules`, `CMakeLists.txt`, `CMakePresets.json`, `vcpkg.json`, `CLAUDE.md`, `tools/*`, `core/version.*`, `tests/check.h`, `tests/main.cpp`, `tests/test_smoke.cpp`, `tests/tsan.supp`, `bench/main.cpp`, `shaders/smoke.slang`):
+- [x] **R1 · Khung repo, build** (17/10/2026, e7fa5be: default qua, test_smoke trên lavapipe; agent treo nên lead merge; asan, tsan do A1 kiểm lần đầu, mingw do K1; build; Nhỏ; file `.gitignore`, `.gitmodules`, `CMakeLists.txt`, `CMakePresets.json`, `vcpkg.json`, `CLAUDE.md`, `tools/*`, `core/version.*`, `tests/check.h`, `tests/main.cpp`, `tests/test_smoke.cpp`, `tests/tsan.supp`, `bench/main.cpp`, `shaders/smoke.slang`):
   - Lead đã `git init`, thêm submodule `external/snapone` (URL GitHub, clone từ bản trên máy, ghim `a1ee189`) và `tools/heavy.sh`. `add_subdirectory(external/snapone EXCLUDE_FROM_ALL)`: chỉ dựng `snapone_core` và kernel, không đổi gì trong snapone; ctest không chạy test `core` của snapone (`CTEST_CUSTOM_TESTS_IGNORE` trong `CTestCustom.cmake` của build dir, hay cách gọn hơn).
   - `CMakeLists.txt` theo của snapone: tùy chọn `PB_TRACY` (bật cả `SNAPONE_TRACY`); `pb_core` lấy `core/*.cpp` bằng glob, link `snapone_core`, zstd, zlib, turbojpeg, libspng, libtiff, lcms2, nlohmann-json (đủ cho P0 để task sau khỏi sửa CMake); `PB_SOURCE_DIR` cho test. `core/version.*` (`pb::version()` cho header `.pbd`, About) để `pb_core` có ít nhất một file.
   - Kernel Slang: mỗi file `shaders/*.slang` một kernel, entry trùng tên file, mã chung ở `shaders/lib/` (`import`), nhúng SPIR-V thành mảng C `<tên>_spv` như snapone.
