@@ -20,7 +20,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | Chưa làm |
 | Panel | U8–U14 | dock và 16 panel | Chưa làm |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Chưa làm |
-| Windows, soát, CI | U22–U24 | | Chưa làm |
+| Windows, soát, CI | U22–U24 | | U22 đang làm (17/10) |
 | Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
 
 ## Cách làm
@@ -193,7 +193,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 - [ ] **U21 · Thiết lập** (giao diện; Vừa; cần U4; file `ui/qml/SettingsDialog.qml`, `ui/tests/tst_u21.qml`): theo artboard `Settings`, `SettingsPages`: hộp 1.000 × 700, 16 mục bên trái có icon; Hiệu năng (ngân sách RAM theo % RAM máy, VRAM, đồng hồ RAM, VRAM, scratch, GPU bật tắt và tên, Kiểm tra lại, ổ scratch có thứ tự và bật tắt, ngân sách scratch, Cache Levels 1–8); 15 mục kia dựng từ `PANES` (công tắc, select, nhóm chọn, thanh, ô màu, màu nhấn, nút, liên kết, ghi chú). Giá trị vào `Prefs`; theme, màu nhấn, cỡ chữ, nền quanh ảnh, caro, màu guide, lưới, Quick Mask áp ngay; mở bằng Ctrl K, menu Edit, Help › Giấy phép; Esc, ×, nhấp ra ngoài thì đóng.
 
   **Xong khi:** `tst_u21`: đổi theme, màu nhấn, cỡ chữ áp ngay cả cửa sổ; giá trị còn sau khi mở lại app (bật `persist` như `test_prefs_kept` của snapone); ảnh chụp 16 mục cạnh artboard.
-- [ ] **U22 · Bản Windows** (build, giao diện; Nhỏ; cần U4; file `CMakePresets.json`, `ui/CMakeLists.txt`, `tools/configure.sh`, `ui/deploy-win.sh`): như N2 của snapone: preset `ui-mingw` build chéo trong 24.04 (Qt 6.11.3 cho LLVM-MinGW, llvm-mingw 20250402, link động Qt), `vcpkg_installed` mingw riêng của 24.04; `ui/deploy-win.sh <thư mục>` gom exe, DLL, plugin, module QML; icon của exe từ `ui/brand/` khi U16 đã có; chạy trên Windows ở `/mnt/c/Users/Teko/AppData/Local/Temp/pb-u22/` (xóa khi xong): thanh trên làm thanh tiêu đề như N12 của snapone (kéo, nhấp đúp phóng to, ba nút, Snap Layouts), HiDPI 150%.
+- [ ] **U22 · Bản Windows** (đang làm: worktree `u22`, 17/10; phần thanh tiêu đề và `--state Main` sau U4; build, giao diện; Nhỏ; cần U4; file `CMakePresets.json`, `ui/CMakeLists.txt`, `tools/configure.sh`, `ui/deploy-win.sh`): như N2 của snapone: preset `ui-mingw` build chéo trong 24.04 (Qt 6.11.3 cho LLVM-MinGW, llvm-mingw 20250402, link động Qt), `vcpkg_installed` mingw riêng của 24.04; `ui/deploy-win.sh <thư mục>` gom exe, DLL, plugin, module QML; icon của exe từ `ui/brand/` khi U16 đã có; chạy trên Windows ở `/mnt/c/Users/Teko/AppData/Local/Temp/pb-u22/` (xóa khi xong): thanh trên làm thanh tiêu đề như N12 của snapone (kéo, nhấp đúp phóng to, ba nút, Snap Layouts), HiDPI 150%.
 
   **Xong khi:** `pb-ui.exe --state Main --screenshot` trên Windows ra ảnh như bản Linux; `pb-ui-tests.exe` qua trên Windows; (bạn) thử cửa sổ thật bằng chuột.
 - [ ] **U23 · Soát với prototype** (giao diện; Vừa; cần U4–U22; file: sửa lệch trong file của task U đã xong, lead cho từng file; công cụ soát ở `build/review/`, không vào git): như U6 của snapone: chụp mọi artboard và trạng thái (menu mở, nhóm bung, hộp thoại, chuột phải) ở 1.440 × 900 và 1.280 × 800, theme tối và sáng, từ prototype (Chrome headless của Windows) và từ Qt; ghép cặp thành trang soát (artifact) cho bạn duyệt; sửa chỗ lệch; kiểm cỡ chữ Lớn, cửa sổ nhỏ nhất, HiDPI 150%, đi hết giao diện bằng Tab, Enter, Esc.
