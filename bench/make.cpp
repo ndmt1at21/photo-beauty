@@ -2,11 +2,13 @@
 // document (docs.h) and prints what it holds against its definition: its size, layers and groups, each pixel layer's
 // coverage (its pixels in the canvas with alpha above 0, every tile read back) and their mean, its tiles and their
 // pixels' bytes, the time the build took, and a hash of it all (tree, properties, every tile's place and bytes) that
-// another build, or the document read back from a file, must give again; for D1 its frequency separation checked: Low
-// against a Gaussian summed afresh, Low and High composited back to the photo. Meanwhile, once a second, the RSS and
-// the tile store's tiers; at the end the RSS's peak against the tile budget, which D2 is built under. --budget sets the
-// budget (MB, else 60% of RAM), --scratch where the scratch file goes (made when missing), --samples where the photos
-// are (docs.h).
+// another build must give again; for D1 its frequency separation checked: Low against a Gaussian summed afresh, Low
+// and High composited back to the photo. Then it saves the document as out.pbd (pbd.h; default kDocs/<name>.pbd, its
+// folder made when missing), drops it, opens the file and reads every tile back: the file's size, the time each took,
+// and the hash again, which must be the same (else pb-bench exits 1). Meanwhile, once a second, the RSS and the tile
+// store's tiers; the RSS's peak building and reading back, which D2 does under the tile budget, and with the file.
+// --budget sets the budget (MB, else 60% of RAM), --scratch where the scratch file goes (made when missing), --samples
+// where the photos are (docs.h).
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -14,7 +16,9 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -27,6 +31,7 @@
 #include "bench.h"
 #include "docs.h"
 #include "jobs.h"
+#include "pbd.h"
 #include "render.h"
 #include "tilecache.h"
 
@@ -85,6 +90,36 @@ Scan scan(const TileGrid& g, int w, int h) {
     covered += n, data += m, hash += sum;
   });
   return {covered, at.size(), data, hash};
+}
+
+// A layer of a document, in the tree's order, and a pixel layer's tiles read back.
+struct Row {
+  LayerId id;
+  int depth;  // 1 for the root's children
+  bool pixels;
+  LayerProps props;
+  Scan scan;
+};
+std::vector<Row> read_back(const DocState& d) {
+  std::vector<Row> rows;
+  const std::function<void(const Layer&, int)> walk = [&](const Layer& g, int depth) {
+    for (const LayerPtr& l : g.children) {
+      rows.push_back({l->id, depth, bool(l->pixels), l->props, l->pixels ? scan(*l->pixels, d.width, d.height) : Scan{}});
+      walk(*l, depth + 1);
+    }
+  };
+  walk(*d.root, 1);
+  return rows;
+}
+// All of it: d's size, mode and depth, each layer's id, depth and properties, each pixel layer's tiles (Scan::hash).
+uint64_t digest(const DocState& d, const std::vector<Row>& rows) {
+  uint64_t h = fnv(fnv(fnv(fnv(kBasis, uint32_t(d.width)), uint32_t(d.height)), uint64_t(d.mode)), uint64_t(d.depth));
+  for (const Row& r : rows) {
+    h = fnv(fnv(h, r.id), uint64_t(r.depth));
+    for (const char c : to_json(r.props)) h = fnv(h, uint8_t(c));
+    if (r.pixels) h = fnv(h, r.scan.hash);
+  }
+  return h;
 }
 
 // Prints the RSS and the tile store's tiers once a second while it lives.
@@ -183,8 +218,8 @@ double fs_error(const DocState& d) {
 
 BENCH(make) {
   using bench::report;
-  std::string name, out;
-  std::filesystem::path samples = bench::kSamples;
+  std::string name;
+  std::filesystem::path out, samples = bench::kSamples;
   for (size_t i = 0; i < args.size(); i++) {
     const bool more = i + 1 < args.size();
     if (args[i] == "--samples" && more) {
@@ -202,15 +237,11 @@ BENCH(make) {
   }
   if (name != "d1" && name != "d2" && name != "d2mini" && name != "d4")
     return void(std::printf("make: pb-bench make d1|d2|d2mini|d4 [out.pbd] [--samples <dir>] [--budget <MB>] "
-                            "[--scratch <dir>]\n"));
+                            "[--scratch <dir>]; out.pbd: %s/<name>.pbd by default\n", bench::kDocs));
+  if (out.empty()) out = std::filesystem::path(bench::kDocs) / (name + ".pbd");
   const std::string n = "make_" + name;
   DocPtr d;
   double build = 0, read = 0;
-  struct Row {
-    const Layer* layer;
-    int depth;
-    Scan scan;
-  };
   std::vector<Row> rows;  // every layer, in the tree's order
   {
     const Watch watch;
@@ -218,16 +249,8 @@ BENCH(make) {
     auto t0 = bench::Clock::now();
     d = name == "d1" ? bench::make_d1(samples) : name == "d4" ? bench::make_d4(samples) : bench::make_d2(name == "d2mini", samples);
     build = bench::ms_since(t0) / 1000;
-    const std::function<void(const Layer&, int)> walk = [&](const Layer& g, int depth) {
-      for (const LayerPtr& l : g.children) {
-        rows.push_back({l.get(), depth});
-        walk(*l, depth + 1);
-      }
-    };
-    walk(*d->root, 1);
     t0 = bench::Clock::now();
-    for (Row& r : rows)
-      if (r.layer->pixels) r.scan = ::scan(*r.layer->pixels, d->width, d->height);
+    rows = read_back(*d);
     read = bench::ms_since(t0) / 1000;
   }
 
@@ -236,27 +259,24 @@ BENCH(make) {
   int depth = 0;  // of the deepest group
   double cover = 0;
   std::map<std::string, int> kinds;  // D4's pixel layers by their names but the number
-  uint64_t hash = fnv(fnv(fnv(fnv(kBasis, uint32_t(d->width)), uint32_t(d->height)), uint64_t(d->mode)), uint64_t(d->depth));
   for (const Row& r : rows) {
-    hash = fnv(fnv(hash, r.layer->id), uint64_t(r.depth));
-    for (const char c : to_json(r.layer->props)) hash = fnv(hash, uint8_t(c));
-    if (!r.layer->pixels) {
+    if (!r.pixels) {
       depth = std::max(depth, r.depth);
       continue;
     }
-    hash = fnv(hash, r.scan.hash);
     pixel++, tiles += r.scan.tiles, data += r.scan.data, cover += r.scan.covered / canvas;
-    kinds[r.layer->props.name.substr(0, r.layer->props.name.rfind(' '))]++;
+    kinds[r.props.name.substr(0, r.props.name.rfind(' '))]++;
   }
+  const uint64_t hash = digest(*d, rows);
   std::printf("make: %s: %d x %d, %s, %d bits, %zu layers: %zu pixel layers, %zu groups nested %d deep\n", name.c_str(),
               d->width, d->height, d->mode == Mode::Rgb ? "RGB" : "grey", d->depth == Depth::U16 ? 16 : 8, rows.size(),
               pixel, rows.size() - pixel, depth);
   std::printf("make: %s: hash %016llx\n", name.c_str(), static_cast<unsigned long long>(hash));
   if (rows.size() <= 60) {
     for (const Row& r : rows) {
-      std::printf("make: %*s%u %s (%s%s %.0f%%)", 2 * r.depth, "", r.layer->id, r.layer->props.name.c_str(),
-                  r.layer->pixels ? "" : "group, ", kBlendNames[size_t(r.layer->props.blend)], 100 * r.layer->props.opacity);
-      if (r.layer->pixels)
+      std::printf("make: %*s%u %s (%s%s %.0f%%)", 2 * r.depth, "", r.id, r.props.name.c_str(), r.pixels ? "" : "group, ",
+                  kBlendNames[size_t(r.props.blend)], 100 * r.props.opacity);
+      if (r.pixels)
         std::printf(": covers %.2f%%, %zu tiles, %zu of data", 100 * r.scan.covered / canvas, r.scan.tiles, r.scan.data);
       std::printf("\n");
     }
@@ -275,5 +295,33 @@ BENCH(make) {
   }
   report((n + "_rss_peak").c_str(), bench::peak_resident_bytes() / kMB, "MB");
   report((n + "_budget").c_str(), tile_budget() / kMB, "MB");
-  if (!out.empty()) std::printf("make: %s not written: .pbd files wait for M2\n", out.c_str());
+
+  // The file: d saved, dropped with its tiles, opened, every tile read back from it.
+  double save = 0, open = 0, reread = 0;
+  uint64_t again = 0;
+  try {
+    const Watch watch;
+    if (out.has_parent_path()) std::filesystem::create_directories(out.parent_path());
+    auto t0 = bench::Clock::now();
+    save_pbd(*d, out);
+    save = bench::ms_since(t0) / 1000;
+    d.reset();
+    t0 = bench::Clock::now();
+    const OpenedPbd o = open_pbd(out);
+    open = bench::ms_since(t0) / 1000;
+    t0 = bench::Clock::now();
+    again = digest(*o.doc, read_back(*o.doc));
+    reread = bench::ms_since(t0) / 1000;
+  } catch (const std::exception& e) {  // a full disk, a damaged file: said, without a crash dump
+    std::printf("make: %s: %s\n", out.string().c_str(), e.what());
+    std::exit(1);
+  }
+  std::printf("make: %s: %s: hash %016llx, %s\n", name.c_str(), out.string().c_str(),
+              static_cast<unsigned long long>(again), again == hash ? "the same" : "NOT THE SAME");
+  report((n + "_file").c_str(), double(std::filesystem::file_size(out)) / kMB, "MB");
+  report((n + "_save").c_str(), save, "s");
+  report((n + "_open").c_str(), open, "s");
+  report((n + "_file_read").c_str(), reread, "s");
+  report((n + "_rss_peak_file").c_str(), bench::peak_resident_bytes() / kMB, "MB");
+  if (again != hash) std::exit(1);
 }

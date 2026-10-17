@@ -1,7 +1,7 @@
 #pragma once
 // The documents the benchmarks measure on (plan.md, Chỉ tiêu hiệu năng), built in RAM from fixed seeds: the same
-// document on every run, but for the photo they start from. `pb-bench make` (make.cpp) builds one and prints what it
-// holds; E3, M3, B3 and C4 build them here.
+// document on every run, but for the photo they start from. `pb-bench make` (make.cpp) builds one, prints what it
+// holds and saves it as a .pbd (kDocs); E3, M3, B3 and C4 build them here, or open those files.
 #include <cstddef>
 #include <filesystem>
 
@@ -13,6 +13,8 @@ namespace pb::bench {
 // 16-bit RGB TIFF exported from the raw, and the D850's raw, whose embedded full-size JPEG stands in for it. Without
 // them (CI) a synthetic photo, smooth colours and grain, takes their place. make_*() print which they took.
 inline const char* const kSamples = "/home/ndmt1at21/photo-beauty/samples";
+// Where `pb-bench make` saves them by default (not in git): d1.pbd, d2.pbd, d2mini.pbd, d4.pbd.
+inline const char* const kDocs = "/home/ndmt1at21/photo-beauty/build/docs";
 
 // D1, a standard portrait: 8256 x 5504 (the photo's size), 16 bits, sRGB (photo16.tif's own profile), 15 layers. Bottom
 // first, with their ids:
