@@ -14,7 +14,7 @@ Lập 17/10/2026 từ các mục P0, Kiến trúc, Chỉ tiêu hiệu năng, 30 
 | Bước | Task | Phần | Trạng thái |
 | --- | --- | --- | --- |
 | R · Repo, build, CI | R0 (bạn), R1, R1b, R2 | Build | R1 xong |
-| A · Hợp đồng lõi, ô | A1 | Lõi | Đang làm |
+| A · Hợp đồng lõi, ô | A1 | Lõi | Xong |
 | K · Kho ô | K1, K2 | Lõi | K1, K2 đang làm |
 | T · Tài liệu, lịch sử | T1, T2 | Lõi | T1 đang làm |
 | B · Ghép | B1–B4 | Lõi (CPU, GPU) | B1, B2 đang làm |
@@ -90,7 +90,7 @@ Trong ngoặc sau tên: phần; cỡ (như snapone: Nhỏ là vài trăm dòng, 
 
 ### A · Hợp đồng lõi, ô
 
-- [ ] **A1 · Hợp đồng lõi và ô chép khi ghi** (đang làm: worktree `a1`, 17/10/2026; lõi; Vừa; cần R1 để build, viết trước được; file `core/tile.h`, `core/tile.cpp`, `core/doc.h`, `core/render.h`, `core/stroke.h`, `tests/test_tile.cpp`, `docs/architecture.md`): bốn header là hợp đồng cho mọi task sau; mỗi kiểu, mỗi hàm có chú thích luồng nào gọi, ai giữ bộ nhớ, đơn vị. Chỉ cài `tile.*`; phần còn lại là khai báo cho T1, B1–B3, C1, C2, K2, V1 cài. Nội dung chốt:
+- [x] **A1 · Hợp đồng lõi và ô chép khi ghi** (17/10/2026, c6f5265: lead duyệt header, bỏ danh sách ô bẩn; test_tile qua default, asan, tsan, 16/16 đột biến bị bắt; lõi; Vừa; cần R1 để build, viết trước được; file `core/tile.h`, `core/tile.cpp`, `core/doc.h`, `core/render.h`, `core/stroke.h`, `tests/test_tile.cpp`, `docs/architecture.md`): bốn header là hợp đồng cho mọi task sau; mỗi kiểu, mỗi hàm có chú thích luồng nào gọi, ai giữ bộ nhớ, đơn vị. Chỉ cài `tile.*`; phần còn lại là khai báo cho T1, B1–B3, C1, C2, K2, V1 cài. Nội dung chốt:
   - **Điểm ảnh:** alpha không nhân trước, như PSD; `U8` (0–255), `U16` (0–65535); số kênh: xám + alpha 2, RGB + alpha 4; mặt nạ, vùng chọn, stroke buffer 1; xen kẽ trong ô; tính bằng float 0–1 trên giá trị đã mã hóa của tài liệu, như Photoshop ở 8 và 16 bit.
   - **Ô:** cạnh `1 << kTileLog2`, một hằng số duy nhất (8 là 256; 7 để đo 128 ở E4); ba loại: trống (không cấp phát, mang giá trị mặc định của lưới), một màu, có dữ liệu; mỗi ô một `id` duy nhất toàn cục, mới mỗi khi nội dung đổi: cache khóa theo `id` nên không bao giờ dùng nhầm dữ liệu cũ. Đọc, ghi dữ liệu ô luôn qua `pin()` (RAII) ngay từ đầu: A1 cài bản luôn nằm trong RAM, K1 cài nén, đẩy ra đĩa sau cùng API.
   - **Lưới ô (`TileGrid`):** map thưa (tx, ty) → `shared_ptr<const Tile>`, tọa độ âm được (layer tràn ngoài canvas), giá trị mặc định (trong suốt cho layer; trắng hay đen cho mặt nạ), biên; chép lưới là chép con trỏ; `write(tx, ty)` chép ô trước nếu ô đang dùng chung, ghi tại chỗ nếu không, cả hai lấy `id` mới. Một lưới chỉ một luồng ghi; luồng khác đọc bản chép đã công bố.
