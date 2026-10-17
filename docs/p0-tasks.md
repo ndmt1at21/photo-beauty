@@ -18,7 +18,7 @@ Lập 17/10/2026 từ các mục P0, Kiến trúc, Chỉ tiêu hiệu năng, 30 
 | K · Kho ô | K1, K2 | Lõi | Chưa làm |
 | T · Tài liệu, lịch sử | T1, T2 | Lõi | T1 đang làm |
 | B · Ghép | B1–B4 | Lõi (CPU, GPU) | B1 đang làm |
-| C · Cọ | C1–C4 | Lõi, giao diện | Chưa làm |
+| C · Cọ | C1–C4 | Lõi, giao diện | C1 đang làm |
 | V · Canvas | V1, V2 | Giao diện, GPU | Chưa làm |
 | M · Mở, lưu | M1–M3 | Lõi | Chưa làm |
 | U · Khung giao diện | U1–U4 | Giao diện | Chưa làm |
@@ -128,7 +128,7 @@ Trong ngoặc sau tên: phần; cỡ (như snapone: Nhỏ là vài trăm dòng, 
 
 ### C · Cọ
 
-- [ ] **C1 · Chấm cọ, nội suy** (lõi; Nhỏ; cần A1; file `core/dab.h`, `core/dab.cpp`, `tests/test_dab.cpp`, `bench/dab.cpp`): sự kiện → chấm: Catmull-Rom (centripetal) qua các điểm; đi theo độ dài cung, cách nhau spacing × cỡ hiện tại (1–1.000%, mặc định 25%); lực nhấn nội suy dọc đường → cỡ, opacity, flow của từng chấm; chấm tròn có độ cứng 0–100% (đường giảm gần Photoshop; 100% là cạnh cứng khử răng cưa 1 px), lệch dưới điểm ảnh; mẫu chấm U16 cache theo (cỡ làm tròn 1/4 px, độ cứng, lệch 1/4 px). Cùng sự kiện ra cùng chấm từng bit.
+- [ ] **C1 · Chấm cọ, nội suy** (đang làm: worktree `c1`, 17/10/2026; lõi; Nhỏ; cần A1; file `core/dab.h`, `core/dab.cpp`, `tests/test_dab.cpp`, `bench/dab.cpp`): sự kiện → chấm: Catmull-Rom (centripetal) qua các điểm; đi theo độ dài cung, cách nhau spacing × cỡ hiện tại (1–1.000%, mặc định 25%); lực nhấn nội suy dọc đường → cỡ, opacity, flow của từng chấm; chấm tròn có độ cứng 0–100% (đường giảm gần Photoshop; 100% là cạnh cứng khử răng cưa 1 px), lệch dưới điểm ảnh; mẫu chấm U16 cache theo (cỡ làm tròn 1/4 px, độ cứng, lệch 1/4 px). Cùng sự kiện ra cùng chấm từng bit.
   **Xong khi:** test: đường thẳng ra tâm chấm cách nhau spacing × cỡ ±1%; lực nhấn tăng thì cỡ tăng đơn điệu; tổng phủ của chấm cứng ≈ πr² ±1%; chấm đối xứng; băm giống nhau giữa các lần chạy; bench số chấm mỗi giây cho cọ 300 px và 5 px.
 - [ ] **C2 · Stroke buffer, áp nét, tẩy** (lõi; Vừa; cần C1, T1; file `core/stroke.cpp`, `tests/test_stroke.cpp`): `Stroke` theo `stroke.h`: hàng đợi (luồng giao diện đẩy vào, không bỏ điểm); xử lý ở job Interactive đúng thứ tự; stroke buffer là lưới 1 kênh U16; chấm gom theo ô, `parallel_for` theo ô, trong một ô áp đúng thứ tự nên kết quả không phụ thuộc số luồng: B = B + d × flow × (1 − B); alpha của nét = opacity × B (opacity là trần của cả nét như Photoshop, flow dồn dần); sau mỗi đợt công bố bản chép lưới (ô nào đổi thì so `id`; lần ghi sau tự chép ô đang dùng chung); nhả bút: mỗi ô bị chạm ra ô mới = layer ⊕ nét (vẽ Normal theo `core/blend.h`, hay tẩy), gộp ô trống, một màu, thành lệnh thay lưới của T1, một bước lịch sử khi T2 đã vào main.
   **Xong khi:** test: điểm ảnh sau khi nhả bút khớp tham chiếu CPU (layer ⊕ nét) với nét ngẫu nhiên, U8, U16, RGB, xám; trong một nét độ phủ không vượt opacity; tẩy tới alpha 0 ra ô trống; băm như nhau với 1 và 12 luồng; undo sau khi nhả bút trả lại `id` ô cũ.
