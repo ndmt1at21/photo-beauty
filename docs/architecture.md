@@ -27,6 +27,14 @@ Bốn header `core/tile.h`, `core/doc.h`, `core/render.h`, `core/stroke.h` là h
 
 **Bộ nhớ.** Ô đếm tham chiếu, người giữ cuối cùng giải phóng; lưới nằm trong `Layer` qua `shared_ptr<const TileGrid>`; `DocState` dùng chung giữa lịch sử và các job; undo, nhân layer, snapshot, lưu nền chỉ chép con trỏ. `tile_stats()` đếm byte thô, nén, scratch, đang pin và phần các `BudgetUser` tính (cache mip, atlas GPU); một ngân sách chung cho mọi tài liệu (`tile_budget()`, mặc định 60% RAM).
 
+## Lịch sử
+
+`Document` (T2: `core/history.*`) là `DocState` hiện tại cộng dãy bước {tên, lệnh JSON, `DocState`, `serial`}. Luồng giao diện giữ nó và là nơi duy nhất gọi nó; job (frame, nét cọ, lưu) lấy `state()` rồi đọc trên luồng bất kỳ.
+
+**Bước.** Undo, redo, nhảy bước, xóa bước chỉ đổi bước hiện tại: không chép điểm ảnh, các bước dùng chung mọi layer và ô không đổi. Lệnh mới bỏ các bước sau bước hiện tại, như Photoshop; `SelectLayers` nhập vào bước hiện tại, vì Photoshop không ghi bước khi chọn layer. Giữa `begin_gesture()` và `end_gesture()` (kéo thanh, một nét cọ) các lệnh làm một bước, lệnh đầu đặt tên; undo, redo, nhảy bước giữa chừng kết thúc bước đó, lệnh sau của gesture làm bước mới. Snapshot có tên nằm ngoài dãy bước và không bị bỏ; `restore()` nhảy tới bước còn giữ trạng thái đó, không có thì tạo bước mới. `Step::serial` đổi mỗi khi lệnh tạo hay đổi bước (trừ chọn layer): tài liệu có thay đổi chưa lưu khi serial của bước hiện tại khác serial lúc lưu.
+
+**Bộ nhớ.** `history_bytes()` là cỡ thô của các ô dữ liệu mà chỉ các bước khác bước hiện tại giữ, mỗi ô tính một lần; ô trống, ô một màu không tính. Mỗi bước mới cập nhật số này bằng cách đi song song hai cây, bỏ qua phần dùng chung, nên một nét cọ tốn số ô của layer được vẽ chứ không phải của cả tài liệu. Vượt 1/4 `tile_budget()` thì bỏ bước cũ nhất, không bao giờ bỏ bước hiện tại, và trong gesture thì không bỏ bước ngay trước nó; trước đó kho ô đã đẩy ô của bước cũ ra zstd, scratch, vì chúng ít được dùng nhất. Ponytail: mỗi tài liệu có 1/4 ngân sách riêng (P0 mở một tài liệu mỗi lúc), chia chung khi có nhiều tab; ô của `.pbd` tính theo cỡ thô dù RAM giữ chúng không tốn.
+
 ## File riêng `.pbd`
 
 Định dạng v1 (M2: `core/pbd.*`, `core/mapped.*`). Số nguyên little-endian. Mẫu U16 trong ô ghi đúng như `pin()` trả, tức theo thứ tự byte của máy: mọi máy đích (x86-64, ARM64) little-endian, `pbd.cpp` kiểm bằng `static_assert`.
