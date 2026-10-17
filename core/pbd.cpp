@@ -347,8 +347,11 @@ struct Reader {
     auto pixels = std::make_shared<const TileGrid>(std::move(grid));
     for (const json& e : array(j, "mips")) {  // keyed by the tiles under them, so by the whole grid
       if (!e.is_array() || e.size() != 4) corrupt("a mip entry is malformed");
-      const int level = int(integer(e[0], kFirstMip, 31, "a mip level"));
-      mips.push_back({pixels, level, coordinate(e[1]), coordinate(e[2]), e[3].is_null() ? nullptr : tile(e[3])});
+      // All that may throw before the braces: GCC 9 leaks the members a braced init made before a throw (PR 66139),
+      // here `pixels`, which would keep the file mapped.
+      const int level = int(integer(e[0], kFirstMip, 31, "a mip level")), tx = coordinate(e[1]), ty = coordinate(e[2]);
+      TilePtr t = e[3].is_null() ? nullptr : tile(e[3]);
+      mips.push_back({pixels, level, tx, ty, std::move(t)});
     }
     l->pixels = std::move(pixels);
     return l;

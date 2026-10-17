@@ -2,8 +2,9 @@
 // past the canvas, fills, layers sharing tiles) saved and opened again exact, JSON and all; mips from level 3 attached;
 // the preview; opening reads the header, footer, index, JSON, ICC profile and preview only, tiles staying in the file;
 // frames of an opened .pbd copied by the next save; damage: every cut, a byte flipped in each part, the JSON rewritten
-// at random with CRCs made right: an error, never a crash (ASan's run); a tile damaged in the file throws on pin;
-// saving in the background while the UI thread edits; cancelling; saving over the file a document came from.
+// at random with CRCs made right: an error that lets go of the file, never a crash (ASan's run); a tile damaged in the
+// file throws on pin; saving in the background while the UI thread edits; cancelling; saving over the file a document
+// came from.
 // test_pbd_big (PB_TEST_HEAVY=1, under tools/heavy.sh): documents shaped as D1 and D2-mini, timed.
 #include <zlib.h>
 
@@ -332,12 +333,26 @@ DocPtr random_doc(std::mt19937& rng, Mode mode, Depth depth) {
   return d;
 }
 
-// Whether opening p throws a DecodeError of this kind naming the file.
+// Whether `p` is mapped in this process (Linux; false elsewhere): a failed open must let go of its file, which mip
+// tiles attached before the failure, or a grid of it leaked, would keep mapped (on Windows, locked against writes).
+bool mapped(const fs::path& p) {
+#ifdef __linux__
+  std::ifstream maps("/proc/self/maps");
+  const std::string name = ' ' + fs::weakly_canonical(p).string();
+  for (std::string line; std::getline(maps, line);)
+    if (line.size() >= name.size() && line.compare(line.size() - name.size(), name.size(), name) == 0) return true;
+#else
+  (void)p;
+#endif
+  return false;
+}
+
+// Whether opening p throws a DecodeError of this kind naming the file, and lets go of it.
 bool fails(const fs::path& p, DecodeError::Kind kind = DecodeError::Kind::Corrupt) {
   try {
     open_pbd(p);
   } catch (const DecodeError& e) {
-    if (e.kind == kind && std::strstr(e.what(), p.filename().string().c_str())) return true;
+    if (e.kind == kind && std::strstr(e.what(), p.filename().string().c_str()) && !mapped(p)) return true;
     std::printf("unexpected error: %s (kind %d)\n", e.what(), int(e.kind));
   }
   return false;
@@ -538,7 +553,7 @@ void check_copy() {
 
 // Every cut is refused; a byte flipped anywhere opening reads (magic and version, footer, index, JSON, ICC profile,
 // preview) is refused; a newer format says so; the JSON rewritten at random with CRCs made right opens to an error or
-// to a document validate() takes, whose tiles then read or throw, never crash.
+// to a document validate() takes, whose tiles then read or throw, never crash; a failed open leaves the file unmapped.
 void check_damage() {
   TempDir dir;
   // Small, so that the files written here stay small: ramps compress well.
@@ -652,7 +667,7 @@ void check_damage() {
           } catch (const std::runtime_error&) {
           }
     } catch (const DecodeError& e) {
-      CHECK(e.kind == DecodeError::Kind::Corrupt);
+      CHECK(e.kind == DecodeError::Kind::Corrupt && !mapped(p));
     }
   }
   std::printf("pbd: %d cut files and %zu flipped bytes refused; %d JSONs rewritten, %d opened\n", cut, at.size(),
