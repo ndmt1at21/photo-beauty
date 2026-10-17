@@ -191,7 +191,7 @@ Item {
             compare(Tools.dockOpen, "c")
             verify(icon(w, "c").on)
             const g = strip(w, "Swatches").parent
-            compare(box(w, g), [1095, 86, 308, 241])
+            compare(box(w, g), [1095, 86, 308, 30 + only(w, "Swatches").implicitHeight])  // the tabs, the panel (U11's)
             verify(only(w, "Swatches"))
             verify(Tools.panelVisible("Swatches") && !Tools.panelVisible("Color"))
             verify(!find(strip(w, "Swatches"), o => o instanceof ToolToggle && o.icon.name === "keyboard_double_arrow_right").visible, "no » floating")

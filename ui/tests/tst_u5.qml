@@ -310,7 +310,8 @@ Item {
             compare([Tools.fg, Tools.bg], ["#ffffff", "#000000"])
             mouseClick(pair, 1, 30)  // the small black and white
             compare([Tools.fg, Tools.bg], ["#000000", "#ffffff"])
-            mouseClick(pair, 8, 8)  // no Color Picker yet: nothing
+            inject(w, { ColorPickerDialog: null })  // without that dialog (before U11): nothing
+            mouseClick(pair, 8, 8)
             compare(w.dialogs.length, 0)
             inject(w, { ColorPickerDialog: probeDialogC })
             mouseClick(pair, 8, 8)
