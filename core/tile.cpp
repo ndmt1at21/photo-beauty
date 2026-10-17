@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <new>
@@ -14,10 +15,8 @@ namespace {
 
 constexpr size_t kPixels = size_t(kTileSize) * kTileSize;
 std::atomic<uint64_t> g_last_id{0};
-std::atomic<size_t> g_raw{0};
 
 uint64_t new_id() { return g_last_id.fetch_add(1, std::memory_order_relaxed) + 1; }
-size_t data_bytes(Format f) { return kPixels * size_t(f.bytes()); }
 
 void validate(Format f) {
   if ((f.channels != 1 && f.channels != 2 && f.channels != 4) || (f.depth != Depth::U8 && f.depth != Depth::U16))
@@ -53,23 +52,12 @@ void repeat(Format f, const Pixel& v, uint8_t* dst, size_t n) {
 
 }  // namespace
 
-Tile::Tile(Format f, Pixel v, bool data) : format_(f), solid_(!data), value_(data ? Pixel{} : normal(f, v)), id_(new_id()) {
-  if (!data) return;
-  data_ = static_cast<uint8_t*>(::operator new(data_bytes(f), std::align_val_t(64)));
-  g_raw.fetch_add(data_bytes(f), std::memory_order_relaxed);
-}
-
-Tile::~Tile() {
-  if (!data_) return;
-  ::operator delete(data_, std::align_val_t(64));
-  g_raw.fetch_sub(data_bytes(format_), std::memory_order_relaxed);
-}
+// The store's side of a tile (pin(), writable(), the destructor...) is in tilecache.cpp.
+Tile::Tile(Format f, Pixel v, bool data) : format_(f), solid_(!data), value_(normal(f, v)), id_(new_id()) {}
 
 std::shared_ptr<Tile> Tile::make(Format f, Pixel fill) {
   validate(f);
-  std::shared_ptr<Tile> t(new Tile(f, {}, true));
-  repeat(f, normal(f, fill), t->data_, kPixels);
-  return t;
+  return std::shared_ptr<Tile>(new Tile(f, fill, true));
 }
 
 TilePtr Tile::solid(Format f, Pixel value) {
@@ -77,11 +65,24 @@ TilePtr Tile::solid(Format f, Pixel value) {
   return TilePtr(new Tile(f, value, false));
 }
 
-Pin Tile::pin() const { return Pin(data_); }
+TilePtr Tile::elsewhere(Format f, std::shared_ptr<const void> owner, const void* zstd, size_t size) {
+  validate(f);
+  if (!zstd || !size || size > UINT32_MAX) throw std::invalid_argument("pb: Tile::elsewhere: no frame");
+  std::shared_ptr<Tile> t(new Tile(f, {}, true));
+  t->packed_ = Packed::Elsewhere;
+  t->zstd_ = true;
+  t->bytes_ = static_cast<const uint8_t*>(zstd);
+  t->size_ = uint32_t(size);
+  t->owner_ = std::move(owner);
+  return t;
+}
+
+void Tile::fill(uint8_t* raw) const { repeat(format_, value_, raw, kPixels); }
 
 WritePin Tile::write() {
+  WritePin w = writable();
   id_ = new_id();
-  return WritePin(data_);
+  return w;
 }
 
 TileGrid::TileGrid(Format f, Pixel fill) : format_(f), fill_(normal(f, fill)) { validate(f); }
@@ -124,16 +125,12 @@ WritePin TileGrid::write(int tx, int ty) {
   if (it != tiles_.end() && !it->second->solid_ && !it->second->shared_.load(std::memory_order_relaxed) &&
       it->second.use_count() == 1)
     return const_cast<Tile&>(*it->second).write();
-  std::shared_ptr<Tile> t;
-  if (it == tiles_.end() || it->second->solid_) {
-    t = Tile::make(format_, it == tiles_.end() ? fill_ : it->second->value_);
-  } else {
+  std::shared_ptr<Tile> t = Tile::make(format_, it == tiles_.end() ? fill_ : it->second->value_);
+  WritePin w = it == tiles_.end() || it->second->solid_ ? t->write() : [&] {
     PROFILE_ZONE("tile_copy");
     const Pin from = it->second->pin();
-    t.reset(new Tile(format_, {}, true));
-    std::memcpy(t->data_, from.data(), data_bytes(format_));
-  }
-  WritePin w = t->write();
+    return t->write_copy(from.data());
+  }();
   if (it == tiles_.end())
     tiles_.emplace(TileXY{tx, ty}, std::move(t));
   else
@@ -215,7 +212,5 @@ TilePtr compact(const TilePtr& t, Pixel fill) {
   if (alike(f, v, normal(f, fill))) return nullptr;
   return t->is_solid() ? t : Tile::solid(f, v);
 }
-
-TileStats tile_stats() { return {g_raw.load(std::memory_order_relaxed)}; }
 
 }  // namespace pb

@@ -1,8 +1,8 @@
 #pragma once
 // Tiles hold every pixel: layers, masks, selections, the stroke being painted and composite caches are all grids of
 // copy-on-write tiles, so undo, duplicating a layer, snapshots and saving in the background copy pointers only.
-// Pixels are read and written through a Pin: A1 keeps them raw in RAM; K1 adds the memory budget, compression and
-// scratch behind the same calls.
+// Pixels are read and written through a Pin, which brings them back raw into RAM: while nothing pins a tile the
+// store (tilecache.h) may compress it or write it to a scratch file to keep within the memory budget.
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -46,22 +46,26 @@ using Pixel = std::array<uint16_t, 4>;
 class Tile;
 using TilePtr = std::shared_ptr<const Tile>;  // tiles are shared read-only; one lives while anything holds it
 
-// Keeps a data tile's pixels raw in RAM while it lives (K1 never evicts a pinned tile): kTileSize rows of kTileSize
-// pixels, rows kTileSize * Format::bytes() apart, 64-byte aligned. It does not own the tile: whoever holds the pin
-// keeps the tile alive meanwhile. Move-only; any thread.
+// Keeps a data tile's pixels raw in RAM while it lives, the tile marked just used: the store never pushes a pinned
+// tile out. kTileSize rows of kTileSize pixels, rows kTileSize * Format::bytes() apart, 64-byte aligned. It does not
+// own the tile: whoever holds the pin keeps the tile alive meanwhile. Move-only; any thread.
 class Pin {
  public:
   Pin() = default;
-  Pin(Pin&& o) noexcept : data_(std::exchange(o.data_, nullptr)) {}
+  Pin(Pin&& o) noexcept : tile_(std::exchange(o.tile_, nullptr)), data_(std::exchange(o.data_, nullptr)) {}
   Pin& operator=(Pin&& o) noexcept {
+    std::swap(tile_, o.tile_);
     std::swap(data_, o.data_);
     return *this;
   }
+  // Over budget, a tile's last pin first pushes other tiles out on this thread (tilecache.h).
+  ~Pin();
   const uint8_t* data() const { return data_; }  // null for a solid tile
 
  protected:
   friend class Tile;
-  explicit Pin(uint8_t* data) : data_(data) {}
+  Pin(const Tile* t, uint8_t* data) : tile_(t), data_(data) {}
+  const Tile* tile_ = nullptr;
   uint8_t* data_ = nullptr;
 };
 
@@ -73,7 +77,7 @@ class WritePin : public Pin {
 
  private:
   friend class Tile;
-  explicit WritePin(uint8_t* data) : Pin(data) {}
+  WritePin(const Tile* t, uint8_t* data) : Pin(t, data) {}
 };
 
 // A tile: solid (one value, no pixels allocated) or data (kTileSize² pixels). An empty tile is no Tile at all: its
@@ -81,9 +85,14 @@ class WritePin : public Pin {
 // TilePtr, and the last holder frees it.
 class Tile {
  public:
-  // A new data tile, every pixel `fill`, for its creator to write() before sharing it. Any thread.
+  // A new data tile, every pixel `fill`, for its creator to write() before sharing it. Its pixels are allocated on
+  // the first pin. Any thread.
   static std::shared_ptr<Tile> make(Format, Pixel fill = {});
   static TilePtr solid(Format, Pixel value);  // any thread
+  // A data tile whose pixels lie elsewhere, compressed: `size` bytes at `zstd`, one zstd frame of the raw pixels as
+  // pin() gives them, kept alive by `owner` (M2: a .pbd's read-only mapping). Nothing is read before the first pin,
+  // and dropping its raw pixels later costs nothing. Throws std::invalid_argument as make(). Any thread.
+  static TilePtr elsewhere(Format, std::shared_ptr<const void> owner, const void* zstd, size_t size);
   ~Tile();
   Tile(const Tile&) = delete;
   Tile& operator=(const Tile&) = delete;
@@ -93,21 +102,51 @@ class Tile {
   // keyed by ids never serves old pixels.
   uint64_t id() const { return id_; }
   bool is_solid() const { return solid_; }
-  Pixel value() const { return value_; }  // a solid tile's
-  Pin pin() const;                        // a data tile's pixels; any thread
+  Pixel value() const { return solid_ ? value_ : Pixel{}; }  // a solid tile's
+  // A data tile's pixels; any thread. Reads them back first when the store pushed them out (decompressing, reading
+  // the scratch file or the elsewhere() frame), which throws std::runtime_error when that fails (a corrupt frame).
+  Pin pin() const;
   // A data tile's pixels to change, and a new id: only for its creator before sharing it (a grid's tiles change
-  // through TileGrid::write(), which copies shared ones).
+  // through TileGrid::write(), which copies shared ones). Throws as pin().
   WritePin write();
+  // The same pixels lie elsewhere too, as elsewhere() takes them (M3: a save just wrote them into a .pbd): the store
+  // frees its own copy (zstd in RAM, scratch) for this one and drops the raw pixels for free from then on. A data
+  // tile's; same id; any thread.
+  void also_elsewhere(std::shared_ptr<const void> owner, const void* zstd, size_t size) const;
 
  private:
   friend class TileGrid;
+  friend class Pin;
+  friend struct TileStore;  // tilecache.cpp
   Tile(Format, Pixel, bool data);
+  void fill(uint8_t* raw) const;             // value_ in every pixel
+  void unpin() const;                        // Pin's
+  WritePin writable();                       // write() but the new id: pinned, its packed copy dropped
+  WritePin write_copy(const uint8_t* from);  // a fresh tile's pixels, copied from `from`
+
   Format format_;
   bool solid_;
-  Pixel value_{};
+  Pixel value_{};  // a solid tile's; a data tile's pixels until first pinned
   uint64_t id_;
-  uint8_t* data_ = nullptr;
   mutable std::atomic<bool> shared_{false};  // handed out by a grid copy or set(): never written in place again
+
+  // The store's, under its lock (tilecache.cpp). A data tile's pixels lie raw in RAM (while pinned, and until pushed
+  // out) and in at most one packed copy, kept until they change; in neither before the first pin.
+  enum class Packed : uint8_t { None, Ram, Scratch, Elsewhere };
+  struct Link {  // in one of the store's lists
+    const Tile *prev = nullptr, *next = nullptr;
+    bool in = false;
+  };
+  mutable uint8_t* raw_ = nullptr;
+  mutable Packed packed_ = Packed::None;
+  mutable bool zstd_ = false;  // the packed bytes are a zstd frame, else raw pixels
+  mutable bool busy_ = false;  // a thread loads, packs or spills it without the lock: others wait
+  mutable uint32_t pins_ = 0;
+  mutable uint32_t size_ = 0;                  // of the packed bytes
+  mutable const uint8_t* bytes_ = nullptr;     // Ram (new[]) or Elsewhere ones
+  mutable uint64_t offset_ = 0;                // Scratch ones
+  mutable std::shared_ptr<const void> owner_;  // Elsewhere ones'
+  mutable Link hot_, ram_;  // unpinned with raw pixels; with a zstd copy in RAM: least recently used last
 };
 
 // Tile (x, y) covers pixels x << kTileLog2 to (x + 1) << kTileLog2 across, likewise down; any sign.
@@ -161,10 +200,14 @@ class TileGrid {
 // Scans a data tile once; any thread.
 TilePtr compact(const TilePtr& t, Pixel fill);
 
-// What the tile store holds, in bytes, for the status bar (U4) and tests: raw pixels of data tiles (K1 adds
-// compressed, scratch, pinned). Any thread.
+// What the tile store holds, in bytes, for the status bar (U4) and tests. The budget counts raw and compressed, and
+// what BudgetUsers charge (tilecache.h); scratch is on disk; a copy elsewhere (a .pbd) counts nowhere. Any thread.
 struct TileStats {
-  size_t raw = 0;
+  size_t raw = 0;         // pixels of data tiles in RAM, pinned ones included
+  size_t compressed = 0;  // zstd copies in RAM
+  size_t scratch = 0;     // copies in the scratch file
+  size_t pinned = 0;      // of raw, the pinned tiles'
+  size_t charged = 0;     // by BudgetUsers
 };
 TileStats tile_stats();
 
