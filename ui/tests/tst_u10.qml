@@ -436,7 +436,9 @@ Item {
             choose(dropdown(p, "aA Sharp"), "aA Smooth")
             compare(Tools.antiAlias, "Smooth")
             mouseClick(find(p, o => o instanceof ToolToggle && o.icon.name === "format_align_center"))
-            compare(Tools.value("pa:align", 0), 1)
+            compare(Tools.value("para:align", 0), 1, "Paragraph's value")
+            Tools.setValue("char:size", 72)
+            verify(find(p, o => o instanceof NumberField && o.visible && o.value === 72), "Character's size")
             mouseClick(find(p, o => o instanceof Btn && o.text === "Mở Character"))
             compare(Tools.sidePanel, "Character")
         }
@@ -485,6 +487,36 @@ Item {
                 const p = find(w.contentItem, o => o instanceof PropertiesPanel && o.visible)
                 compare([p.page, find(p, o => o instanceof AdjustRows).name], ["adj", name])
             }
+        }
+        function test_color_picker() {  // a swatch of a page, of the rows: U11's Color Picker; OK is one step with its colour
+            const w = createTemporaryObject(mainC, root, { startState: "Main" })
+            w.requestActivate()
+            tryVerify(() => w.active)
+            const d = doc(), top = () => w.dialogs[w.dialogs.length - 1] || null
+            const pickHex = (p, hex) => {
+                waitForRendering(w.contentItem)
+                mouseClick(find(p, o => o instanceof Swatch && o.visible))
+                let dl = null
+                tryVerify(() => (dl = top()) instanceof ColorPickerDialog && dl.opened)
+                const t = find(dl.contentItem, o => o instanceof TextBox)
+                mouseClick(t)
+                tryVerify(() => t.activeFocus)
+                t.text = hex
+                keyClick(Qt.Key_Return)
+                mouseClick(find(dl.footer, o => o instanceof Btn && o.text === "OK"))
+                tryVerify(() => !top())
+            }
+            d.run({ op: "newFillLayer", fill: "Solid Color", color: "#336699" })
+            Tools.showPanel("Properties")
+            waitForRendering(w.contentItem)
+            const p = find(w.contentItem, o => o instanceof PropertiesPanel && o.visible), n = d.history.length
+            tryCompare(p, "page", "fill")
+            pickHex(p, "123456")
+            compare([d.history.length, d.active.props.color], [n + 1, "#123456"])
+            addAdj("Photo Filter")
+            tryCompare(p, "page", "adj")
+            pickHex(p, "abcdef")  // the Color radio's
+            compare([d.history.length, d.active.props.vals.pf1], [n + 3, "#abcdef"])
         }
         function test_dialog() {  // its rows, the values its own until OK, Hủy and Esc leave the document
             const d = doc(), n = d.history.length

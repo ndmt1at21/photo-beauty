@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import "AdjustSpec.js" as Spec
 import "Mock.js" as Mock
+import "ToolSpec.js" as ToolSpec
 
 // The Properties panel (docs/ui-tasks.md, U10; PanelsA, Adjustments, the pp, ad, mk parts of Main.dc.html), a tab of
 // the dock's group Properties, Adjustments, Retouch: what the active layer is, the document without one. `page` names
@@ -13,8 +14,9 @@ import "Mock.js" as Mock
 // adjustment layer: its rows, AdjustRows; at the foot clip, view the previous state, reset, eye, delete); mask (the
 // layer's mask while it takes the brush, Doc.editMask: Density, Feather, Select and Mask…, Color Range…, Invert; at the
 // foot load as a selection, apply, disable, delete). What changes the document is one History step on Docs.current, a
-// drag one too; a layer's size, place, angle and the type's fields are the prototype's own fields in Tools.values (its
-// v: "L:<id>:w", "f:ch_size", "ch:font"…), no step, as the mock transforms nothing.
+// drag one too; a layer's size, place, angle are the prototype's own fields in Tools.values (its v: "L:<id>:w"…), the
+// type's those of the Character and Paragraph panels (U13: "char:size", "para:align"…), no step, as the mock transforms
+// nothing.
 Item {
     id: panel
     property var menu: []  // the items of the … of its tab strip (PopupMenu's): none, as the prototype's
@@ -88,7 +90,7 @@ Item {
             spacing: 2
         }
     }
-    component TextFld: Rectangle {  // a field the prototype keeps as text ("48 pt", "Auto"), an icon before it
+    component TextFld: Rectangle {  // a field the prototype keeps as text ("3 px", "24 px"), an icon before it
         id: tf
         property string icon
         property real turn  // the icon's rotation
@@ -533,10 +535,10 @@ Item {
                     Layout.fillWidth: true
                     implicitHeight: 26
                     font.weight: Font.DemiBold
-                    options: Spec.LISTS.font
-                    value: Tools.value("ch:font", "Be Vietnam Pro")
+                    options: ToolSpec.LISTS.font
+                    value: Tools.value("char:font", "Be Vietnam Pro")
                     Accessible.name: qsTr("Font")
-                    onPicked: v => Tools.setValue("ch:font", v)
+                    onPicked: v => Tools.setValue("char:font", v)
                 }
                 GridLayout {
                     columns: 2
@@ -545,35 +547,47 @@ Item {
                     Dropdown {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 100
-                        options: Spec.LISTS.fstyle
-                        value: Tools.value("ch:style", "SemiBold")
+                        options: ToolSpec.LISTS.fstyle
+                        value: Tools.value("char:style", "SemiBold")
                         Accessible.name: qsTr("Kiểu chữ")
-                        onPicked: v => Tools.setValue("ch:style", v)
+                        onPicked: v => Tools.setValue("char:style", v)
                     }
-                    TextFld {
+                    ParagraphPanel.Field {  // Character's fields, its values
                         Layout.fillWidth: true
                         Layout.preferredWidth: 100
                         icon: "format_size"
-                        value: Tools.value("f:ch_size", "48 pt")
-                        ToolTip.text: qsTr("Cỡ chữ · Set the font size")
-                        Accessible.name: qsTr("Cỡ chữ")
-                        onEdited: t => Tools.setValue("f:ch_size", t)
+                        tip: qsTr("Cỡ chữ · Set the font size")
+                        value: Tools.value("char:size", 48)
+                        unit: "pt"
+                        min: 1
+                        max: 1296
+                        onMoved: v => Tools.setValue("char:size", v)
+                        onReset: Tools.setValue("char:size", null)
                     }
-                    TextFld {
+                    ParagraphPanel.Field {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 100
                         icon: "format_line_spacing"
-                        value: Tools.value("f:ch_lead", "Auto")
-                        Accessible.name: qsTr("Leading")
-                        onEdited: t => Tools.setValue("f:ch_lead", t)
+                        tip: qsTr("Leading · Set the leading")
+                        value: Tools.value("char:leading", NaN)
+                        none: qsTr("Auto")
+                        from: Math.round(Tools.value("char:size", 48) * 1.2)  // Auto: 120 % of the size, as Photoshop's
+                        unit: "pt"
+                        min: 0
+                        max: 5000
+                        onMoved: v => Tools.setValue("char:leading", v)
+                        onReset: Tools.setValue("char:leading", null)
                     }
-                    TextFld {
+                    ParagraphPanel.Field {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 100
                         icon: "format_letter_spacing"
-                        value: Tools.value("f:ch_track", "0")
-                        Accessible.name: qsTr("Tracking")
-                        onEdited: t => Tools.setValue("f:ch_track", t)
+                        tip: qsTr("Tracking · Set the tracking for the selected characters")
+                        value: Tools.value("char:tracking", 0)
+                        min: -1000
+                        max: 10000
+                        onMoved: v => Tools.setValue("char:tracking", v)
+                        onReset: Tools.setValue("char:tracking", null)
                     }
                 }
                 RowLayout {
@@ -584,10 +598,10 @@ Item {
                         Layout.preferredHeight: 22
                         radius: 4
                         ring: Theme.t4
-                        color: Tools.value("ch:color", "#f4ede4")
+                        color: Tools.value("char:color", "#f4ede4")
                         ToolTip.text: qsTr("Màu chữ · Set the text color")
                         Accessible.name: qsTr("Màu chữ")
-                        onClicked: panel.pickColor(color, qsTr("Màu chữ"), c => Tools.setValue("ch:color", String(c)))
+                        onClicked: panel.pickColor(color, qsTr("màu chữ"), c => Tools.setValue("char:color", String(c)))
                     }
                     Item { Layout.fillWidth: true }
                     Dropdown {
@@ -611,10 +625,10 @@ Item {
                             required property int modelData
                             icon.name: Spec.PARA[pa.modelData][0]
                             icon.width: 16
-                            checked: Tools.value("pa:align", 0) === pa.modelData
+                            checked: Tools.value("para:align", 0) === pa.modelData
                             ToolTip.text: Spec.PARA[pa.modelData][1]
                             Accessible.name: Spec.PARA[pa.modelData][1].split(" · ")[0]
-                            onClicked: Tools.setValue("pa:align", pa.modelData)
+                            onClicked: Tools.setValue("para:align", pa.modelData)
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -664,7 +678,7 @@ Item {
                         color: panel.active.props.color || "#c0587e"
                         ToolTip.text: qsTr("Fill · Set shape fill type")
                         Accessible.name: qsTr("Màu Fill")
-                        onClicked: panel.pickColor(color, qsTr("Màu Fill"), c => panel.run({ op: "setProps", props: { color: String(c) } }))
+                        onClicked: panel.pickColor(color, qsTr("màu Fill"), c => panel.run({ op: "setProps", props: { color: String(c) } }))
                     }
                     Dim {
                         Layout.leftMargin: 6
@@ -679,7 +693,7 @@ Item {
                         color: panel.lf("stroke", "") || "transparent"
                         ToolTip.text: qsTr("Stroke · Set shape stroke type")
                         Accessible.name: qsTr("Màu Stroke")
-                        onClicked: panel.pickColor(panel.lf("stroke", "#ffffff"), qsTr("Màu Stroke"), c => panel.setLf("stroke", String(c)))
+                        onClicked: panel.pickColor(panel.lf("stroke", "#ffffff"), qsTr("màu Stroke"), c => panel.setLf("stroke", String(c)))
                     }
                     TextFld {
                         Layout.preferredWidth: 58
@@ -785,7 +799,7 @@ Item {
                         Accessible.name: qsTr("Màu của fill layer")
                         onClicked: {
                             if (fs.solid)
-                                panel.pickColor(fs.color, qsTr("Màu của fill layer"), c => panel.run({ op: "setProps", props: { color: String(c) } }))
+                                panel.pickColor(fs.color, qsTr("màu của fill layer"), c => panel.run({ op: "setProps", props: { color: String(c) } }))
                             else
                                 Tools.showPanel("Gradients")
                         }

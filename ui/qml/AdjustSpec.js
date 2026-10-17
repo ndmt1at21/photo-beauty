@@ -58,7 +58,7 @@ var CURVE_D = {
 };
 // Selective Color's dot by colour.
 var SC_DOT = { Reds: "#ef5350", Yellows: "#e5d03a", Greens: "#4caf50", Cyans: "#26c6da", Blues: "#4c6ef5", Magentas: "#d946ef", Whites: "#ffffff", Neutrals: "#808080", Blacks: "#000000" };
-// The lists of LISTS the rows and Properties' pages pick from.
+// The lists of LISTS the rows and Properties' pages pick from (the type's font and style: ToolSpec.LISTS, as Character's).
 var LISTS = {
   chan: ["RGB", "Red", "Green", "Blue"],
   chan3: ["Red", "Green", "Blue"],
@@ -70,8 +70,6 @@ var LISTS = {
   method: ["Perceptual", "Linear", "Classic", "Smooth", "Stripes"],
   docMode: ["RGB, 8 bit", "RGB, 16 bit", "Grayscale, 8 bit", "Grayscale, 16 bit"],
   profile: ["sRGB IEC61966-2.1", "Display P3", "Adobe RGB (1998)", "ProPhoto RGB"],
-  font: ["Be Vietnam Pro", "Montserrat", "Lora", "Playfair Display", "Noto Serif"],
-  fstyle: ["Regular", "Medium", "SemiBold", "Bold"],
   aa: ["aA None", "aA Sharp", "aA Crisp", "aA Strong", "aA Smooth"]
 };
 // Properties of a layer: the six alignments (a step each in the mock), the paragraph's (PARA, Properties shows 0, 1, 2, 6), a shape's path operations.
