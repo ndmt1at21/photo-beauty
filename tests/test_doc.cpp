@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <iterator>
@@ -25,6 +26,7 @@ using namespace pb;
 namespace {
 
 using Ids = std::vector<LayerId>;
+using Layers = std::vector<LayerPtr>;
 
 LayerProps named(const char* name, Blend blend = Blend::Normal) {
   LayerProps p;
@@ -528,6 +530,7 @@ void check_random() {
       CHECK(dump(*d) == before);
       if (!next) continue;
       check_invariants(*next);
+      validate(*next);  // takes whatever run() makes
       check_effect(cmd, *d, *next);
       done[cmd.index()]++;
       if (i % 64 == 0) left.emplace_back(d, before);
@@ -537,6 +540,84 @@ void check_random() {
     for (const int n : done) CHECK(n >= 20);
     CHECK(rejected >= 200);
   }
+}
+
+bool invalid(const DocState& d) {
+  try {
+    validate(d);
+  } catch (const std::invalid_argument&) {
+    return true;
+  }
+  return false;
+}
+
+// validate() refuses each way a state built from a file can break what run() keeps; run() takes what it takes.
+void check_validate() {
+  DocPtr d = new_document(64, 48, Mode::Rgb, Depth::U8, nullptr);
+  CHECK(!invalid(*d));
+  d = run(*d, AddLayer{0, 0, Kind::Group, named("g"), nullptr});
+  d = run(*d, AddLayer{1, 0, Kind::Pixel, named("p"), painted(pixel_format(*d), 1)});  // 1(2), next_id 3
+  CHECK(!invalid(*d) && shape(d) == "1(2)" && d->next_id == 3);
+  const LayerPtr g = d->root->children[0], p = g->children[0];
+  const auto with = [](const LayerPtr& l, const std::function<void(Layer&)>& change) {
+    auto c = std::make_shared<Layer>(*l);
+    change(*c);
+    return LayerPtr(std::move(c));
+  };
+  const auto tree = [&](Layers kids) {  // d with these at the top, nothing selected
+    DocState s = *d;
+    s.root = with(d->root, [&](Layer& r) { r.children = std::move(kids); });
+    s.selected.clear();
+    return s;
+  };
+  const auto empty_g = with(g, [](Layer& l) { l.children.clear(); });
+  CHECK(!invalid(tree({g})) && !invalid(tree({empty_g, p})) && !invalid(tree({p, empty_g})));
+  CHECK(invalid(tree({g, p})));                                                       // 2 twice
+  CHECK(invalid(tree({empty_g, with(p, [](Layer& l) { l.id = 1; })})));             // 1 twice
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.id = 0; })})));                      // the root's
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.id = 3; })})));                      // not below next_id
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.blend = Blend::PassThrough; })})));
+  CHECK(!invalid(tree({with(g, [](Layer& l) { l.props.blend = Blend::PassThrough; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.blend = Blend(40); })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.opacity = 2; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.fill = std::nanf(""); })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.pixels = nullptr; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.pixels = std::make_shared<const TileGrid>(Format{Depth::U16, 4}); })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.pixels = std::make_shared<const TileGrid>(Format{Depth::U8, 2}); })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) {
+    l.pixels = std::make_shared<const TileGrid>(Format{Depth::U8, 4}, Pixel{0, 0, 0, 1});
+  })})));
+  CHECK(invalid(tree({with(p, [&](Layer& l) { l.children = {empty_g}; })})));       // layers in a pixel layer
+  CHECK(invalid(tree({with(g, [&](Layer& l) { l.pixels = p->pixels; })})));         // pixels on a group
+  CHECK(invalid(tree({with(g, [](Layer& l) { l.kind = Kind(7); })})));
+  CHECK(invalid(tree({nullptr})) && invalid(tree({with(g, [](Layer& l) { l.children = {nullptr}; })})));
+  const auto changed = [&](const std::function<void(DocState&)>& change) {
+    DocState s = *d;
+    change(s);
+    return s;
+  };
+  CHECK(invalid(changed([](DocState& s) { s.width = 0; })) && invalid(changed([](DocState& s) { s.height = -1; })));
+  CHECK(invalid(changed([](DocState& s) { s.root = nullptr; })) && invalid(changed([&](DocState& s) { s.root = p; })));
+  CHECK(invalid(changed([&](DocState& s) { s.root = with(s.root, [](Layer& r) { r.id = 5; }); })));
+  CHECK(invalid(changed([&](DocState& s) { s.root = with(s.root, [&](Layer& r) { r.pixels = p->pixels; }); })));
+  CHECK(invalid(changed([](DocState& s) { s.next_id = 2; })) && !invalid(changed([](DocState& s) { s.next_id = 9; })));
+  DocState none = *new_document(1, 1, Mode::Gray, Depth::U16, nullptr);  // no pixels to give a bad mode away
+  CHECK(!invalid(none) && invalid(DocState{}));
+  none.mode = Mode(2);
+  CHECK(invalid(none));
+  none.mode = Mode::Gray, none.depth = Depth(2);
+  CHECK(invalid(none));
+  none.depth = Depth::U16, none.next_id = 0;  // the root's id next
+  CHECK(invalid(none));
+  CHECK(invalid(changed([](DocState& s) { s.selected = {9}; })));
+  CHECK(invalid(changed([](DocState& s) { s.selected = {0}; })));
+  CHECK(invalid(changed([](DocState& s) { s.selected = {1, 2, 1}; })));
+  CHECK(!invalid(changed([](DocState& s) { s.selected = {2, 1}; })));
+  CHECK(!invalid(changed([](DocState& s) { s.selected = {}; })));
+  // A next_id about to wrap: no more layers rather than an id taken again.
+  const DocPtr full = std::make_shared<const DocState>(changed([](DocState& s) { s.next_id = UINT32_MAX; }));
+  CHECK(!invalid(*full) && rejects(full, AddLayer{0, 0, Kind::Pixel, named("x"), nullptr}));
+  CHECK(rejects(full, DuplicateLayers{{1}}) && rejects(full, GroupLayers{{1}, named("x")}));
 }
 
 double median_ms(const DocState& d, const Command& cmd) {
@@ -610,5 +691,6 @@ TEST(test_doc) {
   check_json();
   check_commands();
   check_random();
+  check_validate();
   check_d4();
 }

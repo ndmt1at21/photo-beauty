@@ -99,7 +99,7 @@ using Layers = std::vector<LayerPtr>;
 // What a command does to one layer: nullopt keeps it (with what changed inside it), else the layers in its place.
 using Edit = std::function<std::optional<Layers>(const LayerPtr&)>;
 
-std::invalid_argument bad(const std::string& what) { return std::invalid_argument("pb::run: " + what); }
+std::invalid_argument bad(const std::string& what) { return std::invalid_argument("pb: " + what); }
 
 // Where layer `id` is in l's subtree (l included): its node, and its group and index there unless it is l.
 struct Place {
@@ -206,12 +206,15 @@ const LayerProps& checked(const LayerProps& p, Kind kind) {
   return p;
 }
 
+void check_pixels(const DocState& d, const TileGrid& g) {
+  const Format f = pixel_format(d);
+  if (g.format() != f || g.fill()[size_t(f.channels - 1)] != 0)
+    throw bad("pixels not in the document's format, or not transparent where empty");
+}
 // A pixel layer's grid in d: g, checked, or an empty one for null.
 std::shared_ptr<const TileGrid> layer_pixels(const DocState& d, std::shared_ptr<const TileGrid> g) {
-  const Format f = pixel_format(d);
-  if (!g) return std::make_shared<const TileGrid>(f);
-  if (g->format() != f || g->fill()[size_t(f.channels - 1)] != 0)
-    throw bad("pixels not in the document's format, or not transparent where empty");
+  if (!g) return std::make_shared<const TileGrid>(pixel_format(d));
+  check_pixels(d, *g);
   return g;
 }
 
@@ -369,7 +372,43 @@ DocPtr run(const DocState& doc, const Command& cmd) {
   if (!doc.root) throw bad("a document without its root");
   auto next = std::make_shared<DocState>(doc);
   std::visit([&](const auto& c) { perform(doc, *next, c); }, cmd);
+  if (next->next_id < doc.next_id) throw bad("out of layer ids");  // wrapped: only a damaged file's next_id gets there
   return next;
+}
+
+void validate(const DocState& d) {
+  if (d.width < 1 || d.height < 1) throw bad("a canvas without pixels");
+  if ((d.mode != Mode::Rgb && d.mode != Mode::Gray) || (d.depth != Depth::U8 && d.depth != Depth::U16))
+    throw bad("no such mode or depth");
+  if (!d.root || d.root->id != 0 || d.root->kind != Kind::Group || d.root->pixels) throw bad("no root group");
+  if (d.next_id == 0) throw bad("next_id 0, the root's");
+  std::vector<LayerId> ids;
+  const std::function<void(const Layer&)> walk = [&](const Layer& g) {
+    for (const LayerPtr& l : g.children) {
+      if (!l) throw bad("a null layer");
+      if (l->id == 0 || l->id >= d.next_id) throw bad("layer id " + std::to_string(l->id) + " not in 1 to next_id");
+      checked(l->props, l->kind);
+      if (l->kind == Kind::Pixel) {
+        if (!l->pixels) throw bad("pixel layer " + std::to_string(l->id) + " without pixels");
+        check_pixels(d, *l->pixels);
+        if (!l->children.empty()) throw bad("layers inside pixel layer " + std::to_string(l->id));
+      } else if (l->kind != Kind::Group || l->pixels) {
+        throw bad("layer " + std::to_string(l->id) + " neither a pixel layer nor a group");
+      }
+      ids.push_back(l->id);
+      walk(*l);
+    }
+  };
+  walk(*d.root);
+  std::sort(ids.begin(), ids.end());
+  if (const auto twice = std::adjacent_find(ids.begin(), ids.end()); twice != ids.end())
+    throw bad("layer id " + std::to_string(*twice) + " twice");
+  std::vector<LayerId> selected = d.selected;
+  std::sort(selected.begin(), selected.end());
+  if (std::adjacent_find(selected.begin(), selected.end()) != selected.end() ||
+      !std::all_of(selected.begin(), selected.end(),
+                   [&](LayerId id) { return std::binary_search(ids.begin(), ids.end(), id); }))
+    throw bad("a selection of layers not there, or twice");
 }
 
 std::string to_json(const Command& cmd) {

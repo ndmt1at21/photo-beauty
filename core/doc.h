@@ -126,10 +126,17 @@ struct SelectLayers {
 using Command = std::variant<AddLayer, DeleteLayers, DuplicateLayers, MoveLayer, GroupLayers, Ungroup, SetProps,
                             SetPixels, SelectLayers>;
 
-// The state after cmd. Throws std::invalid_argument (doc stays as it was) for a layer that is not there or what would
-// break an invariant: ids unique, Pass Through on groups only, pixels in pixel_format(doc), no group inside itself,
-// the root kept. Any thread.
+// The state after cmd. Throws std::invalid_argument (doc stays as it was) for a layer that is not there, an index out
+// of range, or what would break an invariant: ids unique, Pass Through on groups only, pixels in pixel_format(doc), no
+// group inside itself, the root kept, the rest of what validate() checks. Any thread.
 DocPtr run(const DocState& doc, const Command& cmd);
 std::string to_json(const Command&);
+
+// Throws std::invalid_argument unless d keeps what run() keeps: a canvas of at least a pixel, a known mode and depth;
+// the root a group of id 0 without pixels; layer ids unique, from 1 to below next_id; Pass Through on groups only,
+// opacity and fill 0..1, a known blend and kind; a pixel layer's pixels in pixel_format(d), transparent where empty,
+// no layers in it; no pixels on a group; the selection of layers there, once each. For a state not made by run(), as
+// M2 builds one from a file. Any thread.
+void validate(const DocState& d);
 
 }  // namespace pb
