@@ -64,7 +64,8 @@ Rectangle {
     }
 
     Rectangle { width: 1; height: parent.height; color: Theme.ln }
-    // While something floats, a press on the canvas closes it and stays here, as the prototype's scrim.
+    // While something floats, a press on the canvas closes it and stays here, as the prototype's scrim. Hover goes on to
+    // the canvas: Info (U12) reads the pixel under the pointer, the rulers mark it.
     MouseArea {
         readonly property Item area: col.canvas
         visible: col.floating && !!area
@@ -73,7 +74,6 @@ Rectangle {
         width: area ? area.width : 0
         height: area ? area.height : 0
         acceptedButtons: Qt.AllButtons
-        hoverEnabled: true
         cursorShape: Qt.ArrowCursor
         onPressed: col.close("")
     }
