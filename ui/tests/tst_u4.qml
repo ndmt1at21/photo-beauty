@@ -495,6 +495,7 @@ Item {
             waitForRendering(w.contentItem)
             mouseClick(out)
             compare(Tools.screen, 0)
+            waitForRendering(w.contentItem)  // the tabs and the canvas take clicks: laid out again, they leave the top bar's
             const m = openMenu(w, 7)  // View › Chế độ màn hình, ticked
             compare(rows(row(m, "Chế độ màn hình").subMenu), ["*Chế độ chuẩn", "Toàn màn hình có menu", "Toàn màn hình"])
             keyClick(Qt.Key_Escape)
