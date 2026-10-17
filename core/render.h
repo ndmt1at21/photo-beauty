@@ -2,6 +2,7 @@
 // What the canvas shows: the composite, tile by tile at a mip level, and where it sits on screen. Declared here; B1
 // implements composite_tile() (composite.cpp), V1 the View (view.cpp).
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -55,5 +56,19 @@ struct View {
   };
   Pixels pixels() const;
 };
+
+// A test card the canvas shows in place of the document (V1: DocCanvas with PB_CANVAS=pattern), of the document pixel
+// (x, y) under each device pixel's centre: red (x >> 4) & 255, green (y >> 4) & 255, blue a checkerboard of squares 8
+// grid steps wide; grid lines along the document's pixel edges every 2^grid pixels, the fewest that keep them 4 device
+// pixels apart (every edge from 400 % on), 1 device pixel wide, in the inverse colours. Pixel (i, j) of a frame of
+// View::pixels(): packed RGBA8, R in the low byte, opaque. shaders/pattern.slang draws the same to the bit from
+// pattern_consts(), its push constants.
+struct PatternConsts {
+  float origin[2], across[2], down[2];  // View::pixels(), in single precision
+  int32_t grid;                         // grid lines every 2^grid document pixels
+  int32_t width, height;                // the frame, device pixels
+};
+PatternConsts pattern_consts(const View&);
+uint32_t pattern_pixel(const PatternConsts&, int i, int j);
 
 }  // namespace pb

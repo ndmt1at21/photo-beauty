@@ -1,9 +1,12 @@
 // View of render.h (core/view.cpp): the cases of test_view_* in ui/tests/tst_u6.qml, so View and ui/qml/View.js
-// put a document point at the same place.
+// put a document point at the same place; the canvas's test card, on the CPU and the GPU.
 #include <array>
 #include <cmath>
+#include <optional>
+#include <vector>
 
 #include "check.h"
+#include "pattern.spv.h"
 #include "render.h"
 
 namespace {
@@ -97,4 +100,63 @@ TEST(test_view) {
     const View flat1{0, 0, l.zoom, 0, 100, 100, 1}, turned2{0, 0, l.zoom, 30, 100, 100, 2};
     CHECK(flat1.level() == l.level && turned2.level() == l.level);
   }
+}
+
+namespace {
+// What the test card shows at document point d of a frame with grid lines 2^grid document pixels apart, as render.h
+// says, in double precision; d's neighbours left (l) and above (a) say where the lines are. Null where one of them lies
+// within eps of a pixel's edge, where float may round the other way.
+std::optional<uint32_t> card(P d, P l, P a, int grid, double eps) {
+  for (const P& q : {d, l, a})
+    for (double c : q)
+      if (std::abs(c - std::round(c)) < eps) return std::nullopt;
+  const auto cell = [&](P q) {
+    return std::array<int64_t, 2>{int64_t(std::floor(q[0])) >> grid, int64_t(std::floor(q[1])) >> grid};
+  };
+  const auto c = cell(d);
+  uint32_t r = uint32_t(int64_t(std::floor(d[0])) >> 4) & 255, g = uint32_t(int64_t(std::floor(d[1])) >> 4) & 255,
+           b = ((c[0] >> 3) + (c[1] >> 3)) & 1 ? 224 : 96;
+  if (c != cell(l) || c != cell(a)) r = 255 - r, g = 255 - g, b = 255 - b;
+  return r | g << 8 | b << 16 | 0xff000000u;
+}
+}  // namespace
+
+TEST(test_pattern) {
+  const View views[] = {{2200.3, 2800.6, 0.125, 0, 1034, 750, 1}, {1000.5, -20, 2, 30, 333, 217, 1.25},
+                        {0.3, 0.7, 128, -45, 64, 48, 2},        {3.25, 7.4, 0.01, 180, 300, 200, 1.5},
+                        {900.1, 600.2, 0.5522, 90, 257, 129, 1}, {-40.4, 77.7, 8, 0, 200, 120, 1},
+                        {1e4 + 0.1, -3e3, 6.25, -135, 101, 99, 1.75}};
+  auto dev = pb::test::gpu_device();
+  const pb::gpu::KernelPtr kernel =
+      dev ? dev->kernel("pattern", pattern_spv, pattern_spv_sizeInBytes, 1, sizeof(pb::PatternConsts)) : nullptr;
+  int checked = 0;
+  for (const View& v : views) {
+    const pb::PatternConsts k = pb::pattern_consts(v);
+    const View::Pixels px = v.pixels();
+    CHECK(k.width == px.width && k.height == px.height);
+    CHECK(std::ldexp(v.zoom, k.grid) >= 4 && (k.grid == 0 || std::ldexp(v.zoom, k.grid - 1) < 4));
+    // What it shows: the document pixel under each device pixel's centre, by View::to_doc() in double precision.
+    const double sx = v.width / px.width, sy = v.height / px.height;
+    const auto at = [&](int i, int j) { return doc(v, {(i + 0.5) * sx, (j + 0.5) * sy}); };
+    const double eps = 1e-6 * (1 + std::abs(px.origin[0]) + std::abs(px.origin[1]) +
+                               (px.width + px.height) * (std::abs(px.across[0]) + std::abs(px.across[1]) +
+                                                         std::abs(px.down[0]) + std::abs(px.down[1])));
+    for (int j = 0; j < px.height; j += 3)
+      for (int i = 0; i < px.width; i += 3)
+        if (const auto want = card(at(i, j), at(i - 1, j), at(i, j - 1), k.grid, eps)) {
+          CHECK(pb::pattern_pixel(k, i, j) == *want);
+          checked++;
+        }
+    if (!dev) continue;
+    // shaders/pattern.slang, to the bit.
+    const size_t n = size_t(px.width) * px.height;
+    const auto out = dev->buffer(n * 4);
+    dev->dispatch(*kernel, {out.get()}, &k, sizeof k, uint32_t(px.width + 7) / 8, uint32_t(px.height + 7) / 8);
+    std::vector<uint32_t> got(n);
+    dev->download(*out, got.data(), n * 4);
+    dev->flush();
+    for (int j = 0; j < px.height; j++)
+      for (int i = 0; i < px.width; i++) CHECK(got[size_t(j) * px.width + i] == pb::pattern_pixel(k, i, j));
+  }
+  CHECK(checked > 100000);  // of about 125k
 }
