@@ -16,7 +16,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 
 | Bước | Task | Phần | Trạng thái |
 | --- | --- | --- | --- |
-| Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | U0–U3 đang làm (17/10) |
+| Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | U0 xong; U1–U3 đang làm (17/10) |
 | Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | Chưa làm |
 | Panel | U8–U14 | dock và 16 panel | Chưa làm |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Chưa làm |
@@ -62,7 +62,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 
 ### U · Giao diện trên dữ liệu giả
 
-- [ ] **U0 · Khung `pb-ui`** (đang làm: worktree `u0`, 17/10; build, giao diện; Nhỏ; cần R1; thay R1b; file `CMakeLists.txt`, `CMakePresets.json`, `CLAUDE.md` (mục giao diện), `tools/configure.sh`, `tools/ui.sh`, `ui/CMakeLists.txt`, `ui/main.cpp`, `ui/look.h`, `ui/qml/Main.qml`, `ui/tests/main.cpp`, `ui/tests/tst_u0.qml`):
+- [x] **U0 · Khung `pb-ui`** (17/10/2026, 0178c93: configure lần đầu ở 24.04 2,4 phút (vcpkg 95 s, 13 gói từ binary cache), build `pb-ui pb-ui-tests` 54–68 s; flock của `heavy.sh` khóa được giữa hai distro; `-import build/ui/ui/live` thử QML không phải build; build, giao diện; Nhỏ; cần R1; thay R1b; file `CMakeLists.txt`, `CMakePresets.json`, `CLAUDE.md` (mục giao diện), `tools/configure.sh`, `tools/ui.sh`, `ui/CMakeLists.txt`, `ui/main.cpp`, `ui/look.h`, `ui/qml/Main.qml`, `ui/tests/main.cpp`, `ui/tests/tst_u0.qml`):
   - `tools/ui.sh <lệnh>` chạy lệnh trong Ubuntu-24.04 ở thư mục đang đứng, sau `source ~/.profile` (`QT_ROOT_DIR`, `VCPKG_ROOT`), mount lại khi mất (mục Cách làm, Môi trường). `tools/configure.sh ui` dựng `build/ui` với một `vcpkg_installed` riêng của 24.04, dùng chung mọi worktree, cạnh bản của 20.04; chạy ở 24.04 thì từ chối preset của 20.04 và ngược lại. CLAUDE.md thêm vài dòng: task giao diện đọc file này; build, test, chụp ảnh qua `tools/ui.sh`.
   - Như `SNAPONE_UI` của snapone: tùy chọn `PB_UI`, `PB_CRASH` (chỉ phần cấu hình; nối Sentry ở P1), preset `ui` cấu hình cả lõi (V1 cần), task U chỉ build `pb-ui`, `pb-ui-tests`. Module QML `PhotoBeauty` là thư viện tĩnh, app và test cùng link plugin của nó; QML, JS, font, ảnh mẫu lấy bằng glob. `pb-ui` chưa link `pb_core` (V1 hay N1 link).
   - `pb-ui`: cờ `--screenshot <png>`, `--settle <ms>`, `--size WxH`, `--theme dark|light`, `--state <artboard>` (U4 làm phần mở trạng thái); `look.h` chép của snapone (style Basic, font, `EnterPresses`). `pb-ui-tests`: QML test offscreen lấy `ui/tests/tst_*.qml`, ctest `ui`; target `all_qmllint`.
