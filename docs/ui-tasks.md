@@ -17,7 +17,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Bước | Task | Phần | Trạng thái |
 | --- | --- | --- | --- |
 | Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | Xong (17/10) |
-| Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | U5, U6 xong; U7, U7b đang làm (18/10) |
+| Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | U5–U7 xong; U7b đang làm (18/10) |
 | Panel | U8–U14 | dock và 16 panel | U8, U10, U11, U13 xong; U9, U12, U14 đang làm (18/10) |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | U16–U19, U21 xong; U15, U20 đang làm (17/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10) |
@@ -109,7 +109,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
   - Thước 18 px (đơn vị theo Thiết lập; chuột phải đổi px, in, cm, mm, pt, %; vạch theo zoom; vạch sáng ở con trỏ; kéo góc đặt gốc, nhấp đúp góc về lại), Ctrl R bật tắt; menu chuột phải trên canvas theo công cụ đang dùng (mục của menu Select, Layer, Edit).
 
   **Xong khi:** `tst_u6`: tài liệu → canvas → tài liệu khớp, zoom quanh một điểm giữ điểm đó đứng yên, xoay quanh tâm khung (cùng ca với `test_view` của V1); bậc zoom và ô zoom của thanh trạng thái khớp nhau; ảnh chụp ở vừa màn hình, 100%, xoay 30°, có thước, cạnh artboard `Main`.
-- [ ] **U7 · Lớp phủ trên canvas** (đang làm: worktree `u7` tạo từ nhánh `ui/u6`, 17/10; giao diện; Vừa; cần U6; file `ui/qml/Overlays.qml`, `ui/qml/{BrushCursor,Ants,CropBox,TransformBox,GuidesGrid,CanvasBar,SampleRing,CloneSource,ShapeHandles,TypeBox,GradientLine,FaceOverlay}.qml`, `ui/tests/tst_u7.qml`): theo artboard `Overlays` và phần `ov`, `cur` của `Main.dc.html`; mọi tọa độ qua `View.js`; không dùng màu nhấn (trắng đen, guide `#29d3f5`, Quick Mask đỏ 50%, đổi được trong Thiết lập); vẽ bằng Qt Quick Shapes:
+- [x] **U7 · Lớp phủ trên canvas** (18/10/2026, f19b09e: con trỏ cọ (Alt kéo đổi cỡ), viền kiến và Quick Mask, Crop, Free Transform, Warp, lưới và guide, thanh canvas, vòng Eyedropper, nguồn Clone, tay nắm hình, khung chữ, đường gradient, lớp phủ mặt của Retouch; 20 hàm test; 18/18 đột biến bị bắt; lệch: không có viền mờ (cần shader), Warp lưới thẳng, màu Quick Mask là thuộc tính của `Ants` (Thiết lập không có khóa); còn: kéo tay nắm Crop, Free Transform, điểm Warp chưa làm (prototype cũng không), Caps Lock đếm phím nên sai khi app mở lúc nó đang bật (cần C++); giao diện; Vừa; cần U6; file `ui/qml/Overlays.qml`, `ui/qml/{BrushCursor,Ants,CropBox,TransformBox,GuidesGrid,CanvasBar,SampleRing,CloneSource,ShapeHandles,TypeBox,GradientLine,FaceOverlay}.qml`, `ui/tests/tst_u7.qml`): theo artboard `Overlays` và phần `ov`, `cur` của `Main.dc.html`; mọi tọa độ qua `View.js`; không dùng màu nhấn (trắng đen, guide `#29d3f5`, Quick Mask đỏ 50%, đổi được trong Thiết lập); vẽ bằng Qt Quick Shapes:
   - con trỏ cọ hai nét trắng đen có chữ thập, Caps Lock chỉ còn chữ thập; HUD cỡ, độ cứng khi Alt kéo chuột phải (Ctrl Option kéo trên macOS);
   - viền kiến của các hình vùng chọn giả (chạy 10 lần mỗi giây, chỉ lớp phủ vẽ lại), Quick Mask; vùng chọn không điểm nào quá 50% thì không vẽ viền, thanh báo nói lý do;
   - Crop (tấm che, lưới 1/3, 8 tay nắm, xoay ngoài khung, HUD tỉ lệ và cỡ); Free Transform (8 tay nắm, điểm gốc, xoay ngoài khung, HUD W, H, góc); Warp (lưới 3 × 3, tay nắm Bezier);
