@@ -7,7 +7,9 @@
 # - ccache with photo-beauty's cache, a slangc that runs on glibc 2.31, samples/ linked to the main checkout's;
 # - TSan: GCC 9 lacks libtsan_preinit.o, made here.
 # The ui presets (Qt 6.11) run on Ubuntu-24.04 instead, through tools/ui.sh, with their own vcpkg_installed-ui
-# (GCC 13): one distro's packages would be rebuilt by the other's compiler and break its builds.
+# (GCC 13): one distro's packages would be rebuilt by the other's compiler and break its builds. So has ui-mingw,
+# the Windows UI, its vcpkg_installed-ui-mingw; Windows' Qt is ~/Qt-win/6.11.3/llvm-mingw_64 unless QT_WIN_DIR says.
+# Its preset names the compilers by full path: a build that configures again (a new file) has tools/ui.sh's PATH.
 # Usage: tools/configure.sh <preset> [more cmake arguments]
 set -e
 preset=${1:?usage: tools/configure.sh <preset> [cmake arguments]}
@@ -22,9 +24,13 @@ fi
 [ -n "$PB_HEAVY_LOCKED" ] || exec "$(dirname "$0")/heavy.sh" "$0" "$@"
 shift
 export VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}" VCPKG_MAX_CONCURRENCY="${VCPKG_MAX_CONCURRENCY:-4}"
-case $PATH in  # once: the mingw triplet's ABI hashes PATH, so binary cache hits need it alike
-  "$HOME/.local/bin:"*) ;;
-  *) export PATH="$HOME/.local/bin:$HOME/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin:$HOME/.local/opt/nasm-2.14.02/usr/bin:$PATH" ;;
+export QT_WIN_DIR="${QT_WIN_DIR:-$HOME/Qt-win/6.11.3/llvm-mingw_64}"
+mingw=$HOME/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin
+nasm=$HOME/.local/opt/nasm-2.14.02/usr/bin  # libjpeg-turbo's SIMD; 24.04 has it among the debs unpacked in sysroot/
+[ $distro = 20.04 ] || nasm=$HOME/.local/opt/sysroot/usr/bin
+case :$PATH: in  # once: the mingw triplet's ABI hashes PATH, so binary cache hits need it alike
+  *:"$mingw":*) ;;
+  *) export PATH="$HOME/.local/bin:$mingw:$nasm:$PATH" ;;
 esac
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -33,6 +39,7 @@ main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
 build=$root/build/$preset
 case $preset in
   mingw*) triplet=x64-mingw-static installed=$main/build/vcpkg_installed-mingw ;;
+  ui-mingw*) triplet=x64-mingw-static installed=$main/build/vcpkg_installed-ui-mingw ;;
   ui*) triplet=x64-linux installed=$main/build/vcpkg_installed-ui ;;
   *) triplet=x64-linux installed=$main/build/vcpkg_installed ;;
 esac

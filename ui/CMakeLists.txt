@@ -39,6 +39,15 @@ target_link_libraries(pb_qml PRIVATE Qt6::Quick Qt6::QuickControls2)
 qt_add_executable(pb-ui WIN32 MACOSX_BUNDLE main.cpp)  # no console window on Windows, an .app on macOS
 target_link_libraries(pb-ui PRIVATE Qt6::Quick Qt6::QuickControls2 pb_qmlplugin)
 target_compile_definitions(pb-ui PRIVATE PB_VERSION="${PB_VERSION}")
+# Windows (preset ui-mingw, ui/deploy-win.sh): the exe's icon, the .ico of ui/brand/ once U16 has made it, which Qt
+# also gives every window as IDI_ICON1.
+file(GLOB ico CONFIGURE_DEPENDS brand/*.ico)
+if(WIN32 AND ico)
+  list(GET ico 0 ico)
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pb-ui.rc" "IDI_ICON1 ICON \"${ico}\"\n")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/pb-ui.rc" PROPERTIES OBJECT_DEPENDS "${ico}")
+  target_sources(pb-ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/pb-ui.rc")
+endif()
 
 # QML tests: tests/tst_*.qml, read from the source tree when they run, offscreen.
 qt_add_executable(pb-ui-tests tests/main.cpp)

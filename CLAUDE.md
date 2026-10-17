@@ -41,3 +41,12 @@ tools/ui.sh build/ui/ui/pb-ui --size 1440x900 --screenshot /home/ndmt1at21/photo
 - Module QML `PhotoBeauty` (`import PhotoBeauty`), thư viện tĩnh `pb_qml`; `pb-ui`, `pb-ui-tests` link `pb_qmlplugin`, chưa link `pb_core`. Thêm file là đủ (glob; `cmake --build` tự configure lại): `ui/*.cpp`, `ui/*.h` vào module (`main.cpp` là của `pb-ui`), QML, JS phẳng trong `ui/qml/`, file có dòng `pragma Singleton` là singleton (thêm dòng đó vào file đã có thì chạy lại `tools/ui.sh tools/configure.sh ui`), `ui/tests/tst_*.qml` đọc từ cây nguồn lúc chạy (`pb-ui-tests` không phải build lại).
 - Resource: `ui/fonts/*.ttf`, `*.otf` (`look.h` nạp hết, QML gọi theo tên họ font), `ui/mock/photos/*`, `ui/brand/*.png`, `*.svg`; QML gọi bằng đường dẫn tuyệt đối `qrc:/qt/qml/PhotoBeauty/` + đường dẫn dưới `ui/`, như `qrc:/qt/qml/PhotoBeauty/mock/photos/x.jpg` (đường dẫn tương đối hỏng với `-import`).
 - `main.cpp` đưa vào `Main` qua initial properties `startState` (`--state`), `startTheme` (`--theme dark|light`, "" khi không có), `persist` (true khi chạy thường; false với `--screenshot` và trong test); `--size WxH`, `--settle ms`, `--screenshot png` (tạo thư mục, thoát 0 khi lưu được) xử lý trong `main.cpp`. `pb-ui --screenshot` và `pb-ui-tests` chạy offscreen (scene graph phần mềm như CI) trừ khi đặt `QT_QPA_PLATFORM`.
+- Bản Windows: preset `ui-mingw` build chéo ở 24.04 (Qt `~/Qt-win/6.11.3/llvm-mingw_64` link động, đổi bằng `QT_WIN_DIR`; llvm-mingw của preset `mingw`; `vcpkg_installed-ui-mingw` riêng), xóa `build/ui-mingw` khi xong; `ui/deploy-win.sh <thư mục>` gom exe, DLL, plugin, module QML, font dự phòng và `tests\` (~85 MB). Chạy trong `/mnt/c/Users/Teko/AppData/Local/Temp/pb-<mã>/` (xóa khi xong); exe không in gì ra terminal của WSL, nên test ghi kết quả ra file:
+
+```sh
+tools/ui.sh tools/configure.sh ui-mingw            # lần đầu trên máy ~6 phút (vcpkg dựng 10 gói mingw), sau đó ~45 s
+tools/ui.sh tools/heavy.sh cmake --build build/ui-mingw --target pb-ui pb-ui-tests
+tools/ui.sh ui/deploy-win.sh /mnt/c/Users/Teko/AppData/Local/Temp/pb-<mã>
+cd /mnt/c/Users/Teko/AppData/Local/Temp/pb-<mã> && ./pb-ui-tests.exe -input tests -o out.txt,txt; cat out.txt
+./pb-ui.exe --size 1440x900 --screenshot x.png     # offscreen như Linux; HiDPI 150%: QT_SCALE_FACTOR=1.5 WSLENV=QT_SCALE_FACTOR; cửa sổ thật (D3D11): QT_QPA_PLATFORM=windows WSLENV=QT_QPA_PLATFORM
+```

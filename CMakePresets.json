@@ -55,6 +55,21 @@
         "CMAKE_EXE_LINKER_FLAGS": "-static",
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
       }
+    },
+    {
+      "name": "ui-mingw",
+      "displayName": "Qt Quick UI for Windows x64, on Ubuntu 24.04: Qt's DLLs (LGPL) from $QT_WIN_DIR, its build tools from $QT_ROOT_DIR",
+      "inherits": "mingw",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "$env{HOME}/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin/x86_64-w64-mingw32-clang",
+        "CMAKE_CXX_COMPILER": "$env{HOME}/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin/x86_64-w64-mingw32-clang++",
+        "PB_UI": "ON",
+        "CMAKE_PREFIX_PATH": "$env{QT_WIN_DIR}",
+        "QT_HOST_PATH": "$env{QT_ROOT_DIR}",
+        "VCPKG_HOST_TRIPLET": "x64-linux",
+        "QT_NO_QTPATHS_DEPLOYMENT_WARNING": "ON",
+        "CMAKE_EXE_LINKER_FLAGS": ""
+      }
     }
   ]
 }
