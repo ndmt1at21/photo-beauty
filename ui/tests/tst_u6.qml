@@ -694,6 +694,14 @@ Item {
             wait(0)
             return all(region(w, DocTabs), o => o instanceof AbstractButton && o.Accessible.name === o.text && o.text.indexOf(" @ ") > 0)
         }
+        function dontSave(w) {  // Lưu thay đổi (U20) asks about each one not saved: Không lưu to all, then they close
+            let ask = null
+            tryVerify(() => (ask = w.dialogs.find(x => x instanceof SaveChangesDialog) || null) && ask.opened)
+            const no = find(ask.footer, o => o instanceof AbstractButton && o.text === "Không lưu")
+            for (let i = 0; i < ask.docs.length; i++)
+                mouseClick(no)
+            tryVerify(() => !w.dialogs.length)  // faded out: a click is the window's again
+        }
         function test_tabs() {  // the artboard's labels; a click picks; the dot becomes ×; Đóng, Đóng tab khác
             const w = open(), bar = region(w, DocTabs)
             let ts = tabs(w)
@@ -729,6 +737,7 @@ Item {
             mouseMove(x2, 9, 9)
             compare(slot(ts[2]), [false, true], "on the button still")
             mouseClick(x2)
+            dontSave(w)
             compare(Docs.docs.map(x => x.file), ["chân dung.psd", "san-pham.webp"])
             // Right click
             ts = tabs(w)
@@ -737,6 +746,7 @@ Item {
             tryVerify(() => m.opened)
             compare(rows(m), ["Đóng", "Đóng tab khác"])
             pick(w, m, "Đóng")
+            dontSave(w)
             compare(Docs.docs.map(x => x.file), ["san-pham.webp"])
             tryVerify(() => !m.visible)
             Docs.reset()
@@ -745,6 +755,7 @@ Item {
             mouseClick(ts[1], 30, 14, Qt.RightButton)
             tryVerify(() => m.opened)
             pick(w, m, "Đóng tab khác")
+            dontSave(w)
             compare(Docs.docs.map(x => x.file), ["san-pham.webp"])
             compare(Docs.current.file, "san-pham.webp")
             tryVerify(() => !m.visible)

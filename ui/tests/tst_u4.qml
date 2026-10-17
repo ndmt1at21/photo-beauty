@@ -447,7 +447,13 @@ Item {
                         w.space.finished(false)
                     } else if (k.item.act === "@openFile") {
                         keyClick(Qt.Key_Escape)  // its file dialog
+                    } else if (k.item.act === "@close") {  // the document is not saved: Lưu thay đổi (U20) asks
+                        let d = null
+                        tryVerify(() => (d = w.dialogs.find(x => x instanceof SaveChangesDialog) || null) && d.opened, 1000, name)
+                        compare(d.params.docs, [Docs.current], name)
                     }
+                    w.dialogs.forEach(x => x.close())  // Lưu thay đổi (U20) of Đóng, Đóng tất cả
+                    tryVerify(() => !w.dialogs.length, 1000, name)
                     ran++
                     break
                 }
@@ -465,6 +471,7 @@ Item {
             compare([Tools.extras, Tools.selEdges], [false, true])
             keySequence("Ctrl+=")  // as Ctrl +
             verify(Docs.current.view.zoom > 0.125)
+            Docs.docs.forEach(d => d.markSaved())  // nothing for Lưu thay đổi (U20) to ask
             keySequence("Ctrl+Q")
             tryVerify(() => !w.visible, 1000, "Thoát closes the window")
         }
@@ -528,15 +535,15 @@ Item {
             const vp = region(w, Viewport)
             const probe = Qt.createQmlObject("import QtQuick; MouseArea { anchors.fill: parent; property int n: 0; onPressed: n++ }", vp)
             openMenu(w, 0)
-            mouseClick(vp, 300, 300)
+            mouseClick(vp, 700, 300)  // beside the menu, not on its items
             tryVerify(() => !bar(w).open)
             compare(probe.n, 0)
             wait(10)  // that press done with
-            mouseClick(vp, 300, 300)
+            mouseClick(vp, 700, 300)
             compare(probe.n, 1)
             mouseClick(find(region(w, JobIndicator), o => o instanceof AbstractButton))  // the job's details too
             tryVerify(() => region(w, TopBar).popupOpen)
-            mouseClick(vp, 300, 300)
+            mouseClick(vp, 700, 300)
             tryVerify(() => !region(w, TopBar).popupOpen)
             compare(probe.n, 1)
         }
