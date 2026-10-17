@@ -1,4 +1,4 @@
-// The build's plumbing: snapone's pool, a Slang kernel of shaders/ on a Vulkan device, the version.
+// The build's plumbing: the job pool, a Slang kernel of shaders/ on a Vulkan device, the version.
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -17,7 +17,7 @@ TEST(test_smoke) {
   std::vector<uint32_t> src(n), want(n);
   for (uint32_t i = 0; i < n; i++) src[i] = i ^ (i << 9);
   std::atomic<uint32_t> done{0};
-  snapone::parallel_for(int(n), [&](int begin, int end) {
+  pb::parallel_for(int(n), [&](int begin, int end) {
     for (int i = begin; i < end; i++) want[i] = src[i] * mul + add;
     done += uint32_t(end - begin);
   });

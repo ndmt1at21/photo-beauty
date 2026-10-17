@@ -11,7 +11,7 @@
 
 #include "blend.h"
 #include "mip.h"
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "profile.h"
 
 namespace pb {
 namespace {

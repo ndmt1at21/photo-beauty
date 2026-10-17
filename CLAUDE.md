@@ -1,10 +1,11 @@
 # photo-beauty
 
-Trình chỉnh ảnh kiểu Photoshop: C++20, Qt Quick, Vulkan/Slang, dựng trên lõi snapone (submodule `external/snapone`, chỉ đọc). Kế hoạch ở `plan.md`.
+Trình chỉnh ảnh kiểu Photoshop: C++20, Qt Quick, Vulkan/Slang. Kế hoạch ở `plan.md`.
 
-- Đọc mục Cách phối hợp và dòng task của mình trong `docs/p0-tasks.md`; chỉ sửa file của task, không sửa `docs/p0-tasks.md`. Không sửa `external/snapone`, không ghi gì vào `~/snapone`.
+- Đọc mục Cách phối hợp và dòng task của mình trong `docs/p0-tasks.md`; chỉ sửa file của task, không sửa `docs/p0-tasks.md`.
+- Không phụ thuộc snapone, không ghi gì vào `~/snapone`. Cần mã của snapone thì đọc ở `~/snapone`, chép sang `core/` (namespace `pb`); từ đó là mã của photo-beauty.
 - Thêm file là đủ: build lấy `core/*.cpp`, `tests/*.cpp`, `bench/*.cpp`, `shaders/*.slang` bằng glob. `TEST(test_x) { … }` (`tests/check.h`: `CHECK`, `pb::test::gpu_device()`) và `BENCH(x) { … }` (`bench/bench.h`: `report()` in `tên: giá trị đơn vị`) tự đăng ký. Kernel: `shaders/<tên>.slang` có entry `<tên>`, mã chung ở `shaders/lib/` (`import`), C++ lấy `#include "<tên>.spv.h"` (`<tên>_spv`, `<tên>_spv_sizeInBytes`).
-- Code như snapone: namespace `pb`, comment tiếng Anh, zone Tracy ở đường nóng (`PROFILE_ZONE` trong `profile.h` của snapone; preset `profile`), kernel GPU có bản CPU cùng công thức và test so khớp. GCC 9 không có `std::span`, `<=>`, concepts, `std::bit_cast`, `std::format`, `jthread`, `atomic::wait`, `<ranges>`, `using enum`. Header không trùng tên header trong `core/` của snapone.
+- Code: namespace `pb`, comment tiếng Anh, zone Tracy ở đường nóng (`PROFILE_ZONE` trong `core/profile.h`; preset `profile`), kernel GPU có bản CPU cùng công thức và test so khớp. GCC 9 không có `std::span`, `<=>`, concepts, `std::bit_cast`, `std::format`, `jthread`, `atomic::wait`, `<ranges>`, `using enum`.
 
 ## Máy dev (WSL2, Ubuntu 20.04, GCC 9.4)
 

@@ -2,7 +2,7 @@
 // and 3: the ratio of raw to compressed bytes, MB/s of raw pixels compressed and decompressed on one thread, and the
 // share of tiles that level 1 shrinks by an eighth, which the store keeps compressed in RAM (the others go to scratch
 // raw). Data tiles only, as grids keep them: empty and solid ones never reach zstd. Kinds of tile, as D1 and D2 have:
-// - photo16: a 16-bit photo, `photo` (default the D850 of samples/) developed at full size by snapone's Engine;
+// - photo16: a 16-bit RGB photo at full size, `photo` (a TIFF or PNG; default samples/photo16.tif);
 // - crops8: an 8-bit layer of feathered pieces of that photo covering 30% of it (D2's layers, as E1 makes them);
 // - paint8: an 8-bit layer of soft and hard strokes in many colours covering 30% of it (D1's painted layers);
 // - mask8: a mask of large soft strokes;
@@ -25,8 +25,7 @@
 
 #include "bench.h"
 #include "dab.h"
-#include "pipeline.h"  // snapone's Engine
-#include "raw.h"       // snapone's decode_raw
+#include "open.h"
 #include "tile.h"
 
 using namespace pb;
@@ -170,25 +169,30 @@ void pin_cost() {
   }
 }
 
-// The photo at full size, RGBA16; none when there is no such file.
-snapone::Frame develop(const std::string& path) {
+struct Photo {
+  int width = 0, height = 0;
+  std::vector<uint16_t> rgba;
+};
+// The photo at full size, RGBA16; none when there is no such file or it is not 16-bit RGB.
+Photo load(const std::string& path) {
   if (!std::filesystem::exists(path)) {
     std::printf("tilecache: no %s: photo16 and crops8 skipped\n", path.c_str());
     return {};
   }
-  snapone::Engine engine;
-  snapone::Output out;
-  out.deep = true;
-  snapone::Frame f = engine.render(snapone::decode_raw(path), {}, 1.f, {}, out);
-  std::printf("tilecache: %s %dx%d through %s\n", std::filesystem::path(path).filename().string().c_str(), f.width,
-              f.height, engine.device().c_str());
+  const DocPtr d = open_image(path);
+  if (d->mode != Mode::Rgb || d->depth != Depth::U16) {
+    std::printf("tilecache: %s is not 16-bit RGB: photo16 and crops8 skipped\n", path.c_str());
+    return {};
+  }
+  Photo f{d->width, d->height, std::vector<uint16_t>(size_t(d->width) * d->height * 4)};
+  d->root->children[0]->pixels->read_rect(0, 0, f.width, f.height, reinterpret_cast<uint8_t*>(f.rgba.data()),
+                                          size_t(f.width) * 8);
+  std::printf("tilecache: %s %dx%d\n", std::filesystem::path(path).filename().string().c_str(), f.width, f.height);
   return f;
 }
-const uint16_t* at(const snapone::Frame& f, int x, int y) {
-  return reinterpret_cast<const uint16_t*>(f.rgba.data()) + (size_t(y) * f.width + x) * 4;
-}
+const uint16_t* at(const Photo& f, int x, int y) { return f.rgba.data() + (size_t(y) * f.width + x) * 4; }
 
-std::vector<Bytes> photo_tiles(const snapone::Frame& f) {
+std::vector<Bytes> photo_tiles(const Photo& f) {
   TileGrid g({Depth::U16, 4});
   const int tw = f.width / kTileSize, th = f.height / kTileSize;  // whole tiles only
   g.write_rect(0, 0, tw * kTileSize, th * kTileSize, reinterpret_cast<const uint8_t*>(at(f, 0, 0)), size_t(f.width) * 8);
@@ -201,7 +205,7 @@ BENCH(tilecache) {
   constexpr int W = 4096;
   std::mt19937 rng(1);
   std::uniform_real_distribution<float> u(0, 1);
-  if (const snapone::Frame f = develop(args.empty() ? "samples/Nikon_D850_Nikon-D850-14bit-lossless-compressed.NEF" : args[0]);
+  if (const Photo f = load(args.empty() ? "samples/photo16.tif" : args[0]);
       f.width >= 2048 && f.height >= 2048) {
     measure("photo16", photo_tiles(f));
     Plane p(W, W, {0, 0, 0, 0});

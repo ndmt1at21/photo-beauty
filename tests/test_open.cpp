@@ -1,5 +1,5 @@
-// Opening JPEG, PNG and TIFF (open.h), from files written here by TurboJPEG, libspng and libtiff (writers after
-// snapone's tests/test_rendered.cpp): every sample as stored, at sizes of part tiles, in each layout the decoders take;
+// Opening JPEG, PNG and TIFF (open.h), from files written here by TurboJPEG, libspng and libtiff:
+// every sample as stored, at sizes of part tiles, in each layout the decoders take;
 // ICC profiles byte for byte; empty and solid tiles; what it refuses; sizes past the limits from the header; files cut
 // short or with a byte flipped: an error or (flips) some valid document, never a crash (ASan's run).
 #include <lcms2.h>
@@ -24,14 +24,11 @@
 #include <vector>
 
 #include "check.h"
-#include "color.h"  // snapone's icc_profile()
+#include "color.h"
 #include "open.h"
 
 using namespace pb;
 namespace fs = std::filesystem;
-using snapone::ColorSpace;
-using snapone::DecodeError;
-using snapone::icc_profile;
 using Why = DecodeError::Kind;
 
 namespace {

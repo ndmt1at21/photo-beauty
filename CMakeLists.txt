@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-option(PB_TRACY "Tracy profiler zones (snapone's too)" OFF)
+option(PB_TRACY "Tracy profiler zones" OFF)
 if(PB_TRACY)
   list(APPEND VCPKG_MANIFEST_FEATURES tracy)  # must precede project()
 endif()
@@ -15,25 +15,22 @@ else()
   add_compile_options(-Wall -Wextra -Wno-missing-field-initializers)  # Vulkan `Info x{sType}` idiom
 endif()
 
-# Override with -DSLANGC=... where vcpkg's prebuilt slangc cannot run (glibc < 2.34); snapone reads it too.
+# Override with -DSLANGC=... where vcpkg's prebuilt slangc cannot run (glibc < 2.34).
 find_program(SLANGC slangc REQUIRED
   HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_HOST_TRIPLET}/tools/shader-slang")
 
-# snapone's core and kernels, as pinned in external/snapone; nothing else of it is built or tested here.
-set(SNAPONE_TRACY ${PB_TRACY})
-add_subdirectory(external/snapone EXCLUDE_FROM_ALL)
-file(WRITE "${CMAKE_BINARY_DIR}/CTestCustom.cmake" "set(CTEST_CUSTOM_TESTS_IGNORE core)\n")  # snapone-tests
-
+find_package(Threads REQUIRED)
 find_package(lcms2 CONFIG REQUIRED)
 find_package(libjpeg-turbo CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SPNG CONFIG REQUIRED)
 find_package(TIFF REQUIRED)
+find_package(volk CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 
 # Kernels: shaders/<name>.slang has entry <name>; shared code in shaders/lib/ (`import`). SPIR-V embedded as
-# C arrays <name>_spv, <name>_spv_sizeInBytes in <name>.spv.h, as snapone's.
+# C arrays <name>_spv, <name>_spv_sizeInBytes in <name>.spv.h.
 set(PB_SHADER_OUT "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY "${PB_SHADER_OUT}")
 file(GLOB PB_KERNELS CONFIGURE_DEPENDS shaders/*.slang)
@@ -54,9 +51,14 @@ endforeach()
 file(GLOB PB_CORE_SOURCES CONFIGURE_DEPENDS core/*.cpp)
 add_library(pb_core ${PB_CORE_SOURCES} ${PB_SHADER_HEADERS})
 target_include_directories(pb_core PUBLIC core "${PB_SHADER_OUT}")
-target_link_libraries(pb_core PUBLIC snapone_core zstd::libzstd ZLIB::ZLIB lcms2::lcms2 TIFF::TIFF nlohmann_json::nlohmann_json
+target_link_libraries(pb_core PUBLIC Threads::Threads zstd::libzstd ZLIB::ZLIB lcms2::lcms2 TIFF::TIFF nlohmann_json::nlohmann_json
   $<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>
-  $<IF:$<TARGET_EXISTS:spng::spng>,spng::spng,spng::spng_static>)
+  $<IF:$<TARGET_EXISTS:spng::spng>,spng::spng,spng::spng_static> PRIVATE volk::volk)
+if(PB_TRACY)
+  find_package(Tracy CONFIG REQUIRED)
+  target_link_libraries(pb_core PUBLIC Tracy::TracyClient)
+  target_compile_definitions(pb_core PUBLIC PB_TRACY)
+endif()
 set_source_files_properties(core/version.cpp PROPERTIES COMPILE_DEFINITIONS PB_VERSION="${PB_VERSION}")
 
 file(GLOB PB_BENCH_SOURCES CONFIGURE_DEPENDS bench/*.cpp)

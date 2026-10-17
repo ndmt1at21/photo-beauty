@@ -17,11 +17,11 @@
 #include <utility>
 #include <vector>
 
-#include "color.h"    // snapone's icc_profile()
-#include "jobs.h"     // snapone's parallel_for()
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "color.h"
+#include "jobs.h"
+#include "profile.h"
 
-// libjpeg's API, which the TurboJPEG library holds too (as snapone's rendered.cpp): rows as they decode, and a file cut
+// libjpeg's API, which the TurboJPEG library holds too: rows as they decode, and a file cut
 // short told by its code.
 #include <jerror.h>
 #include <jpeglib.h>
@@ -29,10 +29,9 @@
 namespace pb {
 namespace {
 
-using snapone::DecodeError;
 using Why = DecodeError::Kind;
 
-// snapone's limits (Lightroom's): pixels a side, pixels in all. Scans of a progressive JPEG (a hostile one's work
+// Lightroom's limits: pixels a side, pixels in all. Scans of a progressive JPEG (a hostile one's work
 // capped); what a PNG's compressed chunks (ICC profile, text) may inflate to, and its chunks before the image in all;
 // a row of TIFF blocks (strips, or tiles side by side) as decoded.
 constexpr uint64_t kMaxSide = 65000, kMaxPixels = 512'000'000;
@@ -71,7 +70,7 @@ class Bands {
     const size_t bpp = size_t(f.bytes());
     const int across = int((w_ + kTileSize - 1) >> kTileLog2);
     std::vector<TilePtr> made(static_cast<size_t>(across));
-    snapone::parallel_for(across, [&](int a, int b) {
+    parallel_for(across, [&](int a, int b) {
       for (int tx = a; tx < b; tx++) {
         const uint32_t x0 = uint32_t(tx) << kTileLog2;
         const size_t bytes = std::min<uint32_t>(kTileSize, w_ - x0) * bpp;
@@ -88,7 +87,7 @@ class Bands {
 
   // Once every row is done.
   DocPtr document(std::vector<uint8_t> icc) {
-    static const auto srgb = std::make_shared<const std::vector<uint8_t>>(snapone::icc_profile(snapone::ColorSpace::Srgb));
+    static const auto srgb = std::make_shared<const std::vector<uint8_t>>(icc_profile(ColorSpace::Srgb));
     const Format f = grid_.format();
     const DocPtr blank = new_document(int(w_), int(h_), f.channels == 2 ? Mode::Gray : Mode::Rgb, f.depth,
                                       icc.empty() ? srgb : std::make_shared<const std::vector<uint8_t>>(std::move(icc)));
@@ -237,7 +236,7 @@ DocPtr png(std::ifstream& f) {
   return bands.document(std::move(icc));
 }
 
-// ---- TIFF (libtiff, through a stream of its own; as snapone's rendered.cpp) ----
+// ---- TIFF (libtiff, through a stream of its own) ----
 
 // A libtiff handle on the file, its first error kept.
 struct Tiff {
@@ -333,7 +332,7 @@ void tiff_rgb(TIFF* t) {
     TIFFSetField(t, TIFFTAG_JPEGCOLORMODE, JPEGCOLORMODE_RGB);
 }
 
-// ponytail: blocks decode on this thread, a row of them at a time; a handle a thread as snapone's tiff() when big
+// ponytail: blocks decode on this thread, a row of them at a time; a libtiff handle a thread when big
 // TIFFs open slowly.
 DocPtr tiff(const std::filesystem::path& path) {
   Tiff file(path);

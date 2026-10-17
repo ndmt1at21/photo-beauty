@@ -19,14 +19,14 @@ Sáu nguyên tắc:
 - **Chỉ tính thứ cần:** chỉ phần nhìn thấy, ở mức zoom đang xem, chỉ ô bẩn; bản nhanh khi kéo, bản đủ khi thả tay. Không có gì đổi thì không vẽ lại: CPU, GPU về 0 khi người dùng dừng tay.
 - **Mọi thứ là ô, chép khi ghi:** layer, mặt nạ, vùng chọn, nét cọ đang vẽ, cache ghép đều là lưới ô; undo, nhân layer, snapshot, lưu nền chỉ chép con trỏ ô.
 - **Bộ nhớ có ngân sách:** RAM, VRAM, đĩa mỗi loại một hạn mức; vượt thì nén rồi đẩy ô nguội ra đĩa. Tài liệu lớn hơn RAM vẫn mở, vẽ được; app không bao giờ hết bộ nhớ.
-- **Đo trước khi tối ưu, dùng lại trước khi viết:** Tracy và benchmark từ tuần đầu; module nào snapone đã có thì dùng; thêm thư viện phải có lý do đo được.
+- **Đo trước khi tối ưu, dùng lại trước khi viết:** Tracy và benchmark từ tuần đầu; module nào snapone đã có thì chép; thêm thư viện phải có lý do đo được.
 
 ## Cần bạn chốt
 
-Đề xuất in đậm; các bước làm theo đề xuất cho tới khi bạn đổi. Điểm 1 bạn đã chốt ngày 16/10/2026.
+Đề xuất in đậm; các bước làm theo đề xuất cho tới khi bạn đổi. Điểm 1 bạn đã chốt ngày 16/10/2026, điểm 2 ngày 17/10/2026.
 
 1. **Phạm vi: tương đương Photoshop ở mọi nhóm chức năng (trừ mục Không làm); retouch chân dung là một điểm mạnh, không phải toàn bộ phạm vi.** Chốt 16/10/2026.
-2. **Repo riêng; snapone là git submodule ở `external/snapone`, link thẳng `snapone_core`; phần dùng chung (GPU HAL, jobs, màu, codec, ML) sửa ở snapone, photo-beauty ghim commit.** Giống Camera Raw dùng chung giữa Lightroom và Photoshop. Cách khác: monorepo (thư mục `beauty/` trong snapone: một CI, sửa chung trong một commit, nhưng trộn hai sản phẩm); chép file (độc lập, nhưng mỗi lỗi sửa hai lần).
+2. **Repo riêng, không phụ thuộc snapone: cần mã của snapone (GPU HAL, jobs, màu, codec, ML…) thì chép sang, từ đó là mã của photo-beauty.** Chốt 17/10/2026, thay cho đề xuất cũ (snapone làm submodule `external/snapone`, link `snapone_core`). Đổi lại: lỗi sửa ở bên này không tự sang bên kia.
 3. **Mode màu: MVP có RGB và Grayscale, 8 và 16 bit; CMYK và 32 bit ở P2; Lab, Indexed Color, Duotone, Bitmap, Multichannel ở P3.** CMYK đứng sau vì compositor, bộ lọc, adjustment đều phải chạy trên 4 kênh mực; làm khi đường RGB đã ổn và nhanh.
 4. **Định dạng chính là file riêng (`.pbd`). PSD/PSB mở và lưu từ P1: layer, nhóm, mặt nạ, blend mode, clipping, adjustment layer, smart object nhúng, layer style có ở P1, luôn kèm ảnh ghép. Layer chữ của PSD mở được ở P1 (hiện bằng điểm ảnh đã lưu, giữ dữ liệu chữ khi lưu lại), sửa được ở P2 cùng mọi layer style và smart filter.**
 5. **Remove tool, Content-Aware Fill dùng LaMa (Apache-2.0) chạy trên máy, như điểm 6 của [ai-plan snapone](../snapone/docs/ai-plan.md); không làm PatchMatch** (bằng sáng chế US 8,285,055 của Adobe, ghi ở [heal-plan snapone](../snapone/docs/heal-plan.md)). Luật sư xem chung đợt với snapone trước khi bán.
@@ -37,7 +37,7 @@ Sáu nguyên tắc:
 
 ## Danh sách chức năng
 
-Mức: P0 nền móng, P1 MVP, P2 chuyên nghiệp, P3 đủ như Photoshop. Ô trống là mức đó không có gì. Ghi "snapone" là dùng lại module của snapone (bảng ở mục Dùng lại từ snapone).
+Mức: P0 nền móng, P1 MVP, P2 chuyên nghiệp, P3 đủ như Photoshop. Ô trống là mức đó không có gì. Ghi "snapone" là chép module của snapone (bảng ở mục Chép từ snapone).
 
 ### Thanh công cụ
 
@@ -221,7 +221,7 @@ Bốn mức P0 → P3; chỉ sang mức sau khi qua cổng. Phạm vi mỗi mứ
 
 Chứng minh đường bút → ô → GPU → màn hình đạt KPI trên tài liệu lớn, trước khi thêm tính năng. Task cho agent: [docs/p0-tasks.md](docs/p0-tasks.md).
 
-- [ ] Repo: CMake + vcpkg + presets, CI 5 nền tảng với ASan, UBSan, TSan, Tracy, khung bench, Crashpad + Sentry: chép cấu hình snapone, snapone làm submodule (điểm 2).
+- [ ] Repo: CMake + vcpkg + presets, CI 5 nền tảng với ASan, UBSan, TSan, Tracy, khung bench, Crashpad + Sentry: chép cấu hình snapone (điểm 2).
 - [ ] Kho ô: chép khi ghi, ô trống và ô một màu, phiên bản ô, ngân sách RAM, nén, scratch file; chọn ô 128 hay 256 bằng bench.
 - [ ] Mô hình tài liệu: cây layer (điểm ảnh, nhóm), thuộc tính JSON có schema version; undo, redo.
 - [ ] Ghép v0: Normal và 10 blend mode, opacity, nhóm; bản CPU tham chiếu và kernel Slang; test so khớp.
@@ -446,7 +446,7 @@ Dùng `jobs.h` của snapone:
 | Hạng mục | Chọn | Từ snapone | Ghi chú |
 | --- | --- | --- | --- |
 | Ngôn ngữ lõi | C++20 | có | |
-| Build | CMake ≥ 3.25, Ninja, vcpkg manifest, CMake presets (default, debug, asan, tsan, profile, ui, mingw) | có | cùng builtin-baseline với snapone |
+| Build | CMake ≥ 3.25, Ninja, vcpkg manifest, CMake presets (default, debug, asan, tsan, profile, ui, mingw) | có | |
 | Giao diện | Qt 6.8+ Qt Quick | có | |
 | GPU | Vulkan qua volk, HAL `gpu.h`; Metal sau | có | thêm atlas ô, upload từng vùng |
 | Shader | Slang → SPIR-V nhúng vào binary | có | |
@@ -466,7 +466,9 @@ Dùng `jobs.h` của snapone:
 | Đóng gói | MSI, AppImage, DMG; ký số; khóa bản quyền tweetnacl | có | |
 | Test | `check.h` tự viết, QML test offscreen, lavapipe trong CI | có | |
 
-## Dùng lại từ snapone
+## Chép từ snapone
+
+Chép khi cần (điểm 2), không link.
 
 | Module | Dùng cho |
 | --- | --- |
@@ -546,13 +548,12 @@ Ba lớp của snapone (ảnh chuẩn, CPU so GPU, benchmark chặn merge khi ch
 | Độ trễ bút khác nhau theo driver | Trung bình | đo bằng bản ghi nét cọ trên từng hệ điều hành; thử bút thật của 4 hãng |
 | Tài liệu khổng lồ làm hết bộ nhớ | Trung bình | ngân sách và scratch từ P0; D2 trong CI |
 | Driver GPU; CPU lệch GPU | Trung bình | như snapone: đường CPU dự phòng, danh sách đen driver, test so khớp |
-| Thay đổi trong snapone làm vỡ photo-beauty | Thấp | ghim commit submodule; CI build photo-beauty khi snapone đổi API chung |
 
 ## 30 ngày đầu
 
 Tháng đầu chỉ chứng minh đường bút → ô → GPU → màn hình nhanh trên tài liệu lớn, chưa làm tính năng.
 
-- [ ] Tuần 1: repo; chép CMake, presets, vcpkg, CI, Tracy từ snapone; snapone vào `external/snapone`, bọc test và bench của nó trong `if(PROJECT_IS_TOP_LEVEL)`; kho ô chép khi ghi, kèm test.
+- [ ] Tuần 1: repo; chép CMake, presets, vcpkg, CI, Tracy từ snapone; kho ô chép khi ghi, kèm test.
 - [ ] Tuần 1: script sinh D1, D2, D4; gom 20 PSD thật cho D3.
 - [ ] Tuần 2: ghép Normal và 10 blend mode trên CPU, kernel Slang, test so khớp; viewport Qt Quick hiện D1 với pan, zoom, mip.
 - [ ] Tuần 3: cọ v0, stroke buffer, undo bằng con trỏ ô; đo độ trễ trên Iris Xe bằng Tracy; ngân sách RAM, nén, scratch.

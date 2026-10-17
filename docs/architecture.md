@@ -16,7 +16,7 @@ Bốn header `core/tile.h`, `core/doc.h`, `core/render.h`, `core/stroke.h` là h
 
 **Nét cọ.** Luồng giao diện tạo `Stroke`, gọi `add()` (không bỏ, không gộp sự kiện), `finish()` khi nhả bút. Job Interactive áp sự kiện đúng thứ tự, là nơi duy nhất ghi stroke buffer, mỗi đợt công bố `StrokeState` (bản chép buffer, số sự kiện đã áp; sau khi gộp thêm lưới điểm ảnh mới của layer) rồi gọi `on_publish`; frame tìm ô đổi bằng cách so `id` ô của buffer; giao diện đưa lưới đó vào lệnh `SetPixels`, thành một bước lịch sử.
 
-**Luồng** (theo `jobs.h` của snapone):
+**Luồng** (theo `jobs.h`):
 
 | Ai | Việc | Đọc, ghi |
 | --- | --- | --- |

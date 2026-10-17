@@ -80,7 +80,7 @@ DocPtr with_opacity(const DocPtr& d, float opacity) {
   return out;
 }
 
-void frame(snapone::gpu::Device& dev, GpuComposite& gc, const DocPtr& d, const char* name, int level, TileRect r) {
+void frame(gpu::Device& dev, GpuComposite& gc, const DocPtr& d, const char* name, int level, TileRect r) {
   std::vector<TileXY> tiles;
   for (int ty = r.y0; ty < r.y1; ty++)
     for (int tx = r.x0; tx < r.x1; tx++) tiles.push_back({tx, ty});
@@ -103,7 +103,7 @@ void frame(snapone::gpu::Device& dev, GpuComposite& gc, const DocPtr& d, const c
 }  // namespace
 
 BENCH(gpu_composite) {
-  const auto dev = snapone::gpu::Device::create(true);
+  const auto dev = gpu::Device::create(true);
   if (!dev) return void(std::printf("gpu_composite: no Vulkan device\n"));
   std::printf("gpu_composite: %s, %s\n", dev->name().c_str(), dev->driver().c_str());
   const DocPtr d = d1();

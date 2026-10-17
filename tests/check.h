@@ -33,8 +33,8 @@ struct Add {
 
 // A Vulkan device, lavapipe where there is no GPU; null, after saying so, where there is none at all (CI's
 // Windows and macOS runners): GPU checks return early there.
-inline std::unique_ptr<snapone::gpu::Device> gpu_device() {
-  auto dev = snapone::gpu::Device::create(true);
+inline std::unique_ptr<gpu::Device> gpu_device() {
+  auto dev = gpu::Device::create(true);
   if (!dev) std::printf("skipping GPU checks: no Vulkan device\n");
   return dev;
 }

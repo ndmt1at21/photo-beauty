@@ -4,8 +4,8 @@
 #include <cmath>
 #include <mutex>
 
-#include "lru.h"      // snapone's
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "lru.h"
+#include "profile.h"
 
 // Bit for bit the same on every compiler and CPU, as C4 compares replays across platforms: doubles, and only + - * /
 // and sqrt, which IEEE 754 rounds exactly everywhere (no libm function, whose last bits differ between libraries); no
@@ -206,7 +206,7 @@ DabMask make_dab_mask(const Dab& d, float hardness) {
 
 DabMask dab_mask(const Dab& d, float hardness) {
   static std::mutex mutex;
-  static snapone::Lru<uint64_t, DabMask> cache(kCacheBytes);
+  static Lru<uint64_t, DabMask> cache(kCacheBytes);
   const Key k = key(d, hardness);
   if (k.size4 == 0) return {};
   DabMask m;

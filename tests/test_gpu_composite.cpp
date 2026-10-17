@@ -129,7 +129,7 @@ std::vector<uint16_t> cpu(const RenderInput& in, int level, TileXY t) {
   return px;
 }
 // The same tiles of the GPU composite, zeros at slot -1; slots[i] gets tile i's.
-std::vector<std::vector<uint16_t>> gpu(snapone::gpu::Device& dev, GpuComposite& gc, const RenderInput& in, int level,
+std::vector<std::vector<uint16_t>> gpu_tiles(gpu::Device& dev, GpuComposite& gc, const RenderInput& in, int level,
                                        const std::vector<TileXY>& tiles, std::vector<int>* slots = nullptr) {
   const std::vector<int> at = gc.composite(in, level, tiles);
   std::vector<uint16_t> all(size_t(gc.output_tiles()) * kPixels * 4);
@@ -144,9 +144,9 @@ std::vector<std::vector<uint16_t>> gpu(snapone::gpu::Device& dev, GpuComposite& 
   return px;
 }
 // The largest difference between GPU and CPU over tiles, in 16-bit levels; how many samples differ to `differ`.
-int max_diff(snapone::gpu::Device& dev, GpuComposite& gc, const RenderInput& in, const std::vector<TileXY>& tiles,
+int max_diff(gpu::Device& dev, GpuComposite& gc, const RenderInput& in, const std::vector<TileXY>& tiles,
              size_t* differ = nullptr, int level = 0) {
-  const auto got = gpu(dev, gc, in, level, tiles);
+  const auto got = gpu_tiles(dev, gc, in, level, tiles);
   int worst = 0;
   for (size_t i = 0; i < tiles.size(); i++) {
     const std::vector<uint16_t> want = cpu(in, level, tiles[i]);
@@ -257,7 +257,7 @@ TEST(test_gpu_composite_matches_cpu) {
         CHECK(differ == 0);
 #endif
         std::vector<int> slots;
-        gpu(*dev, gc, in, level, tiles, &slots);
+        gpu_tiles(*dev, gc, in, level, tiles, &slots);
         for (size_t i = size_t(nx * ny); i < tiles.size(); i++) CHECK(slots[i] == -1);  // past the canvas
         CHECK(gc.stats().cpu == 0 && gc.stats().composited == 0);                       // the cache's
       }

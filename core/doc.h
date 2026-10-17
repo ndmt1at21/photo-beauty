@@ -38,7 +38,7 @@ static_assert(std::size(kBlendNames) == size_t(Blend::Luminosity) + 1);
 using LayerId = uint32_t;
 
 // What the Layers panel sets on a layer. JSON: the members' names in camelCase and the schema version; keys it does
-// not know go to `extra` and are written back as they were, as snapone's EditParams.
+// not know go to `extra` and are written back as they were.
 struct LayerProps {
   std::string name;
   bool visible = true;

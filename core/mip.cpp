@@ -9,9 +9,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "jobs.h"     // snapone's parallel_for
-#include "lru.h"      // snapone's Lru
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "jobs.h"
+#include "lru.h"
+#include "profile.h"
 
 namespace pb {
 namespace {
@@ -52,11 +52,10 @@ struct Entry {
   TilePtr tile;  // null: empty
   bool cached = false;
 };
-using Lru = snapone::Lru<Key, Entry>;
 struct Cache {
   std::mutex m;
-  Lru fine{size_t(1) << 30}, coarse{size_t(1) << 30};
-  Lru& at(int level) { return level < 3 ? fine : coarse; }
+  Lru<Key, Entry> fine{size_t(1) << 30}, coarse{size_t(1) << 30};
+  Lru<Key, Entry>& at(int level) { return level < 3 ? fine : coarse; }
 };
 Cache& cache() {
   static Cache c;
@@ -209,7 +208,7 @@ void prefetch(const TileGrid& g, int level, TileRect r) {
     const int64_t n = int64_t(1) << (level - l);  // level l's tiles across one of `level`'s
     const int64_t x0 = r.x0 * n, y0 = r.y0 * n, w = (r.x1 - int64_t(r.x0)) * n, h = (r.y1 - int64_t(r.y0)) * n;
     if (w <= 0 || h <= 0) return;
-    snapone::parallel_for(int(w * h), [&](int begin, int end) {
+    parallel_for(int(w * h), [&](int begin, int end) {
       for (int i = begin; i < end; i++) mip(g, l, int(x0 + i % w), int(y0 + i / w));
     });
   }
@@ -229,8 +228,8 @@ void attach_mip(const TileGrid& g, int level, int tx, int ty, TilePtr t) {
 void set_mip_budget(size_t fine, size_t coarse) {
   Cache& c = cache();
   const std::lock_guard l(c.m);
-  c.fine = Lru(fine);
-  c.coarse = Lru(coarse);
+  c.fine = Lru<Key, Entry>(fine);
+  c.coarse = Lru<Key, Entry>(coarse);
 }
 
 uint64_t mips_built() { return g_built.load(std::memory_order_relaxed); }

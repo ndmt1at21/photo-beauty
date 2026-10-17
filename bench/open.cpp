@@ -15,13 +15,13 @@
 #include <vector>
 
 #include "bench.h"
-#include "jobs.h"  // snapone's parallel_for()
+#include "jobs.h"
 #include "open.h"
 
 BENCH(open) {
   const int w = 8256, h = 5504;
   std::vector<uint8_t> rgb(size_t(w) * h * 4);  // RGB to compress, RGBX the floor's decode
-  snapone::parallel_for(h, [&](int y0, int y1) {
+  pb::parallel_for(h, [&](int y0, int y1) {
     std::minstd_rand rng(uint32_t(y0) + 1);
     for (int y = y0; y < y1; y++)
       for (int x = 0; x < w; x++) {

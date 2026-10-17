@@ -22,8 +22,8 @@
 
 #include "blend.h"
 #include "dab.h"
-#include "jobs.h"     // snapone's
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "jobs.h"
+#include "profile.h"
 
 namespace pb {
 namespace {
@@ -47,7 +47,7 @@ void each(int n, const std::function<void(int)>& fn) {
     for (int i = b; i < e; i++) fn(i);
   };
   if (g_threads.load(std::memory_order_relaxed) == 1) return run(0, n);
-  snapone::parallel_for(n, run);
+  parallel_for(n, run);
 }
 
 // A dab to stamp: its mask, and its flow and cap 0..65535.
@@ -306,7 +306,7 @@ void Stroke::add(const PenEvent& e) {
     s.added++;
     if (std::exchange(s.running, true)) return;  // the running job takes it
   }
-  snapone::submit(snapone::Priority::Interactive, [impl = impl_] { impl->run(); });
+  submit(Priority::Interactive, [impl = impl_] { impl->run(); });
 }
 
 void Stroke::finish() {
@@ -315,7 +315,7 @@ void Stroke::finish() {
     const std::lock_guard<std::mutex> l(s.m);
     if (std::exchange(s.finished, true) || s.failed || std::exchange(s.running, true)) return;
   }
-  snapone::submit(snapone::Priority::Interactive, [impl = impl_] { impl->run(); });
+  submit(Priority::Interactive, [impl = impl_] { impl->run(); });
 }
 
 std::shared_ptr<const StrokeState> Stroke::state() const {

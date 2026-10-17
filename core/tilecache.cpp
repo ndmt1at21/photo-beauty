@@ -18,8 +18,8 @@
 #include <utility>
 #include <vector>
 
-#include "jobs.h"     // snapone's submit()
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "jobs.h"
+#include "profile.h"
 #include "tile.h"
 
 #ifdef _WIN32
@@ -34,7 +34,7 @@
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
-#ifdef SNAPONE_TRACY
+#ifdef PB_TRACY
 #include <tracy/Tracy.hpp>
 #endif
 
@@ -246,7 +246,7 @@ struct TileStore {
   size_t held() const { return raw - pinned + ram + charged; }  // what the budget counts
 
   void plot() const {
-#ifdef SNAPONE_TRACY
+#ifdef PB_TRACY
     TracyPlot("tiles raw MB", double(raw) / 1048576);
     TracyPlot("tiles compressed MB", double(ram) / 1048576);
     TracyPlot("tiles scratch MB", double(scratch.live) / 1048576);
@@ -381,7 +381,7 @@ struct TileStore {
     if (background_queued || held() <= budget / 10 * 9) return;
     background_queued = true;
     try {
-      snapone::submit(snapone::Priority::Background, [this] { background(); });
+      submit(Priority::Background, [this] { background(); });
     } catch (...) {  // out of memory: the next unpin tries again
       background_queued = false;
     }

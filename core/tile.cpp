@@ -8,7 +8,7 @@
 #include <new>
 #include <stdexcept>
 
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "profile.h"
 
 namespace pb {
 namespace {

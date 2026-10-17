@@ -1,4 +1,4 @@
-// The document model (doc.h): layer properties <-> JSON as snapone's EditParams (edit.cpp), and commands that make a
+// The document model (doc.h): layer properties <-> JSON, and commands that make a
 // new state sharing every layer they leave alone.
 #include "doc.h"
 
@@ -13,7 +13,7 @@
 #include <string_view>
 #include <type_traits>
 
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "profile.h"
 
 namespace pb {
 namespace {
@@ -38,7 +38,7 @@ std::string dump(const nlohmann::json& j) { return j.dump(-1, ' ', false, nlohma
 
 }  // namespace
 
-// Keys at their default are left out, as snapone's: a key added later changes no JSON of layers without it.
+// Keys at their default are left out: a key added later changes no JSON of layers without it.
 std::string to_json(const LayerProps& p) {
   static const LayerProps def;
   std::ostringstream s;

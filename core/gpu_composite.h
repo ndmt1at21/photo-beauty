@@ -17,7 +17,7 @@ class GpuComposite {
   // At most `bytes` of device memory (0: min(1 GB, Device::memory() / 4)), a quarter for composite tiles, the rest for
   // the atlas: the layer tiles of one format at a time (the document's), least recently used out first. The device
   // outlives it.
-  explicit GpuComposite(snapone::gpu::Device&, size_t bytes = 0);
+  explicit GpuComposite(gpu::Device&, size_t bytes = 0);
   ~GpuComposite();
   GpuComposite(const GpuComposite&) = delete;
   GpuComposite& operator=(const GpuComposite&) = delete;
@@ -34,10 +34,10 @@ class GpuComposite {
   std::vector<int> composite(const RenderInput&, int level, const std::vector<TileXY>& tiles);
 
   // The composite tiles: slot i from byte i * kTileSize * kTileSize * 8 on, RGBA U16 rows as composite_tile()'s.
-  snapone::gpu::Buffer& output() const;
+  gpu::Buffer& output() const;
   int output_tiles() const;  // slots in output()
   // Device memory held, which K1 counts in its tile budget: integrated GPUs (the Iris Xe) take it from RAM.
-  // ponytail: counted for discrete GPUs too; VK_EXT_memory_budget once snapone's HAL has it.
+  // ponytail: counted for discrete GPUs too; VK_EXT_memory_budget once the HAL (gpu_vulkan.cpp) has it.
   size_t bytes() const;
 
   struct Stats {  // of the last composite()

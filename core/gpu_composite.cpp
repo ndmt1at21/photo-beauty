@@ -13,10 +13,9 @@
 
 #include "composite.h"
 #include "composite.spv.h"
-#include "profile.h"  // snapone's PROFILE_ZONE
+#include "profile.h"
 
 namespace pb {
-namespace gpu = snapone::gpu;
 namespace {
 
 constexpr int S = kTileSize;
