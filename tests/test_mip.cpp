@@ -1,7 +1,9 @@
 // Mip levels (mip.h): 2 x 2 averages weighted by alpha against a plain reference in every format, empty and solid
-// tiles kept so without allocating, a changed tile rebuilding its ancestors only, what makes a key, the caps, tiles
-// handed over from a file, several threads at once; times levels 1-6 of a grid of data tiles the size of D1.
+// tiles kept so without allocating, a changed tile rebuilding its ancestors only, what makes a key, the caps following
+// the tile budget, the store asking the cache to let go, tiles handed over from a file, several threads at once; times
+// levels 1-6 of a grid of data tiles the size of D1.
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -15,6 +17,7 @@
 
 #include "check.h"
 #include "mip.h"
+#include "tilecache.h"
 
 using namespace pb;
 
@@ -25,8 +28,8 @@ constexpr size_t kPixels = size_t(S) * S;
 constexpr Format kFormats[] = {{Depth::U8, 1},  {Depth::U8, 2},  {Depth::U8, 4},
                                {Depth::U16, 1}, {Depth::U16, 2}, {Depth::U16, 4}};
 
-// The default caps, which also empties the cache: each check counts builds and bytes from a clean start.
-void reset() { set_mip_budget(size_t(1) << 30, size_t(1) << 30); }
+// Each check counts builds and bytes from a clean start.
+void reset() { clear_mips(); }
 
 void put_px(Format f, uint8_t* p, const Pixel& v) {
   for (int c = 0; c < f.channels; c++)
@@ -296,25 +299,92 @@ void check_solid() {
               ms, edge);
 }
 
-// The caps bound what the cache keeps alive, and churn at levels 1 and 2 leaves levels 3 and up be.
+using Weak = std::vector<std::weak_ptr<const Tile>>;
+bool expired(const Weak& v, size_t i) { return v.at(i).expired(); }
+
+// The caps follow the tile budget, an eighth of it for levels 1 and 2 and a sixteenth for 3 and up, read again at each
+// new entry: what falls out of them, least recently used first, frees its tiles; churn at levels 1 and 2 leaves levels
+// 3 and up be. (Liveness, not raw bytes: a budget this small has the store pushing tiles out meanwhile.)
 void check_caps() {
+  reset();
+  const size_t old = tile_budget();
   const Format f{Depth::U8, 1};
-  const size_t tile = kPixels, entry = tile + 256;  // a data entry as the caps count it
+  const size_t entry = kPixels + 256;  // a data entry as the caps count it
   std::mt19937 rng(5);
-  TileGrid g(f), other(f);
+  TileGrid g(f), other(f), third(f);
   for (int ty = 0; ty < 8; ty++)
     for (int tx = 0; tx < 8; tx++) g.set(tx, ty, random_tile(f, rng)), other.set(tx, ty, random_tile(f, rng));
-  set_mip_budget(8 * entry, 2 * entry);
-  const size_t raw = tile_stats().raw;
-  mip(g, 3, 0, 0);  // 16 + 4 tiles at levels 1 and 2, 1 at 3
-  CHECK(tile_stats().raw == raw + (8 + 1) * tile);
-  const uint64_t id = mip(g, 3, 0, 0)->id(), built = mips_built();
+  third.set(0, 0, random_tile(f, rng));
+  set_tile_budget(64 * entry);  // 8 entries at levels 1 and 2, 4 at 3 and up
+  Weak l1;
   for (int ty = 0; ty < 4; ty++)
-    for (int tx = 0; tx < 4; tx++) mip(other, 1, tx, ty);
-  CHECK(mip(g, 3, 0, 0)->id() == id && mips_built() == built + 16);
-  CHECK(tile_stats().raw == raw + (8 + 1) * tile);
-  mip(g, 1, 0, 0);  // evicted meanwhile
-  CHECK(mips_built() == built + 17);
+    for (int tx = 0; tx < 4; tx++) l1.push_back(mip(g, 1, tx, ty));
+  for (size_t i = 0; i < 16; i++) CHECK(expired(l1, i) == (i < 8));
+  const Weak top{mip(g, 3, 0, 0)};  // levels 1 and 2 under it built anew meanwhile
+  const uint64_t id = mip(g, 3, 0, 0)->id(), built = mips_built();
+  Weak churn;
+  for (int ty = 0; ty < 4; ty++)
+    for (int tx = 0; tx < 4; tx++) churn.push_back(mip(other, 1, tx, ty));
+  CHECK(!expired(top, 0) && mip(g, 3, 0, 0)->id() == id && mips_built() == built + 16);
+  for (size_t i = 0; i < 16; i++) CHECK(expired(churn, i) == (i < 8));
+  // A lower budget: 4 and 2 entries, as the next entry finds.
+  set_tile_budget(32 * entry);
+  for (size_t i = 8; i < 16; i++) CHECK(!expired(churn, i));
+  const Weak one{mip(third, 1, 0, 0)};
+  for (size_t i = 8; i < 16; i++) CHECK(expired(churn, i) == (i < 13));
+  CHECK(!expired(one, 0) && !expired(top, 0));
+  attach_mip(other, 3, 0, 0, random_tile(f, rng));
+  CHECK(!expired(top, 0));
+  attach_mip(third, 3, 0, 0, random_tile(f, rng));
+  CHECK(expired(top, 0));
+  mip(g, 1, 0, 0);  // out long since
+  CHECK(mips_built() == built + 16 + 1 + 1);
+  set_tile_budget(old);
+}
+
+// The store over budget with no tile left to push out asks its users (tilecache.h): the cache lets go of about what it
+// wants of tiles nothing else holds, least recently used first, levels 1 and 2 before 3 and up.
+void check_release() {
+  reset();
+  const size_t old = tile_budget(), budget = size_t(64) << 20;
+  const Format f{Depth::U8, 4};
+  TileGrid g(f);  // a solid tile under each level-1 tile: the cache takes data tiles handed over for them
+  for (int i = 0; i < 32; i++) g.set(2 * i, 0, Tile::solid(f, {1, 2, 3, 4}));
+  set_tile_budget(budget);  // levels 1 and 2: 8 MB, 31 of these entries; 3 and up: 4 MB
+  trim_tiles();             // and what other tests left: nothing in RAM for the store to push out
+  Weak fine, coarse;
+  for (int i = 0; i < 28; i++) {  // pixels never pinned: nothing in RAM
+    TilePtr t = Tile::make(f);
+    fine.push_back(t);
+    attach_mip(g, 1, i, 0, std::move(t));
+  }
+  for (int i = 0; i < 4; i++) {
+    TilePtr t = Tile::make(f);
+    coarse.push_back(t);
+    attach_mip(g, 3, i, 0, std::move(t));
+  }
+  const TilePtr held = fine[0].lock();  // the oldest, held elsewhere: frees nothing, stays
+  const size_t base = tile_stats().charged;
+  CHECK(base < budget / 10 * 9);
+  // Just past 90%, so the store wants 10% and 64 KB: 26 entries (256 KB and 256 bytes).
+  const size_t over = budget / 10 * 9 - base + 64 * 1024;
+  std::atomic<int> calls{0};
+  BudgetUser* self = nullptr;
+  BudgetUser user([&](size_t) {
+    calls++;
+    self->charge(-ptrdiff_t(over));
+    return over;
+  });
+  self = &user;
+  user.charge(ptrdiff_t(over));
+  const auto t0 = std::chrono::steady_clock::now();
+  while (tile_stats().charged > base && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(30))
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  CHECK(calls == 1);
+  for (size_t i = 0; i < 28; i++) CHECK(expired(fine, i) == (i >= 1 && i <= 26));
+  for (size_t i = 0; i < 4; i++) CHECK(!expired(coarse, i));
+  CHECK(mip(g, 1, 0, 0) == held);
+  set_tile_budget(old);
 }
 
 // Tiles a file kept come back from mip() as handed over, without building, for any grid of the same tiles; a changed
@@ -369,8 +439,8 @@ void check_threads() {
         const std::vector<uint8_t>* w = ref.at(l, tx, ty);
         want.push_back(w ? *w : bytes_of(nullptr, *g));
       }
-  const size_t entry = kPixels * size_t(f.bytes()) + 256;
-  set_mip_budget(6 * entry, 2 * entry);
+  const size_t entry = kPixels * size_t(f.bytes()) + 256, old = tile_budget();
+  set_tile_budget(48 * entry);  // 6 entries at levels 1 and 2, 3 at 3 and up
   std::vector<std::thread> threads;
   for (unsigned i = 0; i < 8; i++)
     threads.emplace_back([&, i] {
@@ -382,6 +452,7 @@ void check_threads() {
       }
     });
   for (std::thread& t : threads) t.join();
+  set_tile_budget(old);
 }
 
 // Levels 1 to 6 of a grid of 16-bit data tiles the size of D1 (8256 x 5504 px), opaque as a photo or with alpha
@@ -426,6 +497,7 @@ TEST(test_mip) {
   check_keys();
   check_solid();
   check_caps();
+  check_release();
   check_attach();
   check_threads();
   // Timings mean nothing under a sanitizer, and TSan's shadow would make the D1 grid's 0.5 GB 2.5 GB.

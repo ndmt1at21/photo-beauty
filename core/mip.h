@@ -34,10 +34,14 @@ void prefetch(const TileGrid& grid, int level, TileRect rect);
 void attach_mip(const TileGrid& grid, int level, int tx, int ty, TilePtr t);
 
 // The cache keeps its tiles alive within two byte caps, raw pixels plus a little per entry, least recently used out
-// first: one for levels 1 and 2, one for 3 and up, so that work at full size never evicts the small levels a
-// whole-image view needs. Setting them drops what the cache holds. Any thread.
-// ponytail: fixed caps, 1 GB each by default; K1's budget, compression and scratch take over once it has an API.
-void set_mip_budget(size_t fine, size_t coarse);
+// first: an eighth of tile_budget() (tilecache.h) for levels 1 and 2, a sixteenth for 3 and up, so that work at full
+// size never evicts the small levels a whole-image view needs; each new entry reads the budget again. Its tiles are
+// the store's as any, pushed out to zstd and scratch once cold; when the store is over budget with no tile left to
+// push out it asks the cache (a BudgetUser) to let go of those nothing else holds, levels 1 and 2 first.
+// ponytail: cold tiles of levels 3 and up leave RAM as any; a priority in the store if whole-image views of D2 wait
+// on scratch.
+// clear_mips() empties it: for tests that count builds and bytes from a clean start. Any thread.
+void clear_mips();
 
 uint64_t mips_built();  // tiles averaged from the level below so far (tests count rebuilds); any thread
 

@@ -4,14 +4,18 @@
 #include <array>
 #include <atomic>
 #include <climits>
+#include <iterator>
+#include <list>
+#include <map>
 #include <mutex>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "jobs.h"
-#include "lru.h"
 #include "profile.h"
+#include "tilecache.h"
 
 namespace pb {
 namespace {
@@ -48,23 +52,88 @@ class Hash {
 };
 
 using Key = std::pair<uint64_t, uint64_t>;
-struct Entry {
-  TilePtr tile;  // null: empty
-  bool cached = false;
-};
-struct Cache {
-  std::mutex m;
-  Lru<Key, Entry> fine{size_t(1) << 30}, coarse{size_t(1) << 30};
-  Lru<Key, Entry>& at(int level) { return level < 3 ? fine : coarse; }
-};
-Cache& cache() {
-  static Cache c;
-  return c;
-}
-std::atomic<uint64_t> g_built{0};
 
 // What an entry costs: its pixels, and roughly its Tile and nodes.
 size_t cost(const TilePtr& t) { return 256 + (t && !t->is_solid() ? size_t(S) * S * size_t(t->format().bytes()) : 0); }
+
+// Entries most recently used first within a cap, as Lru (lru.h), but for a cap given each time and entries let go of
+// on request. Tiles it lets go of go to `out`, for the caller to free once unlocked.
+struct Part {
+  struct Item {
+    Key key;
+    TilePtr tile;  // null: empty
+    size_t bytes;  // cost()
+  };
+  std::list<Item> items;
+  std::map<Key, std::list<Item>::iterator> index;
+  size_t used = 0;
+
+  const Item* get(const Key& k) {  // marks it used
+    const auto it = index.find(k);
+    if (it == index.end()) return nullptr;
+    items.splice(items.begin(), items, it->second);
+    return &*it->second;
+  }
+  void put(const Key& k, TilePtr t, std::vector<TilePtr>& out) {  // replaces k's entry
+    if (const auto it = index.find(k); it != index.end()) drop(it->second, out);
+    const size_t bytes = cost(t);
+    items.push_front({k, std::move(t), bytes});
+    index[k] = items.begin();
+    used += bytes;
+  }
+  void drop(std::list<Item>::iterator it, std::vector<TilePtr>& out) {
+    used -= it->bytes;
+    index.erase(it->key);
+    out.push_back(std::move(it->tile));
+    items.erase(it);
+  }
+  void trim(size_t cap, std::vector<TilePtr>& out) {  // keeps the newest entry whatever it costs
+    while (used > cap && items.size() > 1) drop(std::prev(items.end()), out);
+  }
+};
+
+struct Cache {
+  std::mutex m;
+  Part fine, coarse;  // levels 1 and 2; 3 and up
+  BudgetUser user{[this](size_t want) { return release(want); }};
+
+  Part& at(int level) { return level < 3 ? fine : coarse; }
+  void trim(size_t budget, std::vector<TilePtr>& out) {  // lock held
+    fine.trim(budget / 8, out);
+    coarse.trim(budget / 16, out);
+  }
+  // The store over budget with no tile left to push out: lets go of tiles nothing else holds, least recently used
+  // first, levels 1 and 2 before 3 and up, about `want` bytes of pixels, and gives what that freed in RAM.
+  size_t release(size_t want) {
+    PROFILE_ZONE("mip_release");
+    const TileStats was = tile_stats();
+    std::vector<TilePtr> out;
+    {
+      const std::lock_guard l(m);
+      size_t pixels = 0;
+      for (Part* p : {&fine, &coarse})
+        for (auto it = p->items.end(); it != p->items.begin() && pixels < want;) {
+          const auto at = std::prev(it);
+          if (at->tile && !at->tile->is_solid() && at->tile.use_count() == 1) {
+            pixels += at->bytes;
+            p->drop(at, out);
+          } else {
+            it = at;
+          }
+        }
+    }
+    out.clear();
+    const TileStats now = tile_stats();
+    const size_t a = was.raw + was.compressed, b = now.raw + now.compressed;
+    return a > b ? a - b : 0;
+  }
+};
+// Never destroyed: the pool's jobs may still build mips while static objects go at exit.
+Cache& cache() {
+  static Cache& c = *new Cache;
+  return c;
+}
+std::atomic<uint64_t> g_built{0};
 
 void check_level(int level, int lowest) {
   if (level < lowest || level > 31) throw std::invalid_argument("pb: mip: no such level");
@@ -191,13 +260,15 @@ TilePtr mip(const TileGrid& g, int level, int tx, int ty) {
   Cache& c = cache();
   {
     const std::lock_guard l(c.m);
-    if (const Entry e = c.at(level).get(s.key); e.cached) return e.tile;
+    if (const Part::Item* e = c.at(level).get(s.key)) return e->tile;
   }
   TilePtr t = build(g, level, tx, ty);
-  const size_t bytes = cost(t);
+  const size_t budget = tile_budget();
+  std::vector<TilePtr> out;  // freed once unlocked
   const std::lock_guard l(c.m);
-  if (const Entry e = c.at(level).get(s.key); e.cached) return e.tile;  // another thread's, built meanwhile
-  c.at(level).put(s.key, {t, true}, bytes);
+  if (const Part::Item* e = c.at(level).get(s.key)) return e->tile;  // another thread's, built meanwhile
+  c.at(level).put(s.key, t, out);
+  c.trim(budget, out);
   return t;
 }
 
@@ -219,17 +290,20 @@ void attach_mip(const TileGrid& g, int level, int tx, int ty, TilePtr t) {
   if (t && t->format() != g.format()) throw std::invalid_argument("pb: attach_mip: a tile of another format");
   const Scan s = scan(g, level, tx, ty);
   if (!s.tiles) return;  // mip() gives null there without looking
-  const size_t bytes = cost(t);
+  const size_t budget = tile_budget();
+  std::vector<TilePtr> out;
   Cache& c = cache();
   const std::lock_guard l(c.m);
-  c.at(level).put(s.key, {std::move(t), true}, bytes);
+  c.at(level).put(s.key, std::move(t), out);
+  c.trim(budget, out);
 }
 
-void set_mip_budget(size_t fine, size_t coarse) {
+void clear_mips() {
+  Part fine, coarse;  // the entries, freed once unlocked
   Cache& c = cache();
   const std::lock_guard l(c.m);
-  c.fine = Lru<Key, Entry>(fine);
-  c.coarse = Lru<Key, Entry>(coarse);
+  std::swap(fine, c.fine);
+  std::swap(coarse, c.coarse);
 }
 
 uint64_t mips_built() { return g_built.load(std::memory_order_relaxed); }
