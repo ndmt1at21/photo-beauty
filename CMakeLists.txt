@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 
 option(PB_TRACY "Tracy profiler zones" OFF)
+option(PB_UI "Qt Quick UI in ui/ (Qt 6.11 on CMAKE_PREFIX_PATH; docs/ui-tasks.md)" OFF)
+option(PB_CRASH "Crash reports in pb-ui (Crashpad + Sentry; wired in P1)" OFF)
 if(PB_TRACY)
   list(APPEND VCPKG_MANIFEST_FEATURES tracy)  # must precede project()
+endif()
+if(PB_CRASH)
+  list(APPEND VCPKG_MANIFEST_FEATURES crash)
 endif()
 
 project(photo-beauty LANGUAGES C CXX)
@@ -73,3 +78,7 @@ add_executable(pb-tests ${PB_TEST_SOURCES})
 target_link_libraries(pb-tests PRIVATE pb_core)
 target_compile_definitions(pb-tests PRIVATE PB_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")  # test data, samples/
 add_test(NAME pb COMMAND pb-tests)
+
+if(PB_UI)
+  add_subdirectory(ui)
+endif()

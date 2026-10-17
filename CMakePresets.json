@@ -39,6 +39,12 @@
       "cacheVariables": { "PB_TRACY": "ON" }
     },
     {
+      "name": "ui",
+      "displayName": "Core + Qt Quick UI, on Ubuntu 24.04 (Qt from $QT_ROOT_DIR)",
+      "inherits": "default",
+      "cacheVariables": { "PB_UI": "ON", "CMAKE_PREFIX_PATH": "$env{QT_ROOT_DIR}" }
+    },
+    {
       "name": "mingw",
       "displayName": "Windows x64 from Linux/WSL (llvm-mingw on PATH)",
       "inherits": "default",

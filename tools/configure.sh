@@ -6,10 +6,20 @@
 #   when a package is missing, as manifest mode removes what the manifest lacks (another worktree's packages);
 # - ccache with photo-beauty's cache, a slangc that runs on glibc 2.31, samples/ linked to the main checkout's;
 # - TSan: GCC 9 lacks libtsan_preinit.o, made here.
+# The ui presets (Qt 6.11) run on Ubuntu-24.04 instead, through tools/ui.sh, with their own vcpkg_installed-ui
+# (GCC 13): one distro's packages would be rebuilt by the other's compiler and break its builds.
 # Usage: tools/configure.sh <preset> [more cmake arguments]
 set -e
-[ -n "$PB_HEAVY_LOCKED" ] || exec "$(dirname "$0")/heavy.sh" "$0" "$@"
 preset=${1:?usage: tools/configure.sh <preset> [cmake arguments]}
+case $preset in
+  ui*) distro=24.04 hint="; from 20.04: tools/ui.sh tools/configure.sh $preset" ;;
+  *) distro=20.04 hint= ;;
+esac
+if [ "$(. /etc/os-release && echo "$VERSION_ID")" != $distro ]; then
+  echo "tools/configure.sh: preset $preset is for Ubuntu $distro$hint" >&2
+  exit 2
+fi
+[ -n "$PB_HEAVY_LOCKED" ] || exec "$(dirname "$0")/heavy.sh" "$0" "$@"
 shift
 export VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}" VCPKG_MAX_CONCURRENCY="${VCPKG_MAX_CONCURRENCY:-4}"
 case $PATH in  # once: the mingw triplet's ABI hashes PATH, so binary cache hits need it alike
@@ -23,6 +33,7 @@ main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
 build=$root/build/$preset
 case $preset in
   mingw*) triplet=x64-mingw-static installed=$main/build/vcpkg_installed-mingw ;;
+  ui*) triplet=x64-linux installed=$main/build/vcpkg_installed-ui ;;
   *) triplet=x64-linux installed=$main/build/vcpkg_installed ;;
 esac
 mkdir -p "$build" "$installed"

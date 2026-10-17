@@ -23,3 +23,21 @@ build/default/pb-tests test_smoke   # test theo tên; build/default/pb-bench [t�
   `setarch $(uname -m) -R env ASAN_OPTIONS=quarantine_size_mb=0:thread_local_quarantine_size_kb=0:detect_leaks=0 ctest --test-dir build/asan --output-on-failure`;
   `setarch $(uname -m) -R env TSAN_OPTIONS=suppressions=$PWD/tests/tsan.supp ctest --test-dir build/tsan --output-on-failure`.
 - GPU: WSL chỉ có lavapipe. GPU thật (Iris Xe): build preset `mingw`, chép `.exe` vào `/mnt/c/Users/Teko/AppData/Local/Temp/pb-<mã task>/`, `cd` vào đó rồi chạy `./pb-tests.exe` (biến môi trường qua `WSLENV`; không truyền đường dẫn `/mnt/c` làm đối số); xóa thư mục đó khi xong. Số đo trên laptop dao động ±50%: chạy vài lần, lấy trung vị.
+
+## Giao diện (Qt 6.11.3, Ubuntu-24.04)
+
+- Task giao diện (U, N) đọc `docs/ui-tasks.md` (mục Cách làm, dòng task của mình). Sửa file, git ở 20.04; build, test, chụp ảnh chạy ở 24.04 qua `tools/ui.sh <lệnh> [đối số]`: cùng thư mục hiện tại (repo mount vào 24.04 ở cùng đường dẫn, mất thì tự mount lại), sau `~/.profile`, đối số giữ nguyên, trả mã thoát của lệnh; biến môi trường thì `tools/ui.sh env X=1 <lệnh>`. Worktree giao diện giữ `build/ui`. Từ thư mục của worktree:
+
+```sh
+tools/ui.sh tools/configure.sh ui                                      # một lần mỗi worktree; preset của 20.04 bị từ chối ở 24.04 và ngược lại
+tools/ui.sh tools/heavy.sh cmake --build build/ui --target pb-ui pb-ui-tests
+tools/ui.sh ctest --test-dir build/ui -R '^ui$' --output-on-failure    # trước khi merge thêm --repeat until-fail:4
+tools/ui.sh build/ui/ui/pb-ui-tests -input ui/tests/tst_u0.qml         # một file; một hàm: thêm U0::test_window (tên TestCase::hàm)
+tools/ui.sh tools/heavy.sh cmake --build build/ui --target all_qmllint  # sạch là không có dòng Warning (đích vẫn thoát 0)
+tools/ui.sh build/ui/ui/pb-ui --size 1440x900 --screenshot /home/ndmt1at21/photo-beauty/build/shots/<mã>/x.png   # --state, --theme light, --settle ms
+```
+
+- QML không phải build lại: thêm `-import build/ui/ui/live` vào `pb-ui-tests` hay `pb-ui` (như `pb-ui-tests -import build/ui/ui/live -input ui/tests/tst_u2.qml`), module lấy thẳng `ui/qml/*` của worktree thay bản đã biên dịch. Thêm hay xóa file QML, JS thì build lại một lần (`live/` dựng lúc configure); C++ thì luôn build.
+- Module QML `PhotoBeauty` (`import PhotoBeauty`), thư viện tĩnh `pb_qml`; `pb-ui`, `pb-ui-tests` link `pb_qmlplugin`, chưa link `pb_core`. Thêm file là đủ (glob; `cmake --build` tự configure lại): `ui/*.cpp`, `ui/*.h` vào module (`main.cpp` là của `pb-ui`), QML, JS phẳng trong `ui/qml/`, file có dòng `pragma Singleton` là singleton (thêm dòng đó vào file đã có thì chạy lại `tools/ui.sh tools/configure.sh ui`), `ui/tests/tst_*.qml` đọc từ cây nguồn lúc chạy (`pb-ui-tests` không phải build lại).
+- Resource: `ui/fonts/*.ttf`, `*.otf` (`look.h` nạp hết, QML gọi theo tên họ font), `ui/mock/photos/*`, `ui/brand/*.png`, `*.svg`; QML gọi bằng đường dẫn tuyệt đối `qrc:/qt/qml/PhotoBeauty/` + đường dẫn dưới `ui/`, như `qrc:/qt/qml/PhotoBeauty/mock/photos/x.jpg` (đường dẫn tương đối hỏng với `-import`).
+- `main.cpp` đưa vào `Main` qua initial properties `startState` (`--state`), `startTheme` (`--theme dark|light`, "" khi không có), `persist` (true khi chạy thường; false với `--screenshot` và trong test); `--size WxH`, `--settle ms`, `--screenshot png` (tạo thư mục, thoát 0 khi lưu được) xử lý trong `main.cpp`. `pb-ui --screenshot` và `pb-ui-tests` chạy offscreen (scene graph phần mềm như CI) trừ khi đặt `QT_QPA_PLATFORM`.
