@@ -1,35 +1,38 @@
 #pragma once
-// Files as a .pbd needs them (pbd.h): one mapped read-only for its tiles to point into; one written from start to end
-// and flushed to the disk; one moved over another for good. POSIX (mmap, fsync, F_FULLFSYNC on macOS) and Windows
-// (MapViewOfFile, FlushFileBuffers, MoveFileEx).
+// Files as a .pbd needs them (pbd.h): one mapped read-only for its tiles to point into; one written from start to end,
+// or appended to, and flushed to the disk; one moved over another for good. POSIX (mmap, fsync, F_FULLFSYNC on macOS)
+// and Windows (MapViewOfFile, FlushFileBuffers, MoveFileEx).
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 
 namespace pb {
 
-// A file's bytes, mapped read-only, whole, as long as this lives. Linux and macOS keep them whatever happens to the
-// file meanwhile; Windows keeps a mapped file from being replaced or deleted, not from being appended to. Throws
-// std::system_error when the file cannot be opened or mapped. Any thread.
+// A file's bytes from `from` to its end (whole, by default), mapped read-only, as long as this lives: data() is byte
+// `from` of the file. Linux and macOS keep them whatever happens to the file meanwhile; Windows keeps a mapped file
+// from being deleted or cut shorter, not from being replaced or appended to. Throws std::system_error when the file
+// cannot be opened or mapped. Any thread.
 class MappedFile {
  public:
-  explicit MappedFile(const std::filesystem::path&);
+  explicit MappedFile(const std::filesystem::path&, uint64_t from = 0);
   ~MappedFile();
   MappedFile(const MappedFile&) = delete;
   MappedFile& operator=(const MappedFile&) = delete;
-  const uint8_t* data() const { return data_; }  // null when empty
+  const uint8_t* data() const { return data_; }  // null when nothing lies past `from`
   size_t size() const { return size_; }
 
  private:
   const uint8_t* data_ = nullptr;
   size_t size_ = 0;
+  size_t skip_ = 0;  // mapped before data(): views start at a page (Windows: at 64 KB)
 };
 
-// A new file, or one emptied, written from start to end. Throws std::system_error when it cannot be made or written.
-// One thread at a time.
+// A new file, or one emptied, written from start to end; with `append`, an existing one written on at its end, size()
+// starting at its size (Windows: shared as MappedFile shares, so that what maps it reads on). Throws std::system_error
+// when it cannot be made, opened or written. One thread at a time.
 class OutputFile {
  public:
-  explicit OutputFile(const std::filesystem::path&);
+  explicit OutputFile(const std::filesystem::path&, bool append = false);
   ~OutputFile();  // closes it, if close() did not
   OutputFile(const OutputFile&) = delete;
   OutputFile& operator=(const OutputFile&) = delete;

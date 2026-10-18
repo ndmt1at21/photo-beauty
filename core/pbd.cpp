@@ -13,6 +13,7 @@
 #include <zstd.h>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <climits>
 #include <cstring>
@@ -67,15 +68,35 @@ uint32_t get32(const uint8_t* p) {
 uint64_t get64(const uint8_t* p) { return get32(p) | uint64_t(get32(p + 4)) << 32; }
 uint32_t crc_of(const void* p, size_t n) { return uint32_t(crc32_z(0, static_cast<const Bytef*>(p), n)); }
 
+struct Chunk {
+  uint64_t offset = 0;
+  uint32_t size = 0, crc = 0;
+};
+
 // ---- Where tiles opened from a .pbd lie ----
 
-// An opened .pbd: its mapping, which holds its tiles' frames (each tile holds the file, as Tile::elsewhere()'s
-// owner), and the ids of the tiles it made, remembered while it lives.
+// A .pbd as this process last left it, opened or saved: how far it reaches, the footer it ends with, and the ICC
+// profile its last JSON names. Saves only ever append to a .pbd, so a file at any path that still ends so (the same
+// size, the same last 24 bytes: the index's place and CRC) holds these bytes, whatever its name or identity, and a
+// save appends to it. Shared by the mappings of its parts (PbdFile); under saving().
+struct Line {
+  uint64_t end = 0;
+  std::array<uint8_t, kFooter> footer{};
+  std::shared_ptr<const std::vector<uint8_t>> icc;
+  Chunk icc_chunk;
+};
+
+// A mapped part of a .pbd, from byte `base` to the end the file had: it holds the frames of the tiles opened from it
+// or saved into it (each tile holds the file, as Tile::elsewhere()'s owner), and the ids of those tiles, remembered
+// while it lives.
 struct PbdFile {
   MappedFile map;
-  std::vector<uint64_t> ids;  // under places().m
-  explicit PbdFile(const std::filesystem::path& p) : map(p) {}
+  uint64_t base;
+  std::shared_ptr<Line> line;  // set before the tiles are remembered
+  std::vector<uint64_t> ids;   // under places().m
+  PbdFile(const std::filesystem::path& p, uint64_t from) : map(p, from), base(from) {}
   ~PbdFile();
+  const uint8_t* at(uint64_t offset) const { return map.data() + (offset - base); }  // byte `offset` of the file
 };
 
 // A tile's frame in a .pbd: its pixels exactly, for as long as its id stays (a new id comes with new pixels).
@@ -85,7 +106,8 @@ struct Place {
   uint64_t offset = 0;
   uint32_t size = 0, crc = 0;
 };
-// Every tile opened from a .pbd, by id: what a save copies (and M3's keeps). Never destroyed: tiles may outlive main().
+// Every tile opened from a .pbd or saved into one, by id, in the last file it went to: what a save copies, and what a
+// save into that file keeps. Never destroyed: tiles may outlive main().
 struct Places {
   std::mutex m;
   std::unordered_map<uint64_t, Place> by_id;
@@ -100,6 +122,13 @@ PbdFile::~PbdFile() {
   const std::lock_guard l(p.m);
   for (const uint64_t id : ids)
     if (const auto it = p.by_id.find(id); it != p.by_id.end() && it->second.raw == this) p.by_id.erase(it);
+}
+
+// One save at a time in the process: an append checks, writes and notes the end of its file as one step.
+// ponytail: one lock for every file; one per Line if saves of different documents must overlap.
+std::mutex& saving() {
+  static std::mutex* m = new std::mutex;
+  return *m;
 }
 
 // ---- Saving ----
@@ -126,7 +155,7 @@ std::optional<Frame> filed(const Tile& t) {
     f.keep = at.file.lock();
   }
   if (!f.keep) return std::nullopt;
-  f.data = f.keep->map.data() + at.offset, f.size = at.size, f.crc = at.crc;
+  f.data = f.keep->at(at.offset), f.size = at.size, f.crc = at.crc;
   if (crc_of(f.data, f.size) != f.crc)
     return std::nullopt;  // damaged there: compressing it again pins it, which says so
   return f;
@@ -157,10 +186,48 @@ Frame frame(const Tile& t) {
   return f;
 }
 
-struct Chunk {
-  uint64_t offset = 0;
-  uint32_t size = 0, crc = 0;
-};
+// Where t's frame lies in the file `line` reaches through, when it lies there (a save into that file keeps it).
+std::optional<Chunk> kept(const Tile& t, const Line* line) {
+  if (!line) return std::nullopt;
+  std::shared_ptr<const PbdFile> f;  // let go after the lock: it may be the last
+  Chunk c;
+  {
+    Places& p = places();
+    const std::lock_guard l(p.m);
+    const auto it = p.by_id.find(t.id());
+    if (it == p.by_id.end()) return std::nullopt;
+    f = it->second.file.lock();
+    c = {it->second.offset, it->second.size, it->second.crc};
+  }
+  return f && f->line.get() == line ? std::optional<Chunk>(c) : std::nullopt;
+}
+
+// The file a save to `path` appends to: the Line of one of `tiles` that the file at `path` still ends as, else null
+// (a full save). Under saving().
+std::shared_ptr<Line> appendable(const std::filesystem::path& path, const std::vector<const Tile*>& tiles) {
+  std::vector<std::shared_ptr<Line>> lines;  // those the tiles lie in: one, mostly
+  {
+    std::vector<std::shared_ptr<const PbdFile>> files;  // let go after the lock
+    Places& p = places();
+    const std::lock_guard l(p.m);
+    for (const Tile* t : tiles)
+      if (const auto it = p.by_id.find(t->id()); it != p.by_id.end())
+        if (std::shared_ptr<const PbdFile> f = it->second.file.lock();
+            f && std::find(lines.begin(), lines.end(), f->line) == lines.end()) {
+          lines.push_back(f->line);
+          files.push_back(std::move(f));
+        }
+  }
+  std::error_code e;
+  const uint64_t size = std::filesystem::file_size(path, e);
+  if (e || size < kHeader + kFooter) return nullptr;
+  for (const std::shared_ptr<Line>& line : lines)
+    if (line->end == size) {
+      const MappedFile tail(path, size - kFooter);  // the file may have changed since: its own last bytes
+      if (tail.size() == kFooter && std::memcmp(tail.data(), line->footer.data(), kFooter) == 0) return line;
+    }
+  return nullptr;
+}
 
 // Chunks appended to the file, and the index of them.
 struct Writer {
@@ -172,12 +239,39 @@ struct Writer {
     out.write(data, n);
     return c;
   }
-  uint32_t add(const void* data, size_t n, uint32_t crc) {
-    chunks.push_back(write(data, n, crc));
+  uint32_t add(const void* data, size_t n, uint32_t crc) { return keep(write(data, n, crc)); }
+  uint32_t add(const Frame& f) { return add(f.data, f.size, f.crc); }
+  uint32_t keep(const Chunk& c) {  // one in the file already
+    chunks.push_back(c);
     return uint32_t(chunks.size() - 1);
   }
-  uint32_t add(const Frame& f) { return add(f.data, f.size, f.crc); }
 };
+
+// After a save into `path`, finished as `next` says (its end, footer, ICC profile): the file mapped from `from` (where
+// the save began to write), each tile it wrote a frame for reading from there (Tile::also_elsewhere(), so that its
+// copies in RAM go for free) and remembered there, `line` set to `next`. Should the file at `path` not end so any more
+// (moved over meanwhile) or not map, nothing changes: the next save to it is a full one.
+void adopt(const std::filesystem::path& path, uint64_t from, const std::shared_ptr<Line>& line, const Line& next,
+           const std::vector<std::pair<const Tile*, Chunk>>& written) {
+  PROFILE_ZONE("pbd_adopt");
+  std::shared_ptr<PbdFile> f;
+  try {
+    f = std::make_shared<PbdFile>(path, from);
+  } catch (const std::system_error&) {
+    return;
+  }
+  if (f->map.size() != next.end - from || std::memcmp(f->at(next.end - kFooter), next.footer.data(), kFooter) != 0)
+    return;
+  f->line = line;
+  *line = next;
+  for (const auto& [t, c] : written) t->also_elsewhere(f, f->at(c.offset), c.size);
+  Places& p = places();
+  const std::lock_guard l(p.m);
+  for (const auto& [t, c] : written) {
+    p.by_id[t->id()] = {f, f.get(), c.offset, c.size, c.crc};
+    f->ids.push_back(t->id());
+  }
+}
 
 void samples(std::string& s, const Pixel& v, int channels) {
   for (int c = 0; c < channels; c++) s += (c ? "," : "[") + std::to_string(v[size_t(c)]);
@@ -418,21 +512,42 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
       for (const TileXY xy : at) mips.push_back({g, level, xy});
     }
 
-  std::filesystem::path tmp = path;
-  tmp += ".tmp-" + std::to_string(std::random_device{}());
+  // Into the file the document's tiles lie in, when `path` is that file as this process left it: appended to, its
+  // footer before staying good. Else a new file beside `path`, moved over it at the end.
+  const std::lock_guard one(saving());
+  std::shared_ptr<Line> line = appendable(path, tiles);
+  std::filesystem::path tmp;  // a full save's file, until moved over `path`
   try {
-    OutputFile out(tmp);
-    std::vector<uint8_t> head(kMagic, kMagic + 8);
-    put32(head, kFormat), put32(head, 0);
-    head.insert(head.end(), version(), version() + std::min<size_t>(std::strlen(version()), kHeader - 16));
-    head.resize(kHeader);
-    out.write(head.data(), head.size());
+    std::optional<OutputFile> file;
+    if (line) {
+      file.emplace(path, true);
+      if (file->size() != line->end) file.reset(), line = nullptr;  // changed since
+    }
+    if (!line) {
+      tmp = path;
+      tmp += ".tmp-" + std::to_string(std::random_device{}());
+      file.emplace(tmp);
+      std::vector<uint8_t> head(kMagic, kMagic + 8);
+      put32(head, kFormat), put32(head, 0);
+      head.insert(head.end(), version(), version() + std::min<size_t>(std::strlen(version()), kHeader - 16));
+      head.resize(kHeader);
+      file->write(head.data(), head.size());
+    }
+    OutputFile& out = *file;
+    const uint64_t from = out.size();  // where this save's chunks begin
     Writer w{out};
     std::unordered_map<uint64_t, uint32_t> chunk_of;  // tile id -> chunk
+    std::vector<std::pair<const Tile*, Chunk>> written;  // tiles whose frames this save writes
+    std::vector<const Tile*> fresh;                      // of `tiles`, those not in the file yet
+    for (const Tile* t : tiles)
+      if (const std::optional<Chunk> c = kept(*t, line.get()))
+        chunk_of[t->id()] = w.keep(*c);
+      else
+        fresh.push_back(t);
     size_t done = 0;
     const auto batch = [&](size_t n) {
       done += n;
-      if (o.progress) o.progress(double(done) / double(tiles.size() + mips.size() + 1));
+      if (o.progress) o.progress(double(done) / double(fresh.size() + mips.size() + 1));
     };
     const auto check = [&] {
       if (cancelled(o.cancel)) throw Cancelled();
@@ -440,38 +555,44 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
 
     // Full-size tiles a batch at a time, compressed on the pool while the batch before is written, in order (by item 0
     // of the batch's parallel_for, on whichever thread takes it).
-    std::vector<Frame> compressed;  // the batch before, tiles[b - its size, b)
+    std::vector<Frame> compressed;  // the batch before, fresh[b - its size, b)
     const auto write = [&](size_t end) {
-      for (size_t i = 0; i < compressed.size(); i++)
-        chunk_of[tiles[end - compressed.size() + i]->id()] = w.add(compressed[i]);
+      for (size_t i = 0; i < compressed.size(); i++) {
+        const Tile* t = fresh[end - compressed.size() + i];
+        const uint32_t c = chunk_of[t->id()] = w.add(compressed[i]);  // what throws, before the braces (GCC 9)
+        written.push_back({t, w.chunks[c]});
+      }
     };
-    for (size_t b = 0; b < tiles.size(); b += kBatch) {
+    for (size_t b = 0; b < fresh.size(); b += kBatch) {
       check();
-      const size_t n = std::min(kBatch, tiles.size() - b);
+      const size_t n = std::min(kBatch, fresh.size() - b);
       std::vector<Frame> frames(n);
       parallel_for(int(n) + 1, [&](int i0, int i1) {
         for (int i = i0; i < i1; i++)
           if (i == 0)
             write(b);
           else
-            frames[size_t(i - 1)] = frame(*tiles[b + size_t(i - 1)]);
+            frames[size_t(i - 1)] = frame(*fresh[b + size_t(i - 1)]);
       });
       compressed = std::move(frames);
       batch(n);
     }
-    write(tiles.size());
+    write(fresh.size());
     // Then the mip tiles, built as they go, each new one (by id) written once.
     std::vector<std::string> mip_entries(grids.size());
+    std::vector<TilePtr> held;  // mip tiles written, alive until adopted
     for (size_t b = 0; b < mips.size(); b += kBatch) {
       check();
       const size_t n = std::min(kBatch, mips.size() - b);
       std::vector<TilePtr> made(n);
+      std::vector<std::optional<Chunk>> in_file(n);
       std::vector<Frame> frames(n);
       parallel_for(int(n), [&](int i0, int i1) {
         for (int i = i0; i < i1; i++) {
           const Job& m = mips[b + size_t(i)];
           const TilePtr& t = made[size_t(i)] = mip(*grids[m.grid], m.level, m.at.x, m.at.y);
-          if (t && !t->is_solid() && !chunk_of.count(t->id())) frames[size_t(i)] = frame(*t);
+          if (t && !t->is_solid() && !chunk_of.count(t->id()) && !(in_file[size_t(i)] = kept(*t, line.get())))
+            frames[size_t(i)] = frame(*t);
         }
       });
       for (size_t i = 0; i < n; i++) {
@@ -485,8 +606,14 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
         } else if (t->is_solid()) {
           samples(s, t->value(), channels);
         } else {
-          const auto [it, fresh] = chunk_of.emplace(t->id(), 0);
-          if (fresh) it->second = w.add(frames[i]);
+          const auto [it, first] = chunk_of.emplace(t->id(), 0);
+          if (first && in_file[i]) {
+            it->second = w.keep(*in_file[i]);
+          } else if (first) {
+            it->second = w.add(frames[i]);
+            written.push_back({t, w.chunks[it->second]});
+            held.push_back(made[i]);
+          }
           s += std::to_string(it->second);
         }
         s += ']';
@@ -498,6 +625,12 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
     const Preview pv = preview(doc);
     const std::vector<uint8_t> pv_jpeg = jpeg(pv, doc.icc.get());
     const uint32_t pv_chunk = w.add(pv_jpeg.data(), pv_jpeg.size(), crc_of(pv_jpeg.data(), pv_jpeg.size()));
+    Line next;  // the file once saved
+    next.icc = doc.icc;
+    if (doc.icc)
+      next.icc_chunk = line && line->icc && *line->icc == *doc.icc
+                           ? line->icc_chunk
+                           : w.write(doc.icc->data(), doc.icc->size(), crc_of(doc.icc->data(), doc.icc->size()));
     std::string s = "{\"app\":" + json(version()).dump() + ",\"width\":" + std::to_string(doc.width) +
                     ",\"height\":" + std::to_string(doc.height) + ",\"mode\":\"" +
                     (doc.mode == Mode::Gray ? "gray" : "rgb") +
@@ -505,11 +638,12 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
                     ",\"nextId\":" + std::to_string(doc.next_id) + ",\"selected\":[";
     for (size_t i = 0; i < doc.selected.size(); i++) s += (i ? "," : "") + std::to_string(doc.selected[i]);
     s += ']';
-    if (doc.icc)
-      s += ",\"icc\":" +
-           std::to_string(w.add(doc.icc->data(), doc.icc->size(), crc_of(doc.icc->data(), doc.icc->size())));
-    s += ",\"preview\":{\"chunk\":" + std::to_string(pv_chunk) + ",\"level\":" + std::to_string(pv.level) +
-         "},\"layers\":";
+    if (doc.icc) s += ",\"icc\":" + std::to_string(w.keep(next.icc_chunk));
+    // Bytes no chunk of this save's index covers (indexes, JSONs, previews and tiles of saves before), for compacting.
+    uint64_t used = kHeader;
+    for (size_t i = 1; i < w.chunks.size(); i++) used += w.chunks[i].size;
+    s += ",\"waste\":" + std::to_string(out.size() - used) + ",\"preview\":{\"chunk\":" + std::to_string(pv_chunk) +
+         ",\"level\":" + std::to_string(pv.level) + "},\"layers\":";
     const std::function<void(const Layer&)> layers = [&](const Layer& g) {
       s += '[';
       for (size_t i = 0; i < g.children.size(); i++) {
@@ -557,11 +691,18 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
     foot.insert(foot.end(), kFooterMagic, kFooterMagic + 8);
     out.write(foot.data(), foot.size());
     out.sync();
+    next.end = out.size();
+    std::copy(foot.begin(), foot.end(), next.footer.begin());
     out.close();
-    replace_file(tmp, path);
+    if (!line) {
+      replace_file(tmp, path);
+      tmp.clear();
+      line = std::make_shared<Line>();
+    }
+    adopt(path, from, line, next, written);
   } catch (...) {
     std::error_code e;
-    std::filesystem::remove(tmp, e);
+    if (!tmp.empty()) std::filesystem::remove(tmp, e);
     throw;
   }
   if (o.progress) o.progress(1);
@@ -572,7 +713,7 @@ OpenedPbd open_pbd(const std::filesystem::path& path) {
   try {
     Reader r;
     try {
-      r.file = std::make_shared<PbdFile>(path);
+      r.file = std::make_shared<PbdFile>(path, 0);
     } catch (const std::system_error& e) {
       corrupt(std::string("cannot open: ") + e.code().message());
     }
@@ -585,15 +726,23 @@ OpenedPbd open_pbd(const std::filesystem::path& path) {
       throw DecodeError(v > kFormat ? DecodeError::Kind::Codec : DecodeError::Kind::Corrupt,
                         v > kFormat ? "pbd_version" : "",
                         "pbd: format " + std::to_string(v) + (v > kFormat ? ", newer than this app's" : ""));
-    const uint8_t* foot = r.bytes(n - kFooter, kFooter);
-    if (std::memcmp(foot + 16, kFooterMagic, 8) != 0) corrupt("no footer: cut short");
-    const uint64_t at = get64(foot);
-    const uint32_t size = get32(foot + 8);
-    if (at < kHeader || at > n - kFooter || size > n - kFooter - at || size < 4) corrupt("the footer is damaged");
-    const uint8_t* index = r.bytes(at, size);
-    if (crc_of(index, size) != get32(foot + 12)) corrupt("the index is damaged (CRC)");
-    const uint32_t count = get32(index);
-    if (count < 1 || size - 4 != uint64_t(count) * kEntry) corrupt("the index is damaged");
+    // The last footer whose index is whole: past it lies what a save cut short left, if anything, searched back once.
+    // ponytail: byte by byte through a torn tail (a GB a second); a marker at each save's start if big appends make
+    // opening after a crash slow.
+    uint64_t end = n, at = 0;
+    uint32_t size = 0, count = 0;
+    for (;; end--) {
+      if (end < kHeader + kFooter) corrupt("no footer: cut short, or damaged");
+      if (r.data[end - 1] != kFooterMagic[7] || std::memcmp(r.data + end - 8, kFooterMagic, 8) != 0) continue;
+      const uint8_t* foot = r.data + end - kFooter;
+      at = get64(foot), size = get32(foot + 8);
+      if (at < kHeader || at > end - kFooter || size > end - kFooter - at || size < 4) continue;
+      const uint8_t* index = r.data + at;
+      count = get32(index);
+      if (crc_of(index, size) == get32(foot + 12) && count >= 1 && size - 4 == uint64_t(count) * kEntry) break;
+    }
+    r.read += n - end + kFooter + size;
+    const uint8_t* index = r.data + at;
     r.chunks.resize(count);
     for (uint32_t i = 0; i < count; i++) {
       const uint8_t* e = index + 4 + kEntry * i;
@@ -620,11 +769,16 @@ OpenedPbd open_pbd(const std::filesystem::path& path) {
       d->next_id = LayerId(integer(member(j, "nextId"), 1, UINT32_MAX, "the next layer id"));
       for (const json& id : array(j, "selected"))
         d->selected.push_back(LayerId(integer(id, 1, UINT32_MAX, "a selected layer")));
+      auto line = std::make_shared<Line>();  // what a save into this file appends to
+      line->end = end;
+      std::memcpy(line->footer.data(), r.data + end - kFooter, kFooter);
       if (j.contains("icc")) {
         const uint32_t i = r.number(member(j, "icc"));
         const uint8_t* p = r.chunk(i, "the ICC profile");
-        d->icc = std::make_shared<const std::vector<uint8_t>>(p, p + r.chunks[i].size);
+        d->icc = line->icc = std::make_shared<const std::vector<uint8_t>>(p, p + r.chunks[i].size);
+        line->icc_chunk = r.chunks[i];
       }
+      r.file->line = std::move(line);
       const json& pv = member(j, "preview");
       out.preview =
           r.preview(r.number(member(pv, "chunk")), int(integer(member(pv, "level"), 0, 31, "the preview's level")), *d);

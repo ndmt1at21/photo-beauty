@@ -37,35 +37,50 @@ namespace {
 
 #ifdef _WIN32
 
-MappedFile::MappedFile(const std::filesystem::path& path) {
-  // Shared every way, so that a save can append to it (M3) and move another file meanwhile.
+MappedFile::MappedFile(const std::filesystem::path& path, uint64_t from) {
+  // Shared every way, so that a save can append to it (M3) and move another file over it meanwhile.
   const HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (f == INVALID_HANDLE_VALUE) fail("cannot open", path);
+  SYSTEM_INFO si{};
+  GetSystemInfo(&si);
+  const uint64_t base = from - from % si.dwAllocationGranularity;  // where views may start
   LARGE_INTEGER n{};
-  const HANDLE m =
-      GetFileSizeEx(f, &n) && n.QuadPart > 0 ? CreateFileMappingW(f, nullptr, PAGE_READONLY, 0, 0, nullptr) : nullptr;
-  const void* view = m ? MapViewOfFile(m, FILE_MAP_READ, 0, 0, 0) : nullptr;  // the view keeps the mapping open
+  const bool any = GetFileSizeEx(f, &n) && uint64_t(n.QuadPart) > from;
+  const HANDLE m = any ? CreateFileMappingW(f, nullptr, PAGE_READONLY, 0, 0, nullptr) : nullptr;
+  const void* view = m ? MapViewOfFile(m, FILE_MAP_READ, DWORD(base >> 32), DWORD(base), SIZE_T(n.QuadPart - base))
+                       : nullptr;  // the view keeps the mapping open
   const DWORD error = GetLastError();
   if (m) CloseHandle(m);
   CloseHandle(f);
-  if (n.QuadPart > 0 && !view) {
+  if (any && !view) {
     SetLastError(error);
     fail("cannot map", path);
   }
-  data_ = static_cast<const uint8_t*>(view);
-  size_ = view ? size_t(n.QuadPart) : 0;
+  if (!view) return;
+  skip_ = size_t(from - base);
+  data_ = static_cast<const uint8_t*>(view) + skip_;
+  size_ = size_t(uint64_t(n.QuadPart) - from);
 }
 
 MappedFile::~MappedFile() {
-  if (data_) UnmapViewOfFile(data_);
+  if (data_) UnmapViewOfFile(data_ - skip_);
 }
 
-OutputFile::OutputFile(const std::filesystem::path& path) : path_(path) {
-  const HANDLE h =
-      CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-  if (h == INVALID_HANDLE_VALUE) fail("cannot create", path);
+OutputFile::OutputFile(const std::filesystem::path& path, bool append) : path_(path) {
+  const HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE,
+                               append ? FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE : FILE_SHARE_READ,
+                               nullptr, append ? OPEN_EXISTING : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (h == INVALID_HANDLE_VALUE) fail(append ? "cannot open" : "cannot create", path);
+  LARGE_INTEGER n{};
+  if (append && !(GetFileSizeEx(h, &n) && SetFilePointerEx(h, LARGE_INTEGER{}, nullptr, FILE_END))) {
+    const DWORD error = GetLastError();
+    CloseHandle(h);
+    SetLastError(error);
+    fail("cannot open", path);
+  }
   handle_ = intptr_t(h);
+  size_ = uint64_t(n.QuadPart);
 }
 
 OutputFile::~OutputFile() {
@@ -100,29 +115,41 @@ void replace_file(const std::filesystem::path& from, const std::filesystem::path
 
 #else
 
-MappedFile::MappedFile(const std::filesystem::path& path) {
+MappedFile::MappedFile(const std::filesystem::path& path, uint64_t from) {
   const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
   if (fd < 0) fail("cannot open", path);
   struct stat st{};
-  void* view = nullptr;
-  if (fstat(fd, &st) == 0 && st.st_size > 0) view = mmap(nullptr, size_t(st.st_size), PROT_READ, MAP_SHARED, fd, 0);
+  const uint64_t size = fstat(fd, &st) == 0 ? uint64_t(st.st_size) : 0;
+  const uint64_t base = from - from % uint64_t(sysconf(_SC_PAGESIZE));  // where mappings may start
+  void* view = size > from ? mmap(nullptr, size_t(size - base), PROT_READ, MAP_SHARED, fd, off_t(base)) : nullptr;
   const int error = errno;
   ::close(fd);  // the mapping keeps the file
-  if (view == MAP_FAILED || (!view && st.st_size != 0)) {
+  if (view == MAP_FAILED) {
     errno = error;
     fail("cannot map", path);
   }
-  data_ = static_cast<const uint8_t*>(view);
-  size_ = view ? size_t(st.st_size) : 0;
+  if (!view) return;
+  skip_ = size_t(from - base);
+  data_ = static_cast<const uint8_t*>(view) + skip_;
+  size_ = size_t(size - from);
 }
 
 MappedFile::~MappedFile() {
-  if (data_) munmap(const_cast<uint8_t*>(data_), size_);
+  if (data_) munmap(const_cast<uint8_t*>(data_ - skip_), size_ + skip_);
 }
 
-OutputFile::OutputFile(const std::filesystem::path& path) : path_(path) {
-  handle_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
-  if (handle_ < 0) fail("cannot create", path);
+OutputFile::OutputFile(const std::filesystem::path& path, bool append) : path_(path) {
+  handle_ = ::open(path.c_str(), append ? O_WRONLY | O_APPEND | O_CLOEXEC : O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                   0666);
+  if (handle_ < 0) fail(append ? "cannot open" : "cannot create", path);
+  struct stat st{};
+  if (append && fstat(int(handle_), &st) != 0) {
+    const int error = errno;
+    ::close(int(handle_));
+    errno = error;
+    fail("cannot open", path);
+  }
+  size_ = append ? uint64_t(st.st_size) : 0;
 }
 
 OutputFile::~OutputFile() {
