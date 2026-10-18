@@ -32,7 +32,7 @@ DialogBox {
     property string channel: "gray"  // the one Blend If shows
     readonly property var effects: Object.keys(factory())
     readonly property var names: ({ dropShadow: qsTr("Drop Shadow"), stroke: qsTr("Stroke"), colorOverlay: qsTr("Color Overlay"), gradientOverlay: qsTr("Gradient Overlay") })
-    readonly property var gradients: Presets.GR_GROUPS.reduce((o, g, gi) => o.concat(g[1].map((x, i) => [gi + "," + i, x[0]])), [])  // ["g,i", name]
+    readonly property var gradients: Presets.GR_GROUPS.reduce((o, g, gi) => o.concat(g[1].map((x, i) => [gi + "," + i, x[0]])), []).filter(x => ((Prefs.values.gradients || {}).hidden || []).indexOf(x[0]) < 0)  // ["g,i", name], not those Gradients deleted
 
     title: qsTr("Layer Style")
     boxWidth: 920

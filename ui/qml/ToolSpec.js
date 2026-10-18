@@ -3,8 +3,9 @@
 // The toolbar and the options bars (docs/ui-tasks.md, U5): the prototype's tables, copied below by a script (not
 // retyped: build/shots/u5/tools/gen_toolspec.js of the main checkout), and what the toolbar, the options bar, the brush
 // picker, the status bar and Phím tắt (U20) read from them. Tools.values keeps a bar's cells by "<bar>:<index of the
-// item in its BARS row>" and the brush of a painting bar by "<bar>:size" (px), ":hard" (%), ":spacing" (%), ":tip" (an
-// index of Presets.TIPS); a key not set has its item's default: Tools.value(key, ToolSpec.def(bar, i)), brush(bar).
+// item in its BARS row>" (but those another panel shows too: key()) and the brush of a painting bar by "<bar>:size" (px),
+// ":hard" (%), ":spacing" (%), ":tip" (an index of Presets.TIPS); a key not set has its item's default:
+// Tools.value(key, ToolSpec.def(bar, i)), brush(bar).
 
 // ---- copied by gen_toolspec.js from build/proto/Main.dc.html ----------------------------------------------------------
 
@@ -176,6 +177,7 @@ RANGES[qsTr("Diffusion")] = [1, 7]
 RANGES[qsTr("Độ cứng")] = [0, 100]
 RANGES[qsTr("Số cạnh")] = [3, 100]
 RANGES[qsTr("Tỉ lệ sao")] = [1, 100]
+RANGES[qsTr("Cỡ chữ")] = [1, 1296]  // as Character's
 
 // A bar's item as an object: kind (the DSL's: "ic", "|", "L", "D", "F", "FC", "T", "B", "C", "BT", "BI", "M", "S", "S2",
 // "GT", "BP", "SW", "G", "IF", "AN", "SP"), dis (dimmed, "!"), and by kind: text, tip, icon, w (px), list, listName (D),
@@ -189,7 +191,7 @@ function cell(bar, i) {
     case "L": c.text = a[1]; break
     case "D": c.def = a[1]; c.w = +a[2] || 104; c.list = LISTS[a[3]] || [a[1]]; c.listName = a[3] || ""; c.tip = a[4] || a[1]; break
     case "F": case "FC": c.text = a[1]; c.tip = a[4] || a[1]; number(c, a[2] || "", +a[3] || 64); break
-    case "IF": number(c, a[2], +a[3] || 56); c.icon = a[1]; c.tip = a[4] || a[2]; break
+    case "IF": c.icon = a[1]; c.tip = a[4] || a[2]; number(c, a[2], +a[3] || 56); break
     case "T": c.icon = a[1]; c.tip = a[2]; c.def = a[3] === "1"; c.act = a[4] || ""; break
     case "B": c.icon = a[1]; c.tip = a[2]; c.act = a[3] || ""; break
     case "C": c.text = a[1]; c.def = a[2] === "1"; break
@@ -207,7 +209,7 @@ function cell(bar, i) {
 }
 // A number cell's default ("1.200 px", "0,00°", "" empty) as value, unit and decimals, its box w px wide.
 function number(c, s, w) {
-    const u = /(px|pt|%|°)$/.exec(s), d = /,(\d+)/.exec(s), r = RANGES[c.text]
+    const u = /(px|pt|%|°)$/.exec(s), d = /,(\d+)/.exec(s), r = RANGES[c.text] || RANGES[c.tip]  // an IF cell by its tip
     c.def = s === "" ? NaN : Fmt.pnum(s)
     c.unit = u ? u[1] : ""
     c.decimals = d ? d[1].length : 0
@@ -217,6 +219,11 @@ function number(c, s, w) {
 }
 function cells(bar) { return (BARS[bar] || []).map((x, i) => cell(bar, i)) }
 function def(bar, i) { return cell(bar, i).def }
+// Cells another panel shows too keep one value with it, as Photoshop's: a painting bar's tip angle is Brush Settings'
+// "<bar>:angle", the Type bar's font, style, size and colour are Character's "char:*". key(bar, i): where Tools keeps cell i.
+var SHARED = { "brush:16": "brush:angle", "pencil:13": "pencil:angle", "eraser:16": "eraser:angle", "dodge:10": "dodge:angle", "sponge:10": "sponge:angle",
+    "type:2": "char:font", "type:3": "char:style", "type:4": "char:size", "type:10": "char:color" }
+function key(bar, i) { return SHARED[bar + ":" + i] || bar + ":" + i }
 // A painting bar's brush as it starts: { size px, hard %, spacing %, tip }, from its BP item.
 function brush(bar) {
     const a = ((BARS[bar] || []).find((x) => x.indexOf("BP~") === 0) || "BP~400~0").split("~")

@@ -869,6 +869,58 @@ Item {
             keyClick(Qt.Key_Escape)
             tryVerify(() => !cell(w, 2).picker.visible)
         }
+        // The picker's presets are Brushes' ("brushes:groups", U13): one made or deleted there shows here too (U23).
+        function test_brush_picker_presets() {
+            const w = open()
+            const bp = cell(w, 2)
+            const names = () => root.findAll(bp.picker.contentItem, o => o instanceof AbstractButton && o.height === 32).map(p => p.Accessible.name)
+            mouseClick(bp)
+            tryVerify(() => bp.picker.opened)
+            compare(names().length, 6)
+            Tools.setValue("brushes:groups", [["Của tôi", [["Cọ mới", 77, 30, ""]]], ["Cơ bản", [["Tròn cứng", 60, 100, ""]]]])
+            compare(names(), ["Cọ mới", "Tròn cứng"])
+            Tools.setValue("brushes:groups", null)  // Khôi phục: the presets
+            compare(names().length, 6)
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !bp.picker.visible)
+        }
+        // A cell another panel also shows keeps one value with it, as Photoshop's (U23): a painting bar's tip angle is
+        // Brush Settings' "<bar>:angle" (its tip's own until set), the Type bar's font, style, size and colour Character's.
+        function test_bar_shared() {
+            const w = open()
+            inject(w, { ColorPickerDialog: probeDialogC })
+            bar(w, "brush")
+            compare(field(cell(w, 16)).value, 0)
+            Tools.setValue("brush:tip", 3)  // Dẹt: 30° anticlockwise
+            compare(field(cell(w, 16)).value, 30)
+            type(field(cell(w, 16)), "45")
+            compare([Tools.value("brush:angle"), Tools.value("brush:16")], [45, undefined])
+            Tools.setValue("brush:angle", -20)  // Brush Settings' Angle
+            compare(field(cell(w, 16)).value, -20)
+            for (const b of [["burn", 10, "dodge"], ["pencil", 13, "pencil"], ["eraser", 16, "eraser"], ["sponge", 10, "sponge"]]) {
+                bar(w, b[0])
+                type(field(cell(w, b[1])), "15")
+                compare(Tools.value(b[2] + ":angle"), 15, b[0])
+            }
+            bar(w, "type")
+            pick(w, cell(w, 2), "Montserrat")
+            pick(w, cell(w, 3), "Bold")
+            type(field(cell(w, 4)), "36")
+            compare([Tools.value("char:font"), Tools.value("char:style"), Tools.value("char:size")], ["Montserrat", "Bold", 36])
+            type(field(cell(w, 4)), "2000")
+            compare(Tools.value("char:size"), 1296, "Character's limit")
+            mouseClick(cell(w, 10))
+            tryVerify(() => !!probe(w))
+            compare(probe(w).params.color, "#f4ede4")
+            probe(w).params.picked("#00ff00")
+            compare(Tools.value("char:color"), "#00ff00")
+            probe(w).close()
+            tryVerify(() => !probe(w))
+            Tools.setValues({ "char:font": "Lora", "char:size": 72, "char:color": "#ff0000" })  // as Character sets them
+            compare([cell(w, 2).displayText, field(cell(w, 4)).value], ["Lora", 72])
+            verify(Qt.colorEqual(cell(w, 10).color, "#ff0000"))
+            compare(Object.keys(Tools.values).filter(k => /^(type|brush|dodge|pencil|eraser|sponge):\d+$/.test(k)), [], "no keys of their own")
+        }
         // The status bar's Công cụ đang dùng names the tool from ToolSpec.
         function test_status_tool() {
             const w = open()

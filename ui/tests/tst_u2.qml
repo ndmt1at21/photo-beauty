@@ -344,6 +344,14 @@ Item {
             s.unit = "px"
             compare(s.valueText, "+20 px")
         }
+        function test_slider_thumb() {  // the prototype's .sl thumb (U23): 11 px, 2 of it a ring of the panel colour, on the track
+            const s = createTemporaryObject(sliderC, root, { value: 35 })
+            const knob = root.find(s, o => o instanceof Rectangle && Qt.colorEqual(o.color, Theme.thumb))
+            compare([knob.width, knob.height, knob.parent.width, knob.parent.height], [7, 7, 11, 11])
+            verify(Qt.colorEqual(knob.parent.color, Theme.p1))
+            const mid = knob.mapToItem(s, 3.5, 3.5)
+            compare([mid.x, mid.y], [70, 23.5], "its middle on the value, on the track's middle")
+        }
         function test_slider_keys_track() {
             const s = root.record(createTemporaryObject(sliderC, root, { value: 35, track: ["#ff0000", "#ffff00", "#00ff00", "#00ffff"] }))
             s.forceActiveFocus(Qt.TabFocusReason)
@@ -684,6 +692,7 @@ Item {
             waitForPolish(g)
             const heads = root.all(g, o => o instanceof AbstractButton && o.text !== "")
             compare(heads.filter(h => h.visible).map(h => h.text), ["Da và son", "Ánh sáng"], "no heading for a group without a name")
+            compare(heads[1].height, 26, "the artboard's .grp (U23)")
             const tiles = () => root.all(g, o => o instanceof AbstractButton && o.text === "" && o.visible)
             compare(tiles().length, 5, "a closed group hides its tiles")
             compare(tiles()[0].width, 30)

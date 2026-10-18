@@ -58,10 +58,11 @@ Item {
         function settle(w) { waitForRendering(w.contentItem) }
         function panel(w) { return find(w.contentItem, o => o instanceof LayersPanel && o.visible) }
         function list(w) { return find(panel(w), o => o instanceof ListView) }
-        // The rows made and shown, top first; one by its text (an effect's row by its effect).
+        // The rows made and shown, top first; one by its text (an effect's row by its effect). Only the view's row for its
+        // index: a row it keeps for reuse (reuseItems) stays `visible` with an old y and index.
         function rows(w) {
-            const p = panel(w)
-            return all(p, o => o instanceof LayerRow && o.visible && !!o.entry && o.y + o.height > list(w).contentY && o.y < list(w).contentY + list(w).height)
+            const l = list(w)
+            return all(panel(w), o => o instanceof LayerRow && l.itemAtIndex(o.index) === o && !!o.entry && o.y + o.height > l.contentY && o.y < l.contentY + l.height)
                 .sort((a, b) => a.y - b.y)
         }
         function names(w) { return rows(w).map(r => r.text) }
@@ -145,6 +146,18 @@ Item {
             for (let k = 0; k < (n || 1); k++)
                 Docs.current.undo()
             settle(w)
+        }
+        // The menu of the … of the Layers tabs, open.
+        function panelMenu(w) {
+            const t = find(w.contentItem, o => o instanceof PanelTabs && o.visible && o.tabs.indexOf("Layers") >= 0)
+            click(w, find(t, o => o instanceof ToolToggle && o.icon.name === "more_horiz"))
+            let m = null
+            for (let i = 0; i < t.resources.length; i++)
+                if (t.resources[i] instanceof PopupMenu)
+                    m = t.resources[i]
+            tryVerify(() => m.opened)
+            settle(w)
+            return m
         }
 
         // ---- rows ---------------------------------------------------------------------------------------------------
@@ -462,6 +475,41 @@ Item {
             compare(names(w).slice(3), ["Cao", "Thấp", "Curves 1", "Dodge & Burn", "Heal", "Background"])
             compare([Docs.current.index, last()], [n + 1, "Sắp xếp layer"])
         }
+        // Held at the list's bottom or top edge, a drag scrolls it, the row dragged kept while it is out of sight; in the
+        // middle it stops; the drop is where the pointer is then (U23).
+        function test_drag_scrolls() {
+            const w = open()
+            for (let k = 0; k < 50; k++)
+                verify(Docs.current.run({ op: "newLayer" }))
+            settle(w)
+            const l = list(w), p = panel(w)
+            l.contentY = 0
+            settle(w)
+            const r = rows(w)[0], name = r.text, x = xOf(r, "name")
+            mousePress(r, x, r.height / 2)
+            mouseMove(r, x, r.height / 2 + 10, -1, Qt.LeftButton)
+            mouseMove(l, x + 30, l.height - 3, -1, Qt.LeftButton)
+            tryVerify(() => l.atYEnd, 10000, "down to the end")
+            verify(l.itemAtIndex(0) === r && r.text === name, "the row dragged kept, not pooled (a resize empties the pool)")
+            mouseMove(l, x + 30, l.height / 2, -1, Qt.LeftButton)
+            const y = l.contentY
+            wait(300)
+            compare(l.contentY, y, "no edge, no scrolling")
+            verify(p.drop && p.drop.at > 40, "a row far down: " + JSON.stringify(p.drop))
+            const under = p.shown[p.drop.at].l.props.name, mode = p.drop.mode
+            mouseRelease(l, x + 30, l.height / 2)
+            settle(w)
+            compare(last(), "Sắp xếp layer")
+            const order = Docs.current.layers.map(q => q.props.name), at = order.indexOf(name)
+            compare(order[mode === "above" ? at + 1 : at - 1], under)
+            mousePress(row(w, name), x, 16)  // and back up to the top
+            mouseMove(row(w, name), x, 26, -1, Qt.LeftButton)
+            mouseMove(l, x + 30, 2, -1, Qt.LeftButton)
+            tryVerify(() => l.atYBeginning, 10000, "up to the top")
+            mouseRelease(l, x + 30, 2)  // not moved since: the drop followed the scrolling
+            settle(w)
+            compare(Docs.current.layers[0].props.name, name)
+        }
 
         // ---- effects ------------------------------------------------------------------------------------------------
         // A layer with a style: fx, then Hiệu ứng and a row per effect, each with its eye; fx folds them.
@@ -546,19 +594,39 @@ Item {
         // The panel's menu: thumbnails Nhỏ, Vừa, Lớn, kept in Tools while tabs change.
         function test_thumb_size() {
             const w = open()
-            const p = panel(w)
-            compare(p.menu.map(i => [i.l, i.check]), [["Thumbnail nhỏ", false], ["Thumbnail vừa", true], ["Thumbnail lớn", false]])
-            p.menu[2].act()
+            const thumbs = () => panel(w).menu.filter(i => /^Thumbnail/.test(i.l || ""))
+            compare(thumbs().map(i => [i.l, i.check]), [["Thumbnail nhỏ", false], ["Thumbnail vừa", true], ["Thumbnail lớn", false]])
+            thumbs()[2].act()
             settle(w)
             compare([rows(w)[0].height, rows(w)[0].size], [48, 40])
             Tools.showPanel("Channels")
             settle(w)
             Tools.showPanel("Layers")
             settle(w)
-            compare([rows(w)[0].height, panel(w).menu[2].check], [48, true])
-            panel(w).menu[0].act()
+            compare([rows(w)[0].height, thumbs()[2].check], [48, true])
+            thumbs()[0].act()
             settle(w)
             compare(rows(w)[0].height, 24)
+        }
+        // The panel's menu, the … of its tabs (U23): the seven Layer commands of the Shortcuts artboard with their keys,
+        // greyed as the Layer menu greys them, each with its English name for Phím tắt (U20); then the thumbnails.
+        function test_panel_menu() {
+            const w = open()
+            const m = panelMenu(w)
+            const cmds = ["Layer mới…", "Nhân bản layer…", "Xóa layer", "Gộp xuống", "Gộp layer đang hiện", "Làm phẳng ảnh", "Create Clipping Mask"]
+            compare(texts(m), cmds.concat(["-", "Thumbnail nhỏ", "Thumbnail vừa", "Thumbnail lớn"]))
+            compare(cmds.map(t => item(m, t).keys), ["Ctrl ⇧ N", "", "", "Ctrl E", "Ctrl ⇧ E", "", "Ctrl Alt G"])
+            compare(panel(w).menu.filter(i => i.l).map(i => i.en), ["New Layer", "Duplicate Layer", "Delete Layer", "Merge Down", "Merge Visible", "Flatten Image", "",
+                "Small Thumbnails", "Medium Thumbnails", "Large Thumbnails"])
+            verify(cmds.every(t => item(m, t).enabled))
+            choose(w, m, "Làm phẳng ảnh")
+            compare([last(), Docs.current.layers.length], ["Làm phẳng ảnh", 1])
+            const one = panelMenu(w)  // one layer: nothing to delete or merge
+            compare(cmds.map(t => item(one, t).enabled), [true, true, false, false, false, false, true])
+            choose(w, one, "Layer mới…")
+            compare([last(), Docs.current.layers.length], ["Layer mới", 2])
+            choose(w, panelMenu(w), "Gộp xuống")
+            compare([last(), Docs.current.layers.length], ["Gộp xuống", 1])
         }
 
         // ---- filter -------------------------------------------------------------------------------------------------

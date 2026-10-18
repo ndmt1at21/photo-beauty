@@ -148,7 +148,7 @@ Item {
     }
     TypeBox {
         // A text layer picked with the Type tool: one line of the bar's size, centred (the mock keeps no place).
-        readonly property real em: Tools.value("type:4", 48) * (ov.doc ? ov.doc.ppi : 72) / 72  // pt to document px
+        readonly property real em: Tools.value("char:size", 48) * (ov.doc ? ov.doc.ppi : 72) / 72  // Character's (the Type bar's) pt to document px
         readonly property real w: Math.min(ov.docW - 2 * em, 9.2 * em)
         anchors.fill: parent
         visible: ov.has && !!ov.active && ov.active.kind === "text" && ov.tool === "type"
@@ -157,7 +157,7 @@ Item {
         box: visible ? { x: (ov.docW - w) / 2, y: (ov.docH - 2 * em) / 2, w: w, h: 2 * em } : null
         text: ov.active ? ov.active.props.name : ""
         fontSize: em
-        color: Tools.value("type:10", "#f4ede4")
+        color: Tools.value("char:color", "#f4ede4")
     }
     GradientLine {
         anchors.fill: parent
@@ -241,8 +241,9 @@ Item {
         size: ov.size
         diameter: Tools.value(ov.brushBar + ":size", ov.brushDef.size)
         hardness: Tools.value(ov.brushBar + ":hard", ov.brushDef.hard)
-        roundness: ov.tipOf[4]
-        tipAngle: ov.tipOf[3]
+        // Brush Settings' Roundness, Angle (the bar's too; anticlockwise, the tip's own not set), mirrored by one flip
+        roundness: Math.round(Tools.value(ov.brushBar + ":roundness", ov.tipOf[4] * 100)) / 100  // whole %, as its field
+        tipAngle: (Tools.value(ov.brushBar + ":flipX", false) !== Tools.value(ov.brushBar + ":flipY", false) ? 1 : -1) * Tools.value(ov.brushBar + ":angle", -ov.tipOf[3])
         square: ov.tipOf[2] !== "50%"
         tip: ov.picking ? 0 : Prefs.value("paintCursor") ?? 3  // the Eyedropper for a moment: its own pointer
         crosshair: Prefs.value("crosshair") ?? true

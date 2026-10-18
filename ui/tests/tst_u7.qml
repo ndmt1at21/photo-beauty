@@ -444,6 +444,12 @@ Item {
             compare([c.cursor.diameter, c.cursor.hardness], [300, 0], "Burn: Dodge's bar")
             Tools.setValue("dodge:tip", 3)
             compare([c.cursor.roundness, c.cursor.tipAngle, c.cursor.square], [0.45, -30, false])
+            Tools.setValues({ "dodge:angle": 60, "dodge:roundness": 80 })  // Brush Settings' (the bar's angle too, U23), anticlockwise
+            compare([c.cursor.roundness, c.cursor.tipAngle], [0.8, -60])
+            Tools.setValue("dodge:flipX", true)  // mirrored, as Brush Settings' stroke
+            compare(c.cursor.tipAngle, 60)
+            Tools.setValue("dodge:flipY", true)
+            compare(c.cursor.tipAngle, -60)
             Tools.setValue("dodge:tip", 4)
             verify(c.cursor.square)
             Tools.setTool("brush", "brush")
@@ -550,6 +556,10 @@ Item {
             Tools.setTool("type", "type")
             verify(c.type.visible)
             compare([c.type.text, c.type.fontSize], ["Chữ mẫu", 200])
+            Tools.setValues({ "char:size": 24, "char:color": "#ff0000" })  // Character's, which the Type bar shows (U23)
+            compare(c.type.fontSize, 100)
+            verify(Qt.colorEqual(c.type.color, "#ff0000"))
+            Tools.setValues({ "char:size": null, "char:color": null })
             mouseClick(c.type.editor, 5, 5)
             verify(c.type.editor.activeFocus)
             keyClick(Qt.Key_End)

@@ -36,7 +36,7 @@ Column {
                 id: head
                 visible: grp.named
                 width: grp.width
-                implicitHeight: 20
+                implicitHeight: 26  // .grp
                 text: grp.modelData[0]
                 font.pointSize: Theme.pt(12)
                 Accessible.role: Accessible.Button

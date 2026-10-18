@@ -140,8 +140,8 @@ function nextName(groups, base) {
 
 // The Gradients panel's library is Presets.GR_GROUPS itself, which Tools.gradient, its recent ones and Layer Style's
 // Gradient Overlay point into by [group, index]: a gradient or a group added is appended to it, so no index moves, and
-// one deleted is hidden (Prefs "gradients": { open: [bool…], hidden: ["group,index"…], group: where one is added }).
-// ponytail: appended presets live as long as the app (a mock: N-tasks bring a preset store); hidden ones stay in Layer Style's list.
+// one deleted is hidden (Prefs "gradients": { open: [bool…], hidden: ["group,index"…], group: where one is added }), in
+// Layer Style's list too. ponytail: appended presets live as long as the app (a mock: N-tasks bring a preset store).
 function gradients(st) {
     st = st || {}
     return { open: st.open || Presets.GR_GROUPS.map((g, i) => i < 2), hidden: st.hidden || [], group: st.group === undefined ? -1 : st.group }

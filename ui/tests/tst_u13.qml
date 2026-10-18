@@ -304,6 +304,17 @@ Item {
             mouseDoubleClickSequence(root.find(angle, o => o instanceof Text && o.text === "Angle" && o.visible))
             compare(v("brush:angle"), 0, "a double-click on the label: the tip's own angle")
         }
+        function test_settings_look() {  // as PanelsB (U23): the heading in line with the sections' names; Angle, Roundness lit
+            const p = make(settingsC)
+            const head = root.find(p, o => o instanceof Text && o.text === "Brush Tip Shape")
+            compare(head.mapToItem(p, 0, 0).x, 34, "PanelsB's 12 + 14 + 8")
+            for (const l of ["Angle", "Roundness"]) {
+                const t = root.find(number(p, l), o => o instanceof Text && o.text === l && o.visible)
+                verify(Qt.colorEqual(t.color, Theme.t2), l + ", as every field's label, not dimmed as if off")
+                verify(number(p, l).enabled)
+            }
+            verify(check(p, "Spacing"), "PanelsB's box for Spacing stays")
+        }
         function test_tip_shape_control() {  // TipShape alone: the value protocol, Shift steps of 15°
             const t = make(tipC)
             t.started.connect(() => root.log.push("s"))

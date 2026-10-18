@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import "ToolSpec.js" as ToolSpec
+import "Presets.js" as Presets
 import "Fmt.js" as Fmt
 
 // The options bar, 36 high (docs/ui-tasks.md, U5; artboard OptionsBars, the options bar of Main.dc.html): the cells of
@@ -10,12 +11,14 @@ import "Fmt.js" as Fmt
 // "<bar>:<index>" and, not set yet, at its default (ToolSpec.def()). The brush of a painting bar opens BrushPicker;
 // Select and Mask… opens its space, the colour cells the Color Picker, Brush Settings and Character their panels, the
 // gradient Gradients; the rest of the buttons run the prototype's actions (Docs.exec()). Rotate View's angle is the
-// view's (Doc.view). Popups close at a press outside and keep it from the canvas.
+// view's (Doc.view); a painting bar's tip angle is Brush Settings', the Type bar's font, style, size and colour are
+// Character's (ToolSpec.key()). Popups close at a press outside and keep it from the canvas.
 Rectangle {
     id: ob
     readonly property string bar: ToolSpec.barOf(Tools.tool, Tools.xf, Tools.warp)
     readonly property var win: Window.window  // Main: openDialog(), openSpace(), hasSpace()
     readonly property Doc doc: Docs.current
+    readonly property real tipAngle: -(Presets.TIPS[Tools.value(bar + ":tip", 0)] || Presets.TIPS[0])[3]  // Brush Settings' Angle not set: the tip's
 
     implicitWidth: 1440
     implicitHeight: 36
@@ -81,8 +84,8 @@ Rectangle {
     component Slot: Loader {
         required property var modelData
         required property int index
-        readonly property string key: ob.bar + ":" + index
-        readonly property var value: Tools.value(key, modelData.def)
+        readonly property string key: ToolSpec.key(ob.bar, index)
+        readonly property var value: Tools.value(key, key === ob.bar + ":angle" ? ob.tipAngle : modelData.def)
         readonly property bool off: ob.dimmed(index, modelData)
         Layout.fillWidth: modelData.kind === "SP"
         Layout.minimumWidth: modelData.kind === "SP" ? 0 : implicitWidth

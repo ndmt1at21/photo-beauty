@@ -516,6 +516,23 @@ Item {
             act(p, "Khôi phục gradient mặc định")  // what was added goes, what was deleted comes back
             compare([p.groups.length, p.groups[0][1].length, p.groups[1][1].length, Prefs.values.gradients], [4, 4, 6, undefined])
         }
+        function test_gradient_deleted_in_layer_style() {  // one deleted in Gradients leaves Layer Style's list too (U23)
+            const w = open()
+            Tools.showPanel("Gradients")
+            const p = shown(w, GradientsPanel)
+            const tiles = () => root.all(p, o => o instanceof T.AbstractButton && o.height === 30 && o.width !== p.recentWidth && o.visible)
+            click(w, tiles()[6])  // Da và son's third, Son hồng
+            mouseClick(toggle(p, "delete"))
+            compare(Prefs.values.gradients.hidden, ["1,2"])
+            const d = w.openDialog("LayerStyle", { page: "gradientOverlay" })
+            tryVerify(() => d.opened)
+            const g = root.find(d.contentItem, o => o instanceof Dropdown && o.visible && /^\d+,\d+$/.test(String((o.options[0] || [])[0])))
+            verify(g, "the Gradient drop-down")
+            compare(g.options.map(o => o[0]).indexOf("1,2"), -1)
+            compare(g.options.length, 14, "the others stay")
+            d.close()
+            tryVerify(() => !w.dialogs.length)
+        }
         function test_gradient_tile() {  // a tile is the pieces of its CSS, over the checker when it lets through
             const w = open()
             Tools.showPanel("Gradients")

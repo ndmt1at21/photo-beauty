@@ -61,7 +61,7 @@ Item {
             height: 28
             color: Theme.sel
             Text {
-                x: 31
+                x: 34  // PanelsB's .bsh: padding 12, a 14 px spacer, gap 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Brush Tip Shape")
                 color: Theme.t1
@@ -152,7 +152,6 @@ Item {
                     NumberField {
                         width: parent.width
                         label: qsTr("Angle")
-                        labelColor: Theme.t3
                         unit: "°"
                         min: -180
                         max: 180
@@ -163,7 +162,6 @@ Item {
                     NumberField {
                         width: parent.width
                         label: qsTr("Roundness")
-                        labelColor: Theme.t3
                         unit: "%"
                         min: 0
                         max: 100

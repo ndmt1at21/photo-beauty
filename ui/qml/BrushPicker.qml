@@ -9,7 +9,7 @@ import "Fmt.js" as Fmt
 
 // The brush of a painting bar (docs/ui-tasks.md, U5; BP of the options bar and bp of Main.dc.html): a cell with the tip,
 // the size and a chevron, which opens the brush picker under it: Size 1–5.000 px, Hardness, Spacing 1–1.000 %, the six
-// tips of Presets.TIPS (a tip brings its hardness), the first six brush presets (size and hardness). Values go to Tools
+// tips of Presets.TIPS (a tip brings its hardness), the first six of Brushes' presets (size and hardness). Values go to Tools
 // by "<bar>:size", ":hard", ":spacing", ":tip". The picker closes at a press outside, which stops there and does not
 // reach the canvas. Tip draws a tip as the prototype's CSS does.
 AbstractButton {
@@ -20,7 +20,7 @@ AbstractButton {
     readonly property real hard: Tools.value(bar + ":hard", start.hard)
     readonly property real spacingPct: Tools.value(bar + ":spacing", start.spacing)
     readonly property int tip: Tools.value(bar + ":tip", start.tip)
-    readonly property var presets: Presets.BR_GROUPS.reduce((o, g) => o.concat(g[1]), []).slice(0, 6)
+    readonly property var presets: Tools.value("brushes:groups", Presets.BR_GROUPS).reduce((o, g) => o.concat(g[1]), []).slice(0, 6)  // Brushes' (U13)
     readonly property alias picker: pop
 
     implicitWidth: implicitContentWidth + leftPadding + rightPadding

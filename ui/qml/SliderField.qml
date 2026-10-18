@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "Fmt.js" as Fmt
 
-// Slider row of the prototype (.sr): label and value over a 3 px track with an 11 px thumb; `track`
+// Slider row of the prototype (.sr): label and value over a 3 px track with an 11 px thumb (7 px inside its ring); `track`
 // lists the colours of a gradient track (hue, saturation…, evenly spaced), plain trk when empty; no
 // label: the track alone (the slider of a number field). Press or drag the track, ← → ↑ ↓ (Shift ×10)
 // when focused. Value protocol of NumberField: started(), moved(v)… while the value follows the
@@ -91,14 +91,14 @@ Control {
                     }
                 }
             }
-            Rectangle {  // thumb: 11 px, ringed in the panel colour
-                x: s.pos * bar.width - 7.5
-                y: -6
-                width: 15
-                height: 15
-                radius: 7.5
+            Rectangle {  // thumb: the prototype's 11 px, its 2 px border a ring in the panel colour
+                x: s.pos * bar.width - 5.5
+                y: -4
+                width: 11
+                height: 11
+                radius: 5.5
                 color: Theme.p1
-                Rectangle { x: 2; y: 2; width: 11; height: 11; radius: 5.5; color: s.enabled ? Theme.thumb : Theme.t4 }
+                Rectangle { x: 2; y: 2; width: 7; height: 7; radius: 3.5; color: s.enabled ? Theme.thumb : Theme.t4 }
             }
             MouseArea {
                 id: area

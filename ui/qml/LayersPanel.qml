@@ -9,9 +9,10 @@ import "MenuSpec.js" as MenuSpec
 // Main.dc.html), the first tab of the dock's group Layers, Channels. At the head: the filter by name and kind, Blend,
 // Opacity, Fill (greyed without a layer or on the Background) and the four locks, for the layers picked. The rows
 // (LayerRow), a ListView that makes only those in view: a click picks a layer (Ctrl adds, Shift a run), a drag moves the
-// picked ones, into a group too (Alt: copies), a double click on the name renames it (Enter, Esc; Layer › Đổi tên layer…
-// as well), elsewhere opens Layer Style; the right button, the Layer menu's items. At the foot: Link, fx (Layer Style),
-// a mask, fill and adjustment layers, a group, a layer, delete. Every change is a Doc.run() command, a History step;
+// picked ones (held at the list's edge, it scrolls), into a group too (Alt: copies), a double click on the name renames
+// it (Enter, Esc; Layer › Đổi tên layer… as well), elsewhere opens Layer Style; the right button, the Layer menu's items.
+// At the foot: Link, fx (Layer Style), a mask, fill and adjustment layers, a group, a layer, delete; in the panel's menu,
+// seven Layer commands and the thumbnail sizes. Every change is a Doc.run() command, a History step;
 // a drag on Opacity or Fill is one. What lasts while the panel is made again (it is, on every tab change) is Tools'.
 Item {
     id: panel
@@ -31,8 +32,18 @@ Item {
     property Doc shownOf: null  // the document they are of
     property int renaming: 0  // the layer whose name is being typed
     property var drop: null  // where a drag would put the layers: { id, mode "above" | "below" | "into", at (row) }
-    property var menu: [[qsTr("Thumbnail nhỏ"), "Small Thumbnails"], [qsTr("Thumbnail vừa"), "Medium Thumbnails"], [qsTr("Thumbnail lớn"), "Large Thumbnails"]]
-        .map((t, i) => ({ l: t[0], en: t[1], check: Tools.value("layers:thumb", 1) === i, act: () => Tools.setValue("layers:thumb", i) }))
+    property real dragY  // the pointer's y in the list then
+    property Item held: null  // the row dragged, kept made while it is out of sight
+    // The panel's menu: the Layer commands of the Shortcuts artboard, as the Layer menu's items (keys, greyed where Main
+    // says they cannot run), with English names for Phím tắt (U20); then the thumbnail sizes.
+    property var menu: [[qsTr("Layer mới…"), "New Layer", "@newLayer"], [qsTr("Nhân bản layer…"), "Duplicate Layer", "@dupLayer"],
+        [qsTr("Xóa layer"), "Delete Layer", "@delLayer"], [qsTr("Gộp xuống"), "Merge Down", "@merge:down"],
+        [qsTr("Gộp layer đang hiện"), "Merge Visible", "@merge:visible"], [qsTr("Làm phẳng ảnh"), "Flatten Image", "@merge:flat"],
+        [qsTr("Create Clipping Mask"), "", "@clip"]].map(t => {
+            const it = panel.layerItem(t[2]), w = panel.main
+            return { l: t[0], en: t[1], k: it.k, disabled: !w || !w.can(it), act: () => w && w.act(it) }
+        }).concat([MenuSpec.SEP], [[qsTr("Thumbnail nhỏ"), "Small Thumbnails"], [qsTr("Thumbnail vừa"), "Medium Thumbnails"], [qsTr("Thumbnail lớn"), "Large Thumbnails"]]
+        .map((t, i) => ({ l: t[0], en: t[1], check: Tools.value("layers:thumb", 1) === i, act: () => Tools.setValue("layers:thumb", i) })))
 
     // The prototype's KINDS, LOCKS; the effects of props.fx (U18) in its order; colour labels, as Photoshop's (data the
     // document keeps in props.tag, not theme colours).
@@ -201,7 +212,11 @@ Item {
     function dragTo(r, y) {
         if (!drop && doc.selected.indexOf(r.l.id) < 0)
             run({ op: "selectLayers", layers: [r.l.id] })
-        const at = (y + list.contentY) / rowHeight, i = Math.max(0, Math.min(shown.length - 1, Math.floor(at)))
+        dragY = y
+        place()
+    }
+    function place() {  // the drop at dragY, as the list is scrolled now
+        const at = (dragY + list.contentY) / rowHeight, i = Math.max(0, Math.min(shown.length - 1, Math.floor(at)))
         if (i < 0 || !shown[i])
             return
         const t = shown[i], f = at - i, group = t.l.kind === "group" && !t.fx
@@ -214,6 +229,7 @@ Item {
     function dropAt(mods) {
         const t = drop
         drop = null
+        held = null
         if (!t || mods < 0 || !doc)
             return
         const order = doc.layers.map(l => l.id)
@@ -249,6 +265,10 @@ Item {
     // ---- menus --------------------------------------------------------------------------------------------------------
     // The Layer menu of MenuSpec (the one with Đổi tên layer…) and the item of it whose submenu holds `pred`'s item.
     function layerMenu() { return MenuSpec.MENUS.find(m => m.items.some(it => it.act === "@rename")) }
+    function layerItem(act) {  // its item that runs act: one of its own before a submenu's ("Nhân bản layer…", not Ctrl J's)
+        const items = layerMenu().items
+        return items.find(it => it.act === act) || items.reduce((o, it) => o || (Array.isArray(it.sub) && it.sub.find(x => x.act === act)) || null, null)
+    }
     function subOf(pred) { return (layerMenu().items.find(it => Array.isArray(it.sub) && it.sub.some(pred)) || { sub: [] }).sub }
     // MenuSpec items as the menu bar shows them now: greyed where Main says they cannot run.
     function resolve(items) {
@@ -437,7 +457,11 @@ Item {
             onPicked: (mods, part) => panel.pick(r.item, mods, part)
             onOpened: part => panel.opened(r.item, part)
             onMenuAsked: (x, y) => panel.contextMenu(r, x, y)
-            onDragged: (x, y) => panel.dragTo(r.item, r.mapToItem(list, x, y).y)
+            onDragged: (x, y) => {
+                panel.held = r
+                panel.dragTo(r.item, r.mapToItem(list, x, y).y)
+            }
+            ListView.delayRemove: panel.held === r  // scrolled off while dragged: kept, not pooled (a resize destroys pooled rows, the press with them)
             onDropped: mods => panel.dropAt(mods)
             onRenamed: (name, ok) => panel.rename(r.item.l, name, ok)
         }
@@ -446,6 +470,18 @@ Item {
             height: 40
             Accessible.name: qsTr("Bỏ chọn layer, xem thuộc tính tài liệu")
             onClicked: panel.deselect()
+        }
+    }
+    // A drag held at the list's top or bottom edge, or past it, scrolls it, faster the further in.
+    // ponytail: the rows between the one held and the view stay made while it scrolls far (all 1.000 at worst).
+    Timer {
+        readonly property real by: !panel.drop ? 0 : panel.dragY < 24 ? panel.dragY - 24 : Math.max(0, panel.dragY - list.height + 24)
+        running: by !== 0
+        interval: 16
+        repeat: true
+        onTriggered: {
+            list.contentY = Math.max(list.originY, Math.min(list.contentY + by / 2, list.originY + list.contentHeight - list.height))
+            panel.place()
         }
     }
     Rectangle {  // where a drag would put the layers: a line between rows, a frame round a group
