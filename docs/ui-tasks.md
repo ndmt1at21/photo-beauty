@@ -18,7 +18,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | --- | --- | --- | --- |
 | Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | Xong (17/10) |
 | Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | Xong (18/10) |
-| Panel | U8–U14 | dock và 16 panel | U8, U10, U11, U13, U14 xong; U9, U12 đang làm (18/10) |
+| Panel | U8–U14 | dock và 16 panel | Xong (18/10) |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Xong (18/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10); U23 đang làm (18/10) |
 | Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
@@ -146,7 +146,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
   - Color Picker: màu mới, hiện tại; 9 ô H S B, R G B, L a b có radio kênh của ô SV; hex; Thêm vào Swatches; OK, Hủy; mở từ ô màu của thanh công cụ, thanh tùy chọn, panel, hộp thoại.
 
   **Xong khi:** `tst_u11`: đổi qua lại sRGB, HSB, Lab giữ màu (lệch ≤ 1 mức 8 bit), gõ hex, kéo ô SV; ảnh chụp các panel và hộp thoại cạnh artboard.
-- [ ] **U12 · History, Navigator, Histogram, Info** (đang làm: worktree `u12`, 17/10; giao diện; Nhỏ; cần U8; file `ui/qml/{History,Navigator,Histogram,Info}Panel.qml`, `ui/tests/tst_u12.qml`): theo artboard `PanelsA`, `PanelsB` và phần `hs`, `nv`, `inf` của `Main.dc.html`:
+- [x] **U12 · History, Navigator, Histogram, Info** (18/10/2026, a881576: History (bước, snapshot, nhảy bước), Navigator (ảnh thu nhỏ theo view, khung đỏ kéo được, zoom), Histogram đếm thật trên ảnh mẫu, Info với X, Y theo `Tools.pointer`; sửa có phép `SideColumn.qml` (scrim không lấy hover); 13 hàm test; 23/23 đột biến bị bắt; lệch: X, Y theo con trỏ (prototype số tĩnh), Histogram số đếm thật (prototype vẽ minh họa), nút ô đọc màu không bấm được; còn: thumbnail snapshot và nguồn đếm Histogram chờ lõi (N1); giao diện; Nhỏ; cần U8; file `ui/qml/{History,Navigator,Histogram,Info}Panel.qml`, `ui/tests/tst_u12.qml`): theo artboard `PanelsA`, `PanelsB` và phần `hs`, `nv`, `inf` của `Main.dc.html`:
   - History: snapshot có thumbnail ở đầu, bước có icon công cụ, bước hiện tại sáng, bước sau mờ, nhấp để quay về; tài liệu mới từ bước, snapshot mới, xóa bước này và các bước sau.
   - Navigator: ảnh thu nhỏ có khung đang xem (xoay theo view), kéo khung để đi; ô zoom, thanh trượt theo log.
   - Histogram: dạng gọn RGB đếm từ ảnh mẫu thu nhỏ 160 px (`Canvas` ẩn như snapone), nút tính lại.
