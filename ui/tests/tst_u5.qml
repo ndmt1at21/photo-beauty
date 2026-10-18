@@ -745,6 +745,7 @@ Item {
             bar(w, "pencil")
             mouseClick(cell(w, 15))  // C: Auto Erase
             compare(Tools.value("pencil:15"), true)
+            inject(w, { SelectMaskSpace: null })  // without its space (before U15): dimmed
             bar(w, "wand")
             mouseClick(cell(w, 11))  // BI: Select Subject
             compare(Docs.current.selection, "subject")
