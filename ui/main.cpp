@@ -53,6 +53,10 @@ int main(int argc, char* argv[]) {
     if ((!qstrncmp(a, "screenshot", 10) || !qstrncmp(a, "start-screen", 12)) && !qEnvironmentVariableIsSet("QT_QPA_PLATFORM"))
       qputenv("QT_QPA_PLATFORM", "offscreen");
   }
+  // Qt 6.11.3's incremental JS GC can sweep a VariantAssociationObject (a QVariantMap seen from JS) whose memory another
+  // object holds: SIGSEGV, SEGV_ACCERR in ~QVariantHash at libQt6Qml+0x2cd54b under load (U23d). The whole GC at once
+  // instead, as before Qt 6.8. ponytail: longer GC pauses; drop this once Qt has fixed it.
+  if (!qEnvironmentVariableIsSet("QV4_GC_TIMELIMIT")) qputenv("QV4_GC_TIMELIMIT", "0");
   QGuiApplication app(argc, argv);
   app.setApplicationName("photo-beauty");
   app.setOrganizationName("photo-beauty");
