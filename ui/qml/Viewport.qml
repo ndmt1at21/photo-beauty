@@ -18,7 +18,9 @@ Rectangle {
     readonly property bool sized: frame.width > 0 && frame.height > 0
     // What the canvas, the overlays and the rulers show: Doc.view moved into bounds (View.constrain), and written back,
     // so the menus' zoom go on from what is seen.
-    readonly property var view: doc && doc.view ? (sized ? View.constrain(doc.view, size, doc.w, doc.h) : doc.view) : null
+    readonly property var view: doc && doc.view ? (sized ? View.constrain(doc.view, size, docSize.width, docSize.height) : doc.view) : null
+    // The canvas's document while it shows a file (PB_CANVAS=<path>; N1 gives Doc the real size), else Doc's.
+    readonly property size docSize: canvas.docSize.width > 0 ? canvas.docSize : Qt.size(doc ? doc.w : 0, doc ? doc.h : 0)
     property var origins: ({})  // the rulers' 0 of each document by file (the corner dragged), document pixels
     readonly property var origin: (doc && origins[doc.file]) || ({ x: 0, y: 0 })
     readonly property var unitNames: Prefs.panes.units[0].options  // Thiết lập › Thước: Pixels … Percent
@@ -50,7 +52,7 @@ Rectangle {
             show(View.rotateTo(view, 0))
     }
 
-    function show(v) { if (doc) doc.setView(sized ? View.constrain(v, size, doc.w, doc.h) : v) }
+    function show(v) { if (doc) doc.setView(sized ? View.constrain(v, size, docSize.width, docSize.height) : v) }
     // Document pixels in a unit of Thiết lập › Thước: px, in, cm, mm, pt, pica, % of the side.
     function perUnit(vertical) {
         const ppi = doc ? doc.ppi : 72
@@ -251,14 +253,19 @@ Rectangle {
         clip: true
         MockCanvas {
             anchors.fill: parent
+            visible: CanvasEnv.document === ""
             doc: vp.doc
             view: vp.view
             size: vp.size
         }
-        DocCanvas {  // V1: render.h's View and test card over the mock canvas with PB_CANVAS=pattern, until V2
+        DocCanvas {  // V1, V2b: the test card with PB_CANVAS=pattern, over the mock canvas; the file PB_CANVAS names in its place
+            id: canvas
             anchors.fill: parent
-            visible: CanvasEnv.pattern && !!vp.view
+            visible: (CanvasEnv.pattern || CanvasEnv.document !== "") && !!vp.view
             view: vp.view ?? ({})
+            source: CanvasEnv.document
+            pasteboard: vp.color
+            onDocSizeChanged: if (docSize.width > 0) vp.show({ x: docSize.width / 2, y: docSize.height / 2, zoom: View.fit(docSize.width, docSize.height, vp.size, 0), angle: 0 })
         }
         MouseArea {
             id: input

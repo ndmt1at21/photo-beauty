@@ -33,10 +33,11 @@ Item {
                    msg + ": " + JSON.stringify(a) + " ≠ " + JSON.stringify(b))
         }
         function size() { return { w: canvas.width, h: canvas.height, dpr: Screen.devicePixelRatio } }
+        // The frame up shows view v (shown: V2b). Frames come from a job: one of an earlier view may come up after v is set.
+        function up(item, v) { const s = item.shown; return s.x === v.x && s.y === v.y && s.zoom === v.zoom && s.angle === v.angle }
         function show(view) {  // grabImage() renders what is up: no waitForRendering(), which waits for the next frame
-            const n = canvas.frames
             canvas.view = view
-            tryVerify(() => canvas.frames > n, 5000, "a frame of " + JSON.stringify(view))
+            tryVerify(() => up(canvas, view), 5000, "a frame of " + JSON.stringify(view))
         }
         // What device pixel (i, j) of a canvas of size s ({ w, h, dpr }) shows of the test card (render.h) at `view`, by
         // View.js: [R, G, B], or null where the document points under it and the pixels left and above lie too near a
@@ -93,10 +94,9 @@ Item {
             const a = createTemporaryObject(dcC, root, { width: 160, height: 200 })
             const b = createTemporaryObject(dcC, root, { x: 160, width: 160, height: 200 })
             for (let k = 0; k < 8; k++) {  // past the textures' pools
-                const na = a.frames, nb = b.frames
                 a.view = { x: 100.3 + k, y: 50.6, zoom: 1, angle: 0 }
                 b.view = { x: 1000.3, y: 2000.7 + k, zoom: 0.125, angle: 30 }
-                tryVerify(() => a.frames > na && b.frames > nb, 5000, "a frame of each")
+                tryVerify(() => up(a, a.view) && up(b, b.view), 5000, "a frame of each")
             }
             check(a, 1000)
             check(b, 1000)

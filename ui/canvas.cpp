@@ -3,6 +3,7 @@
 #include "canvas.h"
 
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QPlatformSurfaceEvent>
@@ -12,6 +13,8 @@
 #include <QQuickWindow>
 #include <QSGImageNode>
 #include <QSGTransformNode>
+#include <QScreen>
+#include <QUrl>
 #include <QVulkanFunctions>
 #include <QVulkanInstance>
 #include <QtQuick/qsgtexture_platform.h>
@@ -25,12 +28,16 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <map>
+#include <cstring>
+#include <filesystem>
+#include <mutex>
 #include <utility>
 
 #include "gpu.h"
 #include "jobs.h"
+#include "open.h"
 #include "pattern.spv.h"
+#include "pbd.h"
 #include "profile.h"
 
 Q_LOGGING_CATEGORY(lcGpu, "pb.gpu", QtWarningMsg)  // QT_LOGGING_RULES="pb.gpu=true": the frames' route, each frame
@@ -52,6 +59,7 @@ constexpr const char* kShareExtension = "VK_KHR_external_memory_fd";
 
 struct GpuWindow : QObject {
   std::unique_ptr<pb::gpu::Device> dev;  // the frames'
+  std::mutex lock;                       // one thread at a time on dev: the canvases' frame jobs
   pb::gpu::KernelPtr pattern;            // shaders/pattern.slang
   QVulkanInstance vk;
   pb::gpu::Shared ids;              // of the frames' GPU and driver
@@ -311,10 +319,206 @@ bool same(const pb::View& a, const pb::View& b) {
          a.height == b.height && a.dpr == b.dpr;
 }
 
+// A path, or a file: URL's.
+std::filesystem::path local(const QString& s) {
+  const QUrl url(s);
+  return QFileInfo(url.isLocalFile() ? url.toLocalFile() : s).filesystemFilePath();
+}
+
+// A texture of the frames' device a frame went into.
+struct Frame {
+  std::shared_ptr<pb::gpu::Texture> tex;
+  uint64_t serial = 0;  // its import's key in the paint node
+  uint64_t freeAt = 0;  // the window's frame from which none in flight samples it
+};
+
+// The .pbd's preview where the frame shows the document, nearest, its 8-bit values as they are; the pasteboard past
+// the canvas. ponytail: right for sRGB documents on sRGB screens; the Presenter's colours (Source, Display) if others
+// show it long enough to tell.
+QImage previewFrame(const pb::Preview& p, const pb::View& v, const pb::DocState& doc, const pb::Look& look) {
+  const pb::View::Pixels px = v.pixels();
+  QImage im(px.width, px.height, QImage::Format_RGBA8888_Premultiplied);
+  const uint32_t board = look.pasteboard[0] | look.pasteboard[1] << 8 | look.pasteboard[2] << 16 | 0xff000000u;
+  const int g = p.channels == 3 ? 1 : 0, b = p.channels == 3 ? 2 : 0;
+  pb::parallel_for(px.height, [&](int begin, int end) {
+    for (int j = begin; j < end; j++) {
+      auto* row = reinterpret_cast<uint32_t*>(im.scanLine(j));
+      for (int i = 0; i < px.width; i++) {
+        const double x = px.origin[0] + i * px.across[0] + j * px.down[0];
+        const double y = px.origin[1] + i * px.across[1] + j * px.down[1];
+        if (!(x >= 0 && y >= 0 && x < doc.width && y < doc.height)) {
+          row[i] = board;
+          continue;
+        }
+        const size_t u = size_t(std::min(int(x) >> p.level, p.width - 1));
+        const size_t w = size_t(std::min(int(y) >> p.level, p.height - 1));
+        const uint8_t* q = &p.pixels[(w * size_t(p.width) + u) * size_t(p.channels)];
+        row[i] = q[0] | uint32_t(q[g]) << 8 | uint32_t(q[b]) << 16 | 0xff000000u;
+      }
+    }
+  });
+  return im;
+}
+
+// Canvas.shown: what a frame of view v showed.
+QVariantMap stats(const pb::Presenter::Frame& f, const pb::View& v, bool preview) {
+  return {{"x", v.x},           {"y", v.y},           {"zoom", v.zoom},           {"angle", v.angle},
+          {"tiles", f.tiles},   {"coarser", f.coarser}, {"missing", f.missing}, {"built", f.built},
+          {"pending", f.pending}, {"preview", preview}};
+}
+
 }  // namespace
 
-Canvas::Canvas(QQuickItem* parent) : QQuickItem(parent) { setFlag(ItemHasContents); }
-Canvas::~Canvas() = default;
+// What a canvas shares with its frame job (a Latest, Interactive: one frame at a time, the newest asked for next) and
+// the scene graph (the render thread, during sync): the frame up and the textures off screen, under m. Jobs hold it,
+// so it outlives the canvas until they are done.
+struct CanvasState {
+  std::mutex m;
+  Canvas* canvas = nullptr;  // null once it goes; told under m
+  Frame onScreen;            // the frame up through the GPU: its texture
+  std::vector<Frame> pool;   // off screen, for the next frames of their size
+  QImage image;              // the frame up through the CPU (a preview on either route)
+  bool fresh = false;        // a frame the scene graph has not taken yet
+  // The job's alone, after m: they go first, and their on_ready() takes m.
+  uint64_t serials = 0;
+  std::weak_ptr<const pb::DocState> previewed;  // the document whose preview went up
+  std::unique_ptr<pb::Presenter> gpu, cpu;  // gpu: under GpuWindow::lock
+  pb::Latest job{pb::Priority::Interactive};
+
+  ~CanvasState() {
+    const std::lock_guard l(gpuWindow().lock);
+    gpu.reset();
+  }
+
+  // The presenters' on_ready(), on a pool thread: tiles a frame lacked came, so another frame.
+  std::function<void()> ready() {
+    return [this] {
+      const std::lock_guard l(m);
+      if (canvas) QMetaObject::invokeMethod(canvas, [c = canvas] { c->ready_++, c->polish(); }, Qt::QueuedConnection);
+    };
+  }
+  // The GPU presenter before the first document comes: its kernels compile 1.7 s the first time on a machine (B3).
+  void warm() {
+    const std::lock_guard l(gpuWindow().lock);
+    if (!gpu) gpu = std::make_unique<pb::Presenter>(gpuWindow().dev.get(), ready());
+  }
+
+  // The job: a frame of `a`, the .pbd's preview first while its document has shown none; through the GPU when asked
+  // and it can, else the CPU.
+  void draw(const Canvas::Ask& a, const pb::Look& look, const std::shared_ptr<const pb::Preview>& preview) {
+    PROFILE_ZONE("canvas_frame");
+    QElapsedTimer clock;
+    clock.start();
+    if (preview && a.doc && previewed.lock() != a.doc) {
+      previewed = a.doc;
+      up({}, previewFrame(*preview, a.view, *a.doc, look), stats({}, a.view, true), clock, false);
+      clock.start();
+    }
+    pb::Presenter::Frame pf;
+    Frame f;
+    if (a.gpu && drawGpu(a, look, f, pf)) return up(f, {}, stats(pf, a.view, false), clock, true);
+    const pb::View::Pixels px = a.view.pixels();
+    QImage im(px.width, px.height, QImage::Format_RGBA8888_Premultiplied);
+    if (a.doc) {
+      if (!cpu) cpu = std::make_unique<pb::Presenter>(nullptr, ready());
+      pb::Target t;
+      t.pixels = reinterpret_cast<uint32_t*>(im.bits());  // rows packed: bytesPerLine() is width x 4
+      pf = cpu->frame(pb::RenderInput{a.doc, {}}, a.view, t, look);
+    } else {
+      const pb::PatternConsts k = pb::pattern_consts(a.view);
+      uchar* bits = im.bits();
+      const qsizetype stride = im.bytesPerLine();
+      pb::parallel_for(px.height, [&](int begin, int end) {
+        for (int j = begin; j < end; j++) {
+          auto* row = reinterpret_cast<uint32_t*>(bits + j * stride);
+          for (int i = 0; i < px.width; i++) row[i] = pb::pattern_pixel(k, i, j);
+        }
+      });
+    }
+    up({}, std::move(im), stats(pf, a.view, false), clock, false);
+  }
+
+  // Into a texture the window imports, as RawFrame's renders (snapone's lease()): one free of the frames in flight.
+  bool drawGpu(const Canvas::Ask& a, const pb::Look& look, Frame& f, pb::Presenter::Frame& pf) {
+    GpuWindow& g = gpuWindow();
+    const std::lock_guard l(g.lock);
+    if (g.broken) return false;
+    const pb::View::Pixels px = a.view.pixels();
+    const std::array<int, 2> size{px.width, px.height};
+    try {
+      {
+        // A texture no frame in flight samples (freeAt): the window's GPU may read one for two frames after it left
+        // the screen, and writing it then shows a mix of two frames, a race no test catches.
+        const std::lock_guard sl(m);
+        const auto free = std::find_if(pool.begin(), pool.end(), [&](const Frame& p) {
+          return pb::gpu::size(*p.tex) == size && p.freeAt <= g.frames;
+        });
+        if (free != pool.end()) f = *free, pool.erase(free);
+      }
+      if (!f.tex) {
+        if (!(f.tex = g.dev->texture(px.width, px.height))) return false;
+        f.serial = ++serials;
+      }
+      const pb::gpu::BufferPtr out = g.dev->buffer(size_t(px.width) * px.height * 4);
+      if (a.doc) {
+        if (!gpu) gpu = std::make_unique<pb::Presenter>(g.dev.get(), ready());
+        pb::Target t;
+        t.buffer = out.get();
+        pf = gpu->frame(pb::RenderInput{a.doc, {}}, a.view, t, look);
+      } else {
+        const pb::PatternConsts k = pb::pattern_consts(a.view);
+        g.dev->dispatch(*g.pattern, {out.get()}, &k, sizeof k, uint32_t(px.width + 7) / 8, uint32_t(px.height + 7) / 8);
+      }
+      // ponytail: copy buffer→texture ~1.2 ms at 1080p on Iris Xe; write the shared image as a storage image (HAL)
+      // when the stroke latency budget needs it
+      g.dev->copy(*out, *f.tex, 0, 0, px.width, px.height);
+      g.dev->release(*f.tex);
+      g.dev->flush();
+    } catch (const std::exception& e) {  // out of device memory
+      qWarning("pb: %s; frames come through the CPU", e.what());
+      g.broken = true;
+      return false;
+    }
+    return true;
+  }
+
+  // The frame up, a texture (f.tex) or an image, then the canvas told.
+  void up(const Frame& f, QImage im, const QVariantMap& shown, const QElapsedTimer& clock, bool gpu) {
+    const double ms = clock.nsecsElapsed() / 1e6;
+    const std::lock_guard l(m);
+    if (f.tex) {
+      if (onScreen.tex) {
+        onScreen.freeAt = offScreenFrom();
+        pool.push_back(onScreen);
+      }
+      // ponytail: 4 textures off screen at most, oldest out; a byte budget if frames ever come in many sizes at once
+      if (pool.size() > 4) pool.erase(pool.begin());
+      onScreen = f;
+      image = {};
+    } else {
+      image = std::move(im);
+      onScreen = {};
+      pool.clear();
+    }
+    fresh = true;
+    if (canvas)
+      QMetaObject::invokeMethod(canvas, [c = canvas, shown, ms, gpu] { c->up(shown, ms, gpu); }, Qt::QueuedConnection);
+  }
+};
+
+bool Canvas::Ask::operator==(const Ask& o) const {
+  return same(view, o.view) && doc == o.doc && look == o.look && ready == o.ready && gpu == o.gpu;
+}
+
+Canvas::Canvas(QQuickItem* parent) : QQuickItem(parent), s_(std::make_shared<CanvasState>()) {
+  s_->canvas = this;
+  setFlag(ItemHasContents);
+}
+
+Canvas::~Canvas() {
+  const std::lock_guard l(s_->m);
+  s_->canvas = nullptr;
+}
 
 void Canvas::setView(const QVariantMap& m) {
   if (m == viewMap_) return;
@@ -328,6 +532,61 @@ void Canvas::setView(const QVariantMap& m) {
   view_.zoom = std::clamp(number("zoom", 1), 0.01, 128.);
   polish();
   emit viewChanged();
+}
+
+// ponytail: N1's Session replaces this way in (and the flag).
+void Canvas::setSource(const QString& source) {
+  if (source == source_) return;
+  source_ = source;
+  error_.clear();
+  const uint64_t open = ++opens_;
+  setDocument(nullptr);  // what is up stays while it opens
+  emit sourceChanged();
+  if (source.isEmpty()) return;
+  const std::filesystem::path path = local(source);
+  const bool pbd = QFileInfo(source).suffix().compare(u"pbd", Qt::CaseInsensitive) == 0;
+  pb::submit(pb::Priority::Background, [s = s_, open, path, pbd] {
+    PROFILE_ZONE("canvas_open");
+    pb::DocPtr doc;
+    std::shared_ptr<pb::Preview> preview;
+    QString error;
+    try {
+      if (pbd) {
+        pb::OpenedPbd o = pb::open_pbd(path);
+        doc = std::move(o.doc);
+        if (o.preview.width > 0) preview = std::make_shared<pb::Preview>(std::move(o.preview));
+      } else {
+        doc = pb::open_image(path);
+      }
+    } catch (const std::exception& e) {
+      error = QString::fromUtf8(e.what());
+    }
+    const std::lock_guard l(s->m);
+    if (s->canvas)
+      QMetaObject::invokeMethod(s->canvas, [c = s->canvas, open, doc, preview, error] {
+        if (open != c->opens_) return;  // another source since
+        c->error_ = error;
+        c->setDocument(doc, preview);
+      }, Qt::QueuedConnection);
+  });
+}
+
+void Canvas::setDocument(pb::DocPtr doc, std::shared_ptr<const pb::Preview> preview) {
+  doc_ = std::move(doc);
+  preview_ = std::move(preview);
+  reference_.clear();
+  polish();
+  emit documentChanged();
+}
+
+QSize Canvas::docSize() const { return doc_ ? QSize(doc_->width, doc_->height) : QSize(0, 0); }
+
+void Canvas::setPasteboard(const QColor& c) {
+  if (c == pasteboard_) return;
+  pasteboard_ = c;
+  looks_++;
+  polish();
+  emit pasteboardChanged();
 }
 
 pb::View Canvas::current() const {
@@ -347,6 +606,35 @@ QPointF Canvas::toDoc(QPointF canvas) const {
   return {p[0], p[1]};
 }
 
+QVariantList Canvas::composite(int level, int x, int y) const {
+  pb::Pixel v{};
+  if (doc_ && level >= 0 && level < 32 && x >= 0 && y >= 0) {
+    const std::array<int, 3> at{level, x >> pb::kTileLog2, y >> pb::kTileLog2};
+    auto it = reference_.find(at);
+    if (it == reference_.end())
+      it = reference_.emplace(at, pb::composite_tile(pb::RenderInput{doc_, {}}, level, at[1], at[2])).first;
+    const pb::TilePtr& t = it->second;
+    if (t && t->is_solid()) {
+      v = t->value();
+    } else if (t) {  // RGBA U16 rows
+      const pb::Pin p = t->pin();
+      const int mask = pb::kTileSize - 1;
+      std::memcpy(v.data(), p.data() + ((size_t(y & mask) << pb::kTileLog2) + size_t(x & mask)) * 8, 8);
+    }
+  }
+  return {int(v[0]), int(v[1]), int(v[2]), int(v[3])};
+}
+
+QString Canvas::save(const QString& path) const {
+  if (!doc_) return QStringLiteral("no document");
+  try {
+    pb::save_pbd(*doc_, local(path));
+  } catch (const std::exception& e) {
+    return QString::fromUtf8(e.what());
+  }
+  return {};
+}
+
 void Canvas::geometryChange(const QRectF& now, const QRectF& old) {
   QQuickItem::geometryChange(now, old);
   polish();
@@ -355,118 +643,92 @@ void Canvas::geometryChange(const QRectF& now, const QRectF& old) {
 
 void Canvas::itemChange(ItemChange c, const ItemChangeData& d) {
   QQuickItem::itemChange(c, d);
-  if (c == ItemSceneChange) drawn_ = {};  // another window: its own textures
+  if (c == ItemSceneChange) {
+    asked_.reset();  // another window: its own textures
+    disconnect(screen_);
+    if (d.window) {
+      screen_ = connect(d.window, &QWindow::screenChanged, this, &Canvas::readScreen);
+      readScreen();
+      if (gpuWindow().dev) pb::submit(pb::Priority::Background, [s = s_] { s->warm(); });
+    }
+  }
   if (c == ItemSceneChange || c == ItemVisibleHasChanged || c == ItemDevicePixelRatioHasChanged) polish();
 }
 
-// A frame when what it shows changed since the last one; nothing otherwise.
+// The screen's colours, from its profile (V2a's Look::screen): none (sRGB) where it has none, as on Linux and macOS
+// until P1.
+void Canvas::readScreen() {
+  std::shared_ptr<const pb::Display> d;
+  if (window() && window()->screen()) {
+    try {
+      const std::vector<uint8_t> icc = pb::screen_profile(window()->screen()->name().toStdString());
+      if (!icc.empty()) d = pb::display_profile(icc);
+    } catch (const std::exception& e) {
+      qWarning("pb: the screen's profile: %s; frames in sRGB", e.what());
+    }
+  }
+  if (!d && !look_.screen) return;
+  look_.screen = std::move(d);
+  looks_++;
+  polish();
+}
+
+// A frame when what it shows changed since the last one asked for, drawn by the frame job; nothing otherwise.
 void Canvas::updatePolish() {
   const pb::View v = current();
-  if (!window() || !isVisible() || v.pixels().width == 0 || (drawn_.width > 0 && same(v, drawn_))) return;
-  PROFILE_ZONE("canvas_frame");
-  QElapsedTimer clock;
-  clock.start();
-  gpu_ = drawGpu(v);
-  if (!gpu_) drawCpu(v);
-  frameMs_ = clock.nsecsElapsed() / 1e6;
-  drawn_ = v;
-  fresh_ = true;
+  if (!window() || !isVisible() || v.pixels().width == 0 || (!doc_ && !source_.isEmpty())) return;
+  const GpuWindow& g = gpuWindow();
+  const Ask a{v, doc_, looks_, ready_, g.win && window() == g.win && !g.broken};
+  if (asked_ && *asked_ == a) return;
+  asked_ = a;
+  pb::Look look = look_;
+  look.cell = std::max(1, int(std::lround(8 * v.dpr)));
+  const QColor c = pasteboard_.toRgb();
+  look.pasteboard = {uint8_t(c.red()), uint8_t(c.green()), uint8_t(c.blue())};
+  s_->job.submit([s = s_, a, look, preview = preview_](const pb::CancelToken&) { s->draw(a, look, preview); });
+}
+
+// A frame up through the frame job: the scene graph takes it next.
+void Canvas::up(const QVariantMap& shown, double ms, bool gpu) {
   frames_++;
-  qCDebug(lcGpu, "frame %d: %d x %d through the %s, %.3f ms", frames_, v.pixels().width, v.pixels().height,
-          gpu_ ? "GPU" : "CPU", frameMs_);
+  gpu_ = gpu;
+  frameMs_ = ms;
+  shown_ = shown;
+  qCDebug(lcGpu, "frame %d through the %s, %.3f ms", frames_, gpu ? "GPU" : "CPU", ms);
   update();
   emit framed();
 }
 
-// Into a texture the window imports, as RawFrame's renders (snapone's lease()): one free of the frames in flight.
-bool Canvas::drawGpu(const pb::View& v) {
-  GpuWindow& g = gpuWindow();
-  if (!g.win || window() != g.win || g.broken) return false;
-  const pb::View::Pixels px = v.pixels();
-  const std::array<int, 2> size{px.width, px.height};
-  Frame f;
-  try {
-    // A texture no frame in flight samples (freeAt): the window's GPU may read one for two frames after it left the
-    // screen, and writing it then shows a mix of two frames, a race no test catches.
-    const auto free = std::find_if(pool_.begin(), pool_.end(), [&](const Frame& p) {
-      return pb::gpu::size(*p.tex) == size && p.freeAt <= g.frames;
-    });
-    if (free != pool_.end()) {
-      f = *free;
-      pool_.erase(free);
-    } else if (!(f.tex = g.dev->texture(px.width, px.height))) {
-      return false;
-    } else {
-      f.serial = ++serials_;
-    }
-    const pb::PatternConsts k = pb::pattern_consts(v);
-    const pb::gpu::BufferPtr out = g.dev->buffer(size_t(px.width) * px.height * 4);
-    g.dev->dispatch(*g.pattern, {out.get()}, &k, sizeof k, uint32_t(px.width + 7) / 8, uint32_t(px.height + 7) / 8);
-    // ponytail: copy buffer→texture ~1.2 ms at 1080p on Iris Xe; write the shared image as a storage image (HAL) when
-    // the stroke latency budget needs it
-    g.dev->copy(*out, *f.tex, 0, 0, px.width, px.height);
-    g.dev->release(*f.tex);
-    g.dev->flush();
-  } catch (const std::exception& e) {  // out of device memory
-    qWarning("pb: %s; frames come through the CPU", e.what());
-    g.broken = true;
-    return false;
-  }
-  if (shown_.tex) {
-    shown_.freeAt = offScreenFrom();
-    pool_.push_back(shown_);
-  }
-  // ponytail: 4 textures off screen at most, oldest out; a byte budget if frames ever come in many sizes at once
-  if (pool_.size() > 4) pool_.erase(pool_.begin());
-  shown_ = f;
-  image_ = {};
-  return true;
-}
-
-void Canvas::drawCpu(const pb::View& v) {
-  const pb::View::Pixels px = v.pixels();
-  QImage im(px.width, px.height, QImage::Format_RGBA8888_Premultiplied);  // a new one: the last may be uploading
-  uchar* bits = im.bits();
-  const qsizetype stride = im.bytesPerLine();
-  const pb::PatternConsts k = pb::pattern_consts(v);
-  pb::parallel_for(px.height, [&](int begin, int end) {
-    for (int j = begin; j < end; j++) {
-      auto* row = reinterpret_cast<uint32_t*>(bits + j * stride);
-      for (int i = 0; i < px.width; i++) row[i] = pb::pattern_pixel(k, i, j);
-    }
-  });
-  image_ = std::move(im);
-  shown_ = {};
-  pool_.clear();
-}
-
 QSGNode* Canvas::updatePaintNode(QSGNode* old, UpdatePaintNodeData*) {
   auto* root = old ? static_cast<FrameNode*>(old) : new FrameNode;
-  if (!old) fresh_ = drawn_.width > 0;  // a new tree: the frame up shows again
-  if (fresh_) {
-    fresh_ = false;
+  CanvasState& s = *s_;
+  const std::lock_guard l(s.m);
+  if (!old) s.fresh = s.onScreen.tex || !s.image.isNull();  // a new tree: the frame up shows again
+  if (s.fresh) {
+    s.fresh = false;
     while (QSGNode* n = root->firstChild()) {
       root->removeChildNode(n);
       delete n;
     }
-    QSGTexture* tex = shown_.tex ? root->texture(window(), shown_.serial, *shown_.tex, true)
-                                 : window()->createTextureFromImage(image_);
+    QSGTexture* tex = s.onScreen.tex ? root->texture(window(), s.onScreen.serial, *s.onScreen.tex, true)
+                      : s.image.isNull() ? nullptr
+                                         : window()->createTextureFromImage(s.image);
     if (tex) {
       QSGImageNode* n = window()->createImageNode();
       n->setTexture(tex);
-      n->setOwnsTexture(!shown_.tex);  // an import stays with the root, for the next time it shows
+      n->setOwnsTexture(!s.onScreen.tex);  // an import stays with the root, for the next time it shows
       n->setFiltering(QSGTexture::Nearest);  // a texel a device pixel
       n->setSourceRect(QRectF(QPointF(0, 0), tex->textureSize()));
       root->appendChildNode(n);
-    } else {  // the import failed: this frame again, through the CPU
-      gpuWindow().broken = true;
-      drawn_ = {};
+    } else if (s.onScreen.tex) {  // this frame again through the CPU: the import failed, or another window has it
+      if (window() == gpuWindow().win) gpuWindow().broken = true;
+      asked_.reset();
       QMetaObject::invokeMethod(this, &QQuickItem::polish, Qt::QueuedConnection);
     }
   }
   if (auto* n = static_cast<QSGImageNode*>(root->firstChild())) n->setRect(boundingRect());
-  std::vector<uint64_t> keep{shown_.serial};
-  for (const Frame& f : pool_) keep.push_back(f.serial);
+  std::vector<uint64_t> keep{s.onScreen.serial};
+  for (const Frame& f : s.pool) keep.push_back(f.serial);
   root->keep(keep);
   return root;
 }
