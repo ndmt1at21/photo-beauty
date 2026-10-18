@@ -19,7 +19,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Khung, nền | U0–U4 | build, control, dữ liệu giả, khung cửa sổ | Xong (17/10) |
 | Công cụ, canvas | U5–U7 | thanh công cụ, thanh tùy chọn, canvas giả, lớp phủ | U5–U7 xong; U7b đang làm (18/10) |
 | Panel | U8–U14 | dock và 16 panel | U8, U10, U11, U13, U14 xong; U9, U12 đang làm (18/10) |
-| Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | U16–U19, U21 xong; U15, U20 đang làm (17/10) |
+| Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | U16–U21 xong; U15 đang làm (18/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10) |
 | Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
 
@@ -188,7 +188,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
   - Color Settings (bộ thiết lập, không gian làm việc RGB, Gray, chính sách khi mở, hồ sơ khác, thiếu hồ sơ, intent, Black Point Compensation, dither, ô giải thích khi rê), Convert to Profile, Assign Profile.
 
   **Xong khi:** `tst_u19`: đổi định dạng ra đúng nhóm tùy chọn, Xuất chạy việc nền và hủy được; ảnh chụp cạnh artboard.
-- [ ] **U20 · Hỏi và báo, Phím tắt** (đang làm: worktree `u20` tạo từ nhánh `ui/u5`, 17/10; giao diện; Nhỏ; cần U5; file `ui/qml/{ProfileMismatch,MissingFonts,PsdNotice,SaveChanges,Recovery,ModelDownload,Shortcuts}Dialog.qml`, `ui/tests/tst_u20.qml`): theo artboard `Notices`, `Shortcuts`:
+- [x] **U20 · Hỏi và báo, Phím tắt** (18/10/2026, 180989c: sáu hộp thoại báo, đóng tài liệu chưa lưu hỏi Lưu thay đổi (Main.closeDoc, Ctrl W, Ctrl Q), Phím tắt đủ mọi phím của MenuSpec và menu panel, tìm kiếm, tên tiếng Anh; 16 hàm test; 17/17 đột biến bị bắt; sửa có phép `tst_u4` (test_keys, test_scrim), `tst_u6` (test_tabs: `dontSave`); lệch: ModelDownload hiện tiến độ trong hộp thoại (`Docs.job` chỉ có lưu, xuất); còn: Recovery, ModelDownload, ProfileMismatch, PsdNotice chưa có chỗ mở (N1, N2), mở Phím tắt tạo rồi hủy mọi panel của menu Window; giao diện; Nhỏ; cần U5; file `ui/qml/{ProfileMismatch,MissingFonts,PsdNotice,SaveChanges,Recovery,ModelDownload,Shortcuts}Dialog.qml`, `ui/tests/tst_u20.qml`): theo artboard `Notices`, `Shortcuts`:
   - Sáu hộp thoại của `Notices`: hồ sơ khác không gian làm việc (3 lựa chọn), thiếu font (thay từng font), PSD có phần chưa sửa được (danh sách theo layer, sao chép), lưu thay đổi khi đóng (Không lưu, Hủy, Lưu, số bước chưa lưu), khôi phục (Mở, Bỏ, Mở tất cả), tải model AI (model, dung lượng, giấy phép, Tải; khi lỗi: Thử lại). Đóng tài liệu, đóng app khi còn tài liệu chưa lưu thì hỏi bằng hộp thoại lưu thay đổi.
   - Phím tắt: 3 tab (menu ứng dụng, menu panel, công cụ), tìm theo tên tiếng Việt, tiếng Anh hay phím; danh sách đọc từ `MenuSpec.js`, `ToolSpec.js`, một nguồn với phím đang chạy.
 
