@@ -98,9 +98,12 @@ struct Cache {
   BudgetUser user{[this](size_t want) { return release(want); }};
 
   Part& at(int level) { return level < 3 ? fine : coarse; }
-  void trim(size_t budget, std::vector<TilePtr>& out) {  // lock held
-    fine.trim(budget / 8, out);
-    coarse.trim(budget / 16, out);
+  // Lock held: levels 3 and up within the budget (at least 1 MB, an entry at most 512 KB), 1 and 2 within what those
+  // leave. Not a fraction of it: D1's levels 1 and 2 (1,058 MB) cycling through a cap below that rebuilt all of them
+  // at every frame of the fit view.
+  void trim(size_t budget, std::vector<TilePtr>& out) {
+    coarse.trim(budget, out);
+    fine.trim(budget - coarse.used, out);
   }
   // The store over budget with no tile left to push out: lets go of tiles nothing else holds, least recently used
   // first, levels 1 and 2 before 3 and up, about `want` bytes of pixels, and gives what that freed in RAM.

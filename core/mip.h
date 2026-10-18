@@ -40,13 +40,18 @@ void prefetch(const TileGrid& grid, int level, TileRect rect);
 // another format. Any thread.
 void attach_mip(const TileGrid& grid, int level, int tx, int ty, TilePtr t);
 
-// The cache keeps its tiles alive within two byte caps, raw pixels plus a little per entry, least recently used out
-// first: an eighth of tile_budget() (tilecache.h) for levels 1 and 2, a sixteenth for 3 and up, so that work at full
-// size never evicts the small levels a whole-image view needs; each new entry reads the budget again. Its tiles are
-// the store's as any, pushed out to zstd and scratch once cold; when the store is over budget with no tile left to
-// push out it asks the cache (a BudgetUser) to let go of those nothing else holds, levels 1 and 2 first.
+// The cache keeps its tiles alive within tile_budget() (tilecache.h), counting raw pixels plus a little per entry
+// wherever the store keeps them, least recently used out first: levels 3 and up within the budget, 1 and 2 within
+// what those leave, so that the level a view shows and those it was built from stay while they fit (frame after frame
+// the same tiles, nothing to composite again; a change builds only its ancestors), and work at levels 1 and 2 never
+// evicts the small levels a whole-image view needs; each new entry reads the budget again. Its tiles are the store's
+// as any, pushed out to zstd and scratch once cold as layers' and history steps' are; when the store is over budget
+// with no tile left to push out it asks the cache (a BudgetUser) to let go of those nothing else holds, levels 1 and 2
+// first.
 // ponytail: cold tiles of levels 3 and up leave RAM as any; a priority in the store if whole-image views of D2 wait
-// on scratch.
+// on scratch. ponytail: mips no view uses any more (those a change replaced) go only as the cache fills, so up to a
+// budget of them may wait in scratch, and levels 1 and 2 that do not fit cycle out by age, the level a view at 3 or
+// up was built from with the rest; drop entries by use or level if either shows.
 // clear_mips() empties it: for tests that count builds and bytes from a clean start. Any thread.
 void clear_mips();
 
