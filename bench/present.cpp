@@ -1,5 +1,6 @@
-// pb-bench present [cpu]: 1920 x 1080 frames of D1 (make_d1(), bench/docs.h) offscreen through the Presenter
-// (present.h), on the GPU there is (lavapipe in WSL, the Iris Xe from the mingw build) or with `cpu` on the CPU. Fit to
+// pb-bench present [cpu] [--budget <MB>]: 1920 x 1080 frames of D1 (make_d1(), bench/docs.h) offscreen through the
+// Presenter (present.h), on the GPU there is (lavapipe in WSL, the Iris Xe from the mingw build) or with `cpu` on the
+// CPU; --budget sets the tile budget (tilecache.h), as `pb-bench make` does, where RAM is short. Fit to
 // the screen (mip level 2) and at 100 % (the centre, level 0), each with a cold cache and a new presenter: the first
 // frame, the time until all of it is sharp, then the median frame once its tiles are there. Then paths at 60 Hz: a pan
 // at 100 %, a pan at 50 % (level 1) and a zoom from 100 % out to fit, each over mips made afresh: the p95 frame time
@@ -20,6 +21,7 @@
 #include "docs.h"
 #include "mip.h"
 #include "present.h"
+#include "tilecache.h"
 
 using namespace pb;
 using pb::bench::Clock;
@@ -100,7 +102,8 @@ double percentile(std::vector<double> v, double q) {
   return v.empty() ? 0 : v[std::min(v.size() - 1, size_t(q * double(v.size())))];
 }
 
-// A view, cold: a new presenter, the cache's mips gone. The first frame, the time until sharp, the median of 9 then.
+// A view, cold: a new presenter, the cache's mips gone. The first frame, the time until sharp, the median of 9 then
+// and the mips those rebuilt.
 void still(Frames& fr, const View& v, const std::string& name) {
   clear_mips();
   fr.renew();
@@ -110,8 +113,10 @@ void still(Frames& fr, const View& v, const std::string& name) {
   report((name + "_first_coarse").c_str(), f.coarser + f.missing, "tiles");
   report((name + "_sharp").c_str(), fr.sharp(v, t0), "ms");
   std::vector<double> ms;
+  const uint64_t built = mips_built();
   for (int i = 0; i < 9; i++) ms.push_back(fr.frame(v, f));
   report(name.c_str(), percentile(ms, 0.5), "ms");
+  report((name + "_rebuilt").c_str(), double(mips_built() - built), "mips");  // 0 unless the mip cache is too small
 }
 
 // A path of views at 60 Hz, paced in real time (a frame late starts at once), over mips made afresh: the p95 frame
@@ -139,12 +144,18 @@ void path(Frames& fr, const std::function<View(double)>& view, double seconds, c
 }  // namespace
 
 BENCH(present) {
-  const bool cpu = !args.empty() && args[0] == "cpu";
+  bool cpu = false;
+  for (size_t i = 0; i < args.size(); i++)
+    if (args[i] == "cpu")
+      cpu = true;
+    else if (args[i] == "--budget" && i + 1 < args.size())
+      set_tile_budget(size_t(std::stod(args[++i]) * (1 << 20)));
   const std::unique_ptr<gpu::Device> dev = cpu ? nullptr : gpu::Device::create(true);
   if (dev)
     std::printf("present: %s, %s\n", dev->name().c_str(), dev->driver().c_str());
   else
     std::printf("present: on the CPU\n");
+  std::printf("present: tile budget %zu MB\n", tile_budget() >> 20);
   const RenderInput in{bench::make_d1()};
   const DocState& d = *in.doc;
   Frames fr(dev.get(), in);
@@ -155,4 +166,5 @@ BENCH(present) {
   path(fr, [&](double t) { return at(cx - 1800 + 1200 * t, cy, 1); }, 3, "present_d1_pan_100");
   path(fr, [&](double t) { return at(cx - 3600 + 2400 * t, cy, 0.5); }, 3, "present_d1_pan_50");
   path(fr, [&](double t) { return at(cx, cy, std::pow(fit, std::min(t, 1.))); }, 1.5, "present_d1_zoom_out");
+  report("present_peak_rss", double(bench::peak_resident_bytes() >> 20), "MB");
 }
