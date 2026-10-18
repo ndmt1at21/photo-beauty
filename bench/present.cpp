@@ -10,6 +10,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -20,6 +21,7 @@
 #include "bench.h"
 #include "docs.h"
 #include "mip.h"
+#include "pbd.h"
 #include "present.h"
 #include "tilecache.h"
 
@@ -119,10 +121,12 @@ void still(Frames& fr, const View& v, const std::string& name) {
   report((name + "_rebuilt").c_str(), double(mips_built() - built), "mips");  // 0 unless the mip cache is too small
 }
 
-// A path of views at 60 Hz, paced in real time (a frame late starts at once), over mips made afresh: the p95 frame
-// time, and the longest a frame went on showing some tile from a coarser level or none, until one showed all sharp.
-void path(Frames& fr, const std::function<View(double)>& view, double seconds, const std::string& name) {
-  clear_mips();
+// A path of views at 60 Hz, paced in real time (a frame late starts at once), over mips made afresh (fresh; else over
+// those the views before made, as the canvas has them): the p95 frame time, which it returns, and the longest a frame
+// went on showing some tile from a coarser level or none, until one showed all sharp.
+double path(Frames& fr, const std::function<View(double)>& view, double seconds, const std::string& name,
+            bool fresh = true) {
+  if (fresh) clear_mips();
   std::vector<double> ms;
   double lag = 0;
   bool behind = false;
@@ -137,8 +141,10 @@ void path(Frames& fr, const std::function<View(double)>& view, double seconds, c
     if (f.coarser + f.missing == 0 && behind) behind = false, lag = std::max(lag, ms_since(since));
   }
   if (behind) lag = std::max(lag, fr.sharp(view(seconds), since));
-  report((name + "_p95").c_str(), percentile(ms, 0.95), "ms");
+  const double p95 = percentile(ms, 0.95);
+  report((name + "_p95").c_str(), p95, "ms");
   report((name + "_lag").c_str(), lag, "ms");
+  return p95;
 }
 
 }  // namespace
@@ -167,4 +173,53 @@ BENCH(present) {
   path(fr, [&](double t) { return at(cx - 3600 + 2400 * t, cy, 0.5); }, 3, "present_d1_pan_50");
   path(fr, [&](double t) { return at(cx, cy, std::pow(fit, std::min(t, 1.))); }, 1.5, "present_d1_zoom_out");
   report("present_peak_rss", double(bench::peak_resident_bytes() >> 20), "MB");
+}
+
+// pb-bench pan [doc.pbd] [cpu] [--budget <MB>]: G1's pan and zoom (E3), as the canvas has them once a document is open:
+// D1 (or the .pbd given, opened as the app opens it, its mips from level 3 on with it) fit to the screen until sharp
+// and the median of 9 frames there, then at 60 Hz, one after the other over the mips the views before made (not
+// afresh, as present's paths): a zoom from fit in to 100 % in 1 s, present's pans at 100 % and 50 %, a rotation at
+// 100 % by 180 degrees in 3 s and present's zoom back out to fit; each one's p95 frame time and longest wait until
+// sharp, and last the rate all of them hold 95 % of the time, 1000 / their worst p95: G1 asks for 60 fps.
+BENCH(pan) {
+  bool cpu = false;
+  std::string file;
+  for (size_t i = 0; i < args.size(); i++)
+    if (args[i] == "cpu")
+      cpu = true;
+    else if (args[i] == "--budget" && i + 1 < args.size())
+      set_tile_budget(size_t(std::stod(args[++i]) * (1 << 20)));
+    else
+      file = args[i];
+  const std::unique_ptr<gpu::Device> dev = cpu ? nullptr : gpu::Device::create(true);
+  std::printf("pan: %s, tile budget %zu MB\n", dev ? (dev->name() + ", " + dev->driver()).c_str() : "on the CPU",
+              tile_budget() >> 20);
+  const std::string n = "pan_" + (file.empty() ? std::string("d1") : std::filesystem::path(file).stem().string());
+  const RenderInput in{file.empty() ? bench::make_d1() : open_pbd(file).doc};
+  const DocState& d = *in.doc;
+  Frames fr(dev.get(), in);
+  const double fit = std::min(double(kW) / d.width, double(kH) / d.height), cx = d.width / 2., cy = d.height / 2.;
+  report((n + "_fit_sharp").c_str(), fr.sharp(at(cx, cy, fit), Clock::now()), "ms");
+  std::vector<double> ms;  // then as present_d1_fit: the median of 9, and the mips those rebuilt
+  const uint64_t built = mips_built();
+  for (int i = 0; i < 9; i++) {
+    Presenter::Frame f;
+    ms.push_back(fr.frame(at(cx, cy, fit), f));
+  }
+  report((n + "_fit").c_str(), percentile(ms, 0.5), "ms");
+  report((n + "_fit_rebuilt").c_str(), double(mips_built() - built), "mips");
+  double worst = 0;
+  const auto walk = [&](const std::function<View(double)>& view, double seconds, const char* name) {
+    worst = std::max(worst, path(fr, view, seconds, n + name, false));
+  };
+  walk([&](double t) { return at(cx, cy, std::pow(fit, 1 - std::min(t, 1.))); }, 1.5, "_zoom_in");
+  walk([&](double t) { return at(cx - 1800 + 1200 * t, cy, 1); }, 3, "_100");
+  walk([&](double t) { return at(cx - 3600 + 2400 * t, cy, 0.5); }, 3, "_50");
+  walk([&](double t) {
+    View v = at(cx, cy, 1);
+    v.angle = 60 * t;
+    return v;
+  }, 3, "_rotate");
+  walk([&](double t) { return at(cx, cy, std::pow(fit, std::min(t, 1.))); }, 1.5, "_zoom_out");
+  report((n + "_fps").c_str(), 1000 / worst, "fps");
 }
