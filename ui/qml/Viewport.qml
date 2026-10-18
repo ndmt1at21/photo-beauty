@@ -255,6 +255,11 @@ Rectangle {
             view: vp.view
             size: vp.size
         }
+        DocCanvas {  // V1: render.h's View and test card over the mock canvas with PB_CANVAS=pattern, until V2
+            anchors.fill: parent
+            visible: CanvasEnv.pattern && !!vp.view
+            view: vp.view ?? ({})
+        }
         MouseArea {
             id: input
             property string mode: ""  // what the press drags: "pan", "rotate", "zoom" (the Zoom tool)

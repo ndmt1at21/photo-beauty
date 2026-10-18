@@ -34,7 +34,7 @@ file(GLOB PB_UI_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPEN
 qt_add_library(pb_qml STATIC)
 qt_add_qml_module(pb_qml URI PhotoBeauty OUTPUT_DIRECTORY PhotoBeauty  # under its URI, for qmllint
   SOURCES ${PB_UI_SOURCES} QML_FILES ${PB_QML} RESOURCES ${PB_UI_RESOURCES})
-target_link_libraries(pb_qml PRIVATE Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(pb_qml PRIVATE Qt6::Quick Qt6::QuickControls2 pb_core)  # pb_core: the canvas (V1)
 
 qt_add_executable(pb-ui WIN32 MACOSX_BUNDLE main.cpp)  # no console window on Windows, an .app on macOS
 target_link_libraries(pb-ui PRIVATE Qt6::Quick Qt6::QuickControls2 pb_qmlplugin)
