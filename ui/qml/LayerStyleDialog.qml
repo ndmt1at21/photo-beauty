@@ -18,6 +18,7 @@ DialogBox {
     id: dlg
     property var params: ({})
     property Doc doc: null
+    readonly property bool gray: !!doc && doc.mode === "Gray"  // one channel, Gray: Kênh and Blend If have it alone
     property int layerId: 0
     readonly property var layer: doc && doc.rev >= 0 ? doc.layer(layerId) : null
     property string page: "blendingOptions"
@@ -48,12 +49,13 @@ DialogBox {
                 scale: 100 }
         }
     }
-    // The values for layer props p: blend, opacity and fill in %, channels { r, g, b }, Blend If by channel, and each
-    // effect from props.fx, else as Đặt làm mặc định kept it (Prefs "layerStyleDefaults"), else as it starts.
+    // The values for layer props p: blend, opacity and fill in %, channels { r, g, b } ({ gray } in a Gray document),
+    // Blend If by channel, and each effect from props.fx, else as Đặt làm mặc định kept it (Prefs "layerStyleDefaults"),
+    // else as it starts.
     function from(p) {
         const fx = p.fx || {}, f = factory(), saved = Prefs.value("layerStyleDefaults") || {}
-        const o = { blend: p.blend, opacity: Math.round(p.opacity * 100), fill: Math.round(p.fill * 100), channels: Object.assign({ r: true, g: true, b: true }, fx.channels),
-            blendIf: {} }
+        const o = { blend: p.blend, opacity: Math.round(p.opacity * 100), fill: Math.round(p.fill * 100),
+            channels: Object.assign(gray ? { gray: true } : { r: true, g: true, b: true }, fx.channels), blendIf: {} }
         for (const ch of ["gray", "red", "green", "blue"])
             o.blendIf[ch] = Object.assign({ layer: [0, 0, 255, 255], under: [0, 0, 255, 255] }, (fx.blendIf || {})[ch])
         for (const k in f)
@@ -232,6 +234,7 @@ DialogBox {
         }
         NumberField {
             id: fld
+            boxHeight: 26
             x: r.width - 92
             width: 92
             anchors.verticalCenter: parent.verticalCenter
@@ -246,6 +249,7 @@ DialogBox {
     component Modes: Dropdown {  // an effect's Blend Mode
         id: dd
         required property string fx
+        implicitHeight: 26
         Layout.fillWidth: true
         options: dlg.modes(false)
         value: dlg.v[fx].blend
@@ -298,6 +302,7 @@ DialogBox {
     component Angle: NumberField {
         id: an
         required property string fx
+        boxHeight: 26
         Layout.preferredWidth: 92
         value: dlg.v[fx].angle
         min: -180
@@ -471,6 +476,7 @@ DialogBox {
                 Line {
                     RowName { text: qsTr("Blend Mode") }
                     Dropdown {
+                        implicitHeight: 26
                         Layout.fillWidth: true
                         options: dlg.modes(!!dlg.layer && dlg.layer.kind === "group")
                         value: dlg.v.blend
@@ -484,10 +490,10 @@ DialogBox {
                     spacing: 16
                     RowName { text: qsTr("Kênh") }
                     Repeater {
-                        model: ["r", "g", "b"]
+                        model: dlg.gray ? ["gray"] : ["r", "g", "b"]
                         CheckRow {
                             required property string modelData
-                            text: modelData.toUpperCase()
+                            text: modelData === "gray" ? "Gray" : modelData.toUpperCase()
                             checked: dlg.v.channels[modelData]
                             onClicked: dlg.set("channels", modelData, !checked)
                         }
@@ -497,8 +503,9 @@ DialogBox {
                 Line {
                     RowName { text: qsTr("Kênh") }
                     Dropdown {
+                        implicitHeight: 26
                         Layout.preferredWidth: 140
-                        options: [["gray", "Gray"], ["red", "Red"], ["green", "Green"], ["blue", "Blue"]]
+                        options: [["gray", "Gray"]].concat(dlg.gray ? [] : [["red", "Red"], ["green", "Green"], ["blue", "Blue"]])
                         value: dlg.channel
                         onPicked: x => dlg.channel = x
                     }
@@ -572,6 +579,7 @@ DialogBox {
                 Line {
                     RowName { text: qsTr("Position") }
                     Dropdown {
+                        implicitHeight: 26
                         Layout.fillWidth: true
                         options: [["outside", qsTr("Outside")], ["inside", qsTr("Inside")], ["center", qsTr("Center")]]
                         value: dlg.v.stroke.position
@@ -619,6 +627,7 @@ DialogBox {
                     RowName { text: qsTr("Gradient") }
                     Dropdown {
                         id: grad
+                        implicitHeight: 26
                         Layout.fillWidth: true
                         options: dlg.gradients
                         value: String(dlg.v.gradientOverlay.gradient)
@@ -658,6 +667,7 @@ DialogBox {
                 Line {
                     RowName { text: qsTr("Style") }
                     Dropdown {
+                        implicitHeight: 26
                         Layout.fillWidth: true
                         options: [["linear", qsTr("Linear")], ["radial", qsTr("Radial")], ["angle", qsTr("Angle")], ["reflected", qsTr("Reflected")], ["diamond", qsTr("Diamond")]]
                         value: dlg.v.gradientOverlay.style

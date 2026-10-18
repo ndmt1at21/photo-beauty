@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import "Mock.js" as Mock
+import "View.js" as View
 
 // The open documents, recent files, files to recover and the background job (docs/ui-tasks.md, U3), as the prototype
 // opens (build/proto/Main.dc.html): three documents, "Đang lưu chân dung.psd" at 64 %. exec() runs the menus' actions
@@ -222,7 +223,7 @@ QtObject {
         case "qm": Tools.quickMask = !Tools.quickMask; return true
         case "zoomIn": d.zoomTo(zoomStep(1)); return true
         case "zoomOut": d.zoomTo(zoomStep(-1)); return true
-        case "zoomFit": d.zoomTo(Mock.fitZoom(d.w, d.h, viewport.w, viewport.h)); return true
+        case "zoomFit": d.zoomTo(View.fit(d.w, d.h, viewport, d.view.angle) * 100); return true  // the view turned too
         case "zoomFill": d.zoomTo(Math.max(viewport.w / d.w, viewport.h / d.h) * 100); return true
         case "zoom100": d.zoomTo(100); return true
         case "tog": Tools.toggle(arg); return true

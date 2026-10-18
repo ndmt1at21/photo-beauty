@@ -40,7 +40,7 @@ Rectangle {
 
     implicitWidth: 1052
     implicitHeight: 768
-    color: Theme.views[Prefs.value(["canvasStandard", "canvasFullMenu", "canvasFull"][Tools.screen])] ?? Theme.view  // Tùy chọn… keeps no colour yet
+    color: { const k = ["canvasStandard", "canvasFullMenu", "canvasFull"][Tools.screen]; return Theme.views[Prefs.value(k)] ?? Prefs.value(k + "Color") }  // Tùy chọn…: <key>Color
     onViewChanged: Qt.callLater(keep)
     function keep() { if (doc && view && view !== doc.view) doc.setView(view) }  // after the binding, or it would loop
     onSizeChanged: if (sized) Docs.viewport = { w: Math.round(size.w * dpr), h: Math.round(size.h * dpr) }  // what Vừa màn hình fits, device px

@@ -135,7 +135,8 @@ QtObject {
     readonly property var system: ({ ramGB: 16, gpuName: "Intel Iris Xe Graphics", gpuApi: "Vulkan 1.3", ramUsed: 3.1, vramUsed: 0.9, scratchUsed: 1.2,
         disks: { "C:": { kind: qsTr("SSD NVMe"), free: 118 }, "D:": { kind: qsTr("SSD"), free: 402 }, "E:": { kind: qsTr("HDD ngoài"), free: 1200 } } })
     readonly property var defaults: {
-        const o = Object.assign({ newDocPresets: [] }, perf)  // New's Đã lưu (U16): presets as NewDocSpec.P() makes them
+        // New's Đã lưu (U16): presets as NewDocSpec.P() makes them; Nền quanh ảnh's Tùy chọn…, a colour a screen mode (U23).
+        const o = Object.assign({ newDocPresets: [], canvasStandardColor: "#282828", canvasFullMenuColor: "#282828", canvasFullColor: "#000000" }, perf)
         for (const id in panes)
             for (const r of panes[id]) {
                 if (r.keys)

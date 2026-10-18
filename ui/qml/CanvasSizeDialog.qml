@@ -87,12 +87,14 @@ DialogBox {
                     text: dim.index ? qsTr("Cao") : qsTr("Rộng")
                 }
                 NumberField {
+                    boxHeight: 28
                     Layout.fillWidth: true
                     value: dlg.shown(dim.index)
                     decimals: dlg.units[dim.index] === "px" ? 0 : 2
                     onMoved: v => dlg.setDim(dim.index, v)
                 }
                 Dropdown {
+                    implicitHeight: 28
                     Layout.preferredWidth: 120
                     options: Spec.UNITS
                     value: dlg.units[dim.index]
@@ -125,13 +127,14 @@ DialogBox {
                 text: qsTr("Màu phần mở rộng")
             }
             Dropdown {
+                implicitHeight: 28
                 Layout.fillWidth: true
                 options: Spec.EXTENSION
                 value: dlg.extension
                 enabled: dlg.hasBackground
                 onPicked: v => dlg.extension = v
             }
-            FillDialog.ColorButton {
+            ColorButton {
                 Layout.preferredWidth: 28
                 enabled: dlg.hasBackground
                 color: dlg.extColor

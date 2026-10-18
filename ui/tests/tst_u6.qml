@@ -513,8 +513,9 @@ Item {
             verify(Qt.colorEqual(vp.color, "#282828"), vp.color)
             Prefs.set("canvasStandard", 3)
             verify(Qt.colorEqual(vp.color, "#8e8e8e"))
-            Prefs.set("canvasStandard", 4)  // Tùy chọn…: no colour kept yet, the theme's
-            verify(Qt.colorEqual(vp.color, Theme.view))
+            Prefs.set("canvasStandard", 4)  // Tùy chọn…: a colour of its own a screen mode, Thiết lập's Color Picker sets it (U23)
+            Prefs.set("canvasStandardColor", "#336699")
+            verify(Qt.colorEqual(vp.color, "#336699"), vp.color)
             Tools.screen = 1
             verify(Qt.colorEqual(vp.color, "#282828"))
             Prefs.set("canvasFullMenu", 2)
@@ -523,6 +524,8 @@ Item {
             verify(Qt.colorEqual(vp.color, "#000000"))
             Prefs.set("canvasFull", 3)
             verify(Qt.colorEqual(vp.color, "#8e8e8e"))
+            Prefs.set("canvasFull", 4)
+            verify(Qt.colorEqual(vp.color, "#000000"), "its own, black until set")
             Tools.screen = 0
         }
         function test_cursor() {  // the pointer by tool; the Zoom tool's drawn
@@ -532,7 +535,9 @@ Item {
                 Tools.tool = t
                 compare(c.input.cursorShape, shape[t], t)
             }
-            const lens = find(c.frame, o => o instanceof Icon)
+            // The lens is the frame's own Icon; an overlay's icon comes before it in the frame (U23: was the first Icon).
+            createTemporaryQmlObject("import PhotoBeauty; Icon { name: 'brush' }", find(c.frame, o => o instanceof Overlays))
+            const lens = find(c.frame, o => o instanceof Icon && o.parent === c.frame)
             Tools.tool = "zoom"
             mouseMove(c.frame, 300, 200)
             verify(lens.visible)

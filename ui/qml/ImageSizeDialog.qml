@@ -168,6 +168,7 @@ DialogBox {
                 spacing: 8
                 RowLabel { text: qsTr("Fit To") }
                 Dropdown {
+                    implicitHeight: 28
                     Layout.fillWidth: true
                     options: Spec.FIT.map((f, i) => [i, f.name])
                     value: dlg.fit
@@ -187,6 +188,7 @@ DialogBox {
                             spacing: 8
                             RowLabel { text: dim.index ? qsTr("Cao") : qsTr("Rộng") }
                             NumberField {
+                                boxHeight: 28
                                 Layout.fillWidth: true
                                 value: dlg.shown(dim.index)
                                 decimals: dlg.units[dim.index] === "px" ? 0 : 2
@@ -194,6 +196,7 @@ DialogBox {
                                 onMoved: v => dlg.setDim(dim.index, v)
                             }
                             Dropdown {
+                                implicitHeight: 28
                                 Layout.preferredWidth: 128
                                 options: Spec.UNITS
                                 value: dlg.units[dim.index]
@@ -236,12 +239,14 @@ DialogBox {
                 spacing: 8
                 RowLabel { text: qsTr("Độ phân giải") }
                 NumberField {
+                    boxHeight: 28
                     Layout.fillWidth: true
                     value: Spec.round(dlg.resUnit === "cm" ? dlg.ppi / 2.54 : dlg.ppi, decimals)
                     decimals: dlg.resUnit === "cm" ? 2 : 0
                     onMoved: v => dlg.setRes(v)
                 }
                 Dropdown {
+                    implicitHeight: 28
                     Layout.preferredWidth: 128
                     options: Spec.RESOLUTION_UNITS
                     value: dlg.resUnit
@@ -257,6 +262,7 @@ DialogBox {
                     onClicked: dlg.toggleResample()
                 }
                 Dropdown {
+                    implicitHeight: 28
                     Layout.fillWidth: true
                     options: Spec.RESAMPLE
                     value: dlg.method

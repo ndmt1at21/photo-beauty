@@ -370,6 +370,33 @@ Item {
             compare(Object.keys(doc.layer(id).props.fx), ["blendIf"])
         }
 
+        // A Gray document (U23): Kênh has a box for Gray alone, Blend If the Gray channel alone.
+        function test_gray() {
+            const doc = Docs.current, id = doc.active.id
+            doc.run({ op: "setMode", mode: "Gray" })
+            const d = open()
+            compare(shown(d, CheckRow).map(c => [c.text, c.checked]), [["Gray", true]])
+            compare(shown(d, Dropdown)[1].pairs, [["gray", "Gray"]])
+            mouseClick(shown(d, CheckRow)[0])
+            mouseClick(btn(side(d), "OK"))
+            tryCompare(d, "visible", false)
+            compare(doc.layer(id).props.fx, { channels: { gray: false } })
+            doc.run({ op: "setMode", mode: "RGB" })
+            const e = open()
+            compare(shown(e, CheckRow).map(c => c.text), ["R", "G", "B"])
+            compare(shown(e, Dropdown)[1].pairs.length, 4)
+        }
+        // The artboards' boxes: number fields and drop-downs 26 high (U23); Blend If's halves stay 24 (SplitSlider).
+        function test_box_heights() {
+            const d = open()
+            for (const k of ["blendingOptions", "dropShadow", "stroke", "colorOverlay", "gradientOverlay"]) {
+                d.page = k
+                settle(d)
+                const boxes = shown(d, NumberField).concat(shown(d, Dropdown))
+                compare(boxes.map(o => o.height), boxes.map(() => 26), k)
+            }
+        }
+
         // ---- the rest ---------------------------------------------------------------------------------------------
         // Đặt làm mặc định keeps the page's values for effects turned on from now on; Về mặc định brings them back.
         function test_defaults() {

@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls.Basic
 import "FilterSpec.js" as Spec
 
 // Edit › Fill (build/proto/FillStroke.dc.html, plan.md's Hộp thoại): what to fill with (a colour of Tools or one of the
@@ -29,21 +28,8 @@ DialogBox {
         close()
     }
 
-    // Shared with StrokeDialog and CanvasSizeDialog (FillDialog.ColorButton, FillDialog.Cap): the file is not Bound, as
-    // inline components of a Bound one cannot be made in another.
-    // A colour cell that opens the Color Picker (Main.openDialog, U11's dialog) on its colour; chosen(c) is the one picked.
-    component ColorButton: Swatch {
-        id: cb
-        property string title
-        signal chosen(color c)
-        implicitHeight: 24
-        radius: 5
-        ring: Theme.t4
-        ToolTip.text: title
-        Accessible.name: title
-        onClicked: (cb.Window.window as Main)?.openDialog("ColorPicker", { color: cb.color.toString(), title: cb.title, picked: c => cb.chosen(c) })
-    }
-    // A group's caption, the prototype's .cap.
+    // A group's caption, the prototype's .cap. Shared with StrokeDialog and ShortcutsDialog (FillDialog.Cap): the file is
+    // not Bound, as inline components of a Bound one cannot be made in another.
     component Cap: Text {
         color: Theme.t3
         font.pointSize: Theme.pt(10.5)
@@ -64,6 +50,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Nội dung") }
             Dropdown {
+                implicitHeight: 28
                 Layout.fillWidth: true
                 options: Spec.CONTENTS
                 value: dlg.contents
@@ -82,6 +69,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Mode") }
             Dropdown {
+                implicitHeight: 28
                 Layout.fillWidth: true
                 options: Spec.MODES
                 value: dlg.mode
@@ -92,6 +80,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Opacity") }
             NumberField {
+                boxHeight: 28
                 Layout.preferredWidth: 96
                 value: dlg.fillOpacity
                 unit: "%"

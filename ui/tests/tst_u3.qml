@@ -586,6 +586,13 @@ Item {
             verify(Docs.exec("@zoom100") && p.view.zoom === 1)
             verify(Docs.exec("@zoomFit"))
             fuzzyCompare(p.view.zoom, Mock.fitZoom(p.w, p.h, 1034, 750) / 100, 1e-9)
+            p.setView({ angle: 30 })  // turned: its box on the canvas fits, 20 px each side (U23; Mock.fitZoom has no angle)
+            verify(Docs.exec("@zoomFit"))
+            const a = Math.PI / 6, z = p.view.zoom
+            const bw = (p.w * Math.cos(a) + p.h * Math.sin(a)) * z, bh = (p.w * Math.sin(a) + p.h * Math.cos(a)) * z
+            verify(bw <= 994.5 && bh <= 710.5, bw + " × " + bh)  // the zoom rounded to 0,01 %
+            verify(Math.max(bw / 994, bh / 710) > 0.995, "and touches")
+            p.setView({ angle: 0 })
             verify(Docs.exec("@zoomFill"))
             fuzzyCompare(p.view.zoom, Math.round(Math.max(1034 / p.w, 750 / p.h) * 10000) / 10000, 1e-9)
             verify(Docs.exec("@tog:rulers") && !Tools.rulers && Docs.exec("@scr:2") && Tools.screen === 2)

@@ -173,7 +173,7 @@ DialogBox {
                         readonly property var f: dlg.fields[index]
                         width: (grid.width - 20) / 3
                         spacing: 6
-                        StrokeDialog.Radio {
+                        Radio {
                             width: 33
                             anchors.verticalCenter: parent.verticalCenter
                             text: cell.f[1]

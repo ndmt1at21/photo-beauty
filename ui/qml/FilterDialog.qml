@@ -134,6 +134,7 @@ DialogBox {
                         text: sl.modelData.label
                     }
                     NumberField {
+                        boxHeight: 26
                         Layout.preferredWidth: 86
                         value: sl.value
                         unit: sl.modelData.unit
@@ -167,6 +168,7 @@ DialogBox {
                     text: se.modelData.label
                 }
                 Dropdown {
+                    implicitHeight: 26
                     Layout.preferredWidth: 140
                     options: se.modelData.options
                     value: dlg.values[se.modelData.key]
@@ -187,7 +189,7 @@ DialogBox {
                 }
                 Repeater {
                     model: ra.modelData.options
-                    StrokeDialog.Radio {
+                    Radio {
                         id: opt
                         required property var modelData
                         text: opt.modelData[1]
@@ -225,6 +227,7 @@ DialogBox {
                         NumberField {
                             id: cell
                             required property int index
+                            boxHeight: 32
                             width: 56
                             value: dlg.values[ke.modelData.key][cell.index]
                             min: ke.modelData.min
@@ -252,6 +255,7 @@ DialogBox {
                                 text: fi.modelData.label
                             }
                             NumberField {
+                                boxHeight: 26
                                 width: 64
                                 value: dlg.values[fi.modelData.key]
                                 min: fi.modelData.min

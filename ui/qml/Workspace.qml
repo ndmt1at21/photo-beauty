@@ -68,6 +68,7 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
         Rectangle {  // the header, as the window's top bar
+            objectName: "titleBar"  // TitleBar: what moves the window on Windows while the space is open
             Layout.fillWidth: true
             implicitHeight: 44
             color: Theme.bg

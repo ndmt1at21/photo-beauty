@@ -19,6 +19,8 @@ Item {
     Component { id: strokeC; StrokeDialog {} }
     Component { id: filterC; FilterDialog {} }
     Component { id: mainC; Main {} }
+    Component { id: radioC; Radio {} }
+    Component { id: colorButtonC; ColorButton {} }
     Component {  // U11's Color Picker, as Main.openDialog would make it
         id: pickerC
         DialogBox {
@@ -517,6 +519,34 @@ Item {
             verify(Qt.colorEqual(d.custom, "#123456"))
             ok(d)
             compare(last(Docs.current).cmds[0].color, "#123456")
+        }
+
+        // The artboards' boxes (U23): number fields and drop-downs 28 high in Image Size, Canvas Size, Fill, Stroke
+        // (ImageSize, FillStroke), 26 in the filters (Filters), Custom's grid 32.
+        function test_box_heights() {
+            for (const [c, h, name] of [[imageSizeC, 28, "Image Size"], [canvasSizeC, 28, "Canvas Size"], [fillC, 28, "Fill"], [strokeC, 28, "Stroke"]]) {
+                const d = show(c), boxes = fields(d).concat(drops(d).filter(o => o.visible))
+                verify(boxes.length >= 2, name)
+                compare(boxes.map(o => o.height), boxes.map(() => h), name)
+                d.close()
+            }
+            const m = show(filterC, { filter: "maximum" }), boxes = fields(m).concat(drops(m))
+            compare(boxes.map(o => o.height), [26, 26], "Maximum: Radius, Preserve")
+            const k = show(filterC, { filter: "custom" }), cells = fields(k)
+            compare(cells.length, 27)
+            compare(cells.slice(0, 25).every(o => o.height === 32), true, "the grid")
+            compare([cells[25].height, cells[26].height], [26, 26], "Scale, Offset")
+        }
+        // Radio and ColorButton, controls of their own (U23; once inline components of StrokeDialog and FillDialog).
+        function test_shared_controls() {
+            const r = createTemporaryObject(radioC, root, { text: "Center", checked: true })
+            compare([r.objectName, r.text, r.checked, r.height], ["radio", "Center", true, 20])
+            const cb = createTemporaryObject(colorButtonC, root, { color: "#123456", title: qsTr("Màu viền") })
+            verify(cb instanceof Swatch)
+            compare([cb.height, cb.Accessible.name], [24, "Màu viền"])
+            const e = show(strokeC)
+            compare(root.all(e.contentItem, o => o instanceof Radio).length, 3, "Stroke's Vị trí")
+            verify(root.find(e.contentItem, o => o instanceof ColorButton), "Stroke's Màu")
         }
 
         function test_keys() {  // Enter on the button Tab reached, Esc closes

@@ -29,11 +29,14 @@ cp "$root"/ui/qml/*.js "$dest/qml/"  # tests import "../qml/<name>.js" from the 
 
 # The QML modules ui/ imports, as the build tools see them, and QtQuick.Controls, which attached
 # tooltips import; each one's own files only, since a module's folder also holds other modules.
+# No style but Basic (look.h sets it): QtQuick.Dialogs' quickimpl brings the others in with its
+# +Fusion, +Material… files, which load only under those styles (~17 MB, U23).
+styles='/QtQuick/(Controls/(Fusion|Imagine|Material|Universal|FluentWinUI3|Windows)|NativeStyle)(/|$)'
 {
   "$QT_ROOT_DIR/libexec/qmlimportscanner" -rootPath "$root/ui/qml" -rootPath "$root/ui/tests" -importPath "$qt/qml" |
     python3 -c 'import json, sys; [print(m["path"]) for m in json.load(sys.stdin) if m.get("path", "").startswith(sys.argv[1])]' "$qt/qml/"
   echo "$qt/qml/QtQuick/Controls"
-} | sort -u | while read -r dir; do
+} | sort -u | grep -Ev "$styles" | while read -r dir; do
   mkdir -p "$dest/qml/${dir#"$qt/qml/"}"
   find "$dir" -maxdepth 1 -type f -exec cp {} "$dest/qml/${dir#"$qt/qml/"}/" \;
 done

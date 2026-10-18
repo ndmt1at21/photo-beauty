@@ -51,6 +51,7 @@ Item {
         function init() {
             Docs.reset()
             Prefs.reset()
+            Theme.fontSize = "m"
             mouseMove(root, 1, 1)
         }
         function cleanupTestCase() { init() }
@@ -100,6 +101,21 @@ Item {
             for (const name of ["quality", "transparent", "small", "compression"])
                 compare(root.named(d, name).visible, data.shown.indexOf(name) >= 0, name)
             compare(d.files, ["chân dung" + { JPEG: ".jpg", PNG: ".png", WebP: ".webp", TIFF: ".tif" }[data.tag], "chân dung@0,5x" + { JPEG: ".jpg", PNG: ".png", WebP: ".webp", TIFF: ".tif" }[data.tag]])
+        }
+        // The artboard's boxes (U23): number fields 26 high, as its drop-downs.
+        function test_export_box_heights() {
+            const d = open(exportC)
+            const boxes = root.findAll(d.contentItem, c => (c instanceof NumberField || c instanceof Dropdown) && c.visible)
+            verify(boxes.length >= 8)
+            compare(boxes.map(c => c.height), boxes.map(() => 26))
+        }
+        // Lớn (U23): the settings' column grows with the text, "Resample Bicubic Sharper" whole.
+        function test_export_large_font() {
+            Theme.fontSize = "l"
+            const d = open(exportC)
+            const dd = root.findAll(d.contentItem, c => c instanceof Dropdown && c.prefix === "Resample\u00a0")[0]
+            const value = dd.contentItem.children[1]
+            compare([value.text, value.truncated], ["Bicubic Sharper", false])
         }
         // Xuất: one job of Docs (the files of every scale), the dialog closes; the job runs, then cancels and stays so.
         function test_export_job() {

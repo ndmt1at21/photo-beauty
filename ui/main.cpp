@@ -1,6 +1,8 @@
 // pb-ui: the window of the PhotoBeauty module (docs/ui-tasks.md).
-// copied from snapone 6bdb5c8 (ui/main.cpp: the flags, --screenshot), without its catalog, splash and core.
+// copied from snapone 6bdb5c8 (ui/main.cpp: the flags, --screenshot) and 6ff61f0 (its Splash), without its catalog
+// and core.
 #include <QCommandLineParser>
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -8,6 +10,8 @@
 #include <QImage>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
+#include <QRasterWindow>
+#include <QScreen>
 #include <QTimer>
 #include <QtQml/qqmlextensionplugin.h>
 
@@ -15,6 +19,31 @@
 #include "look.h"
 
 Q_IMPORT_QML_PLUGIN(PhotoBeautyPlugin)
+
+// The start screen (ui/brand/splash.h, artboard Splash) while QML loads, closed on the window's first frame, as
+// snapone's N10. A raster window: up before Qt Quick is.
+class Splash : public QRasterWindow {
+ public:
+  void step(qreal to) {  // paints now: the next step blocks the event loop
+    if (!isVisible()) return;
+    done_ = to;
+    update();
+    QEvent e(QEvent::UpdateRequest);
+    QCoreApplication::sendEvent(this, &e);
+  }
+
+ protected:
+  void paintEvent(QPaintEvent*) override {
+    QPainter p(this);
+    p.setCompositionMode(QPainter::CompositionMode_Source);  // the corners outside the rounded box
+    p.fillRect(QRect(QPoint(), size()), Qt::transparent);
+    p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    paintStart(p, size(), done_);
+  }
+
+ private:
+  qreal done_ = 0.1;
+};
 
 int main(int argc, char* argv[]) {
   // Screenshots render offscreen, in the software scene graph as the tests and CI, not in a window on the desktop.
@@ -67,6 +96,20 @@ int main(int argc, char* argv[]) {
     return image.save(file) ? 0 : 2;
   }
 
+  Splash splash;
+  if (!args.isSet(shot) && app.platformName() != QLatin1String("offscreen")) {
+    QSurfaceFormat format = splash.format();
+    format.setAlphaBufferSize(8);
+    splash.setFormat(format);
+    splash.setFlags(Qt::SplashScreen | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    QRect r(0, 0, 560, 340);
+    r.moveCenter(splash.screen()->availableGeometry().center());
+    splash.setGeometry(r);
+    splash.show();
+    for (QDeadlineTimer wait(500); !splash.isExposed() && !wait.hasExpired();) app.processEvents();
+    splash.step(0.1);
+  }
+
   QQmlApplicationEngine engine;
   for (const QString& dir : args.values(imports)) engine.addImportPath(dir);
   QVariantMap start{{"startState", args.value(state)},
@@ -81,6 +124,9 @@ int main(int argc, char* argv[]) {
   engine.loadFromModule("PhotoBeauty", "Main");
   auto* win = engine.rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow*>(engine.rootObjects().first());
   if (!win) return 1;
+  splash.step(0.9);
+  QObject::connect(win, &QQuickWindow::frameSwapped, &splash, &QWindow::close, Qt::SingleShotConnection);
+  QTimer::singleShot(3000, &splash, &QWindow::close);  // no frame comes when the window starts minimized
   win->show();
   if (args.isSet(shot)) {
     const QString file = args.value(shot);

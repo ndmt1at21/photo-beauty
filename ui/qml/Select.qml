@@ -70,15 +70,25 @@ ComboBox {
         }
     }
     popup: Popup {
+        id: pop
         popupType: Popup.Item
         y: c.height + 4
-        width: c.width
+        // As wide as the box or its longest option (.pop's min-width: 100%), from the box's left (x: the owner's).
+        width: Math.max(c.width, Math.ceil(fm.widest) + 20)
         topPadding: 6
         bottomPadding: 6
         leftPadding: 0
         rightPadding: 0
         enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
         exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 120 } }
+        FontMetrics {  // the rows' (the value's bold)
+            id: fm
+            // font.pointSize: measured again once the font is set (advanceWidth() alone binds to nothing)
+            readonly property real widest: font.pointSize > 0 ? c.options.reduce((w, o) => Math.max(w, advanceWidth(o[1])), 0) : 0
+            font.family: pop.font.family  // the window's, not the box's
+            font.pointSize: Theme.pt(12.5)
+            font.weight: Font.DemiBold
+        }
         contentItem: ListView {
             implicitHeight: contentHeight
             model: c.delegateModel

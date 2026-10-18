@@ -4,12 +4,13 @@ import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import "Fmt.js" as Fmt
 
-// Number field of the prototype (.fld, "Ô số" of plan.md): a 24 px box with the value in JetBrains
-// Mono and its unit, the label inside the box (Properties, Color Picker) or, labelInside false, before
-// it (options bar, Layers). Drag the label (a step a pixel, Shift 10), ↑ ↓ (Shift ×10), type a sum or
-// a unit ("1240*2", "5cm" at ppi, "50%" of percentOf) then Enter, Esc to drop the typing, double-click
-// the label for defaultValue. Past min or max the box turns red with "Tối đa 1.000 px" under it, and
-// Enter takes the limit. `slider` adds the chevron of the options bar's FC cells, a slider under it.
+// Number field of the prototype (.fld, "Ô số" of plan.md): a 24 px box (boxHeight: the dialogs' artboards
+// draw 28 or 26) with the value in JetBrains Mono and its unit, the label inside the box (Properties, Color
+// Picker) or, labelInside false, before it (options bar, Layers). Drag the label (a step a pixel, Shift 10),
+// ↑ ↓ (Shift ×10), type a sum or a unit ("1240*2", "5cm" at ppi, "50%" of percentOf) then Enter, Esc to drop
+// the typing, double-click the label for defaultValue. Past min or max the box turns red with "Tối đa
+// 1.000 px" under it, and Enter takes the limit. `slider` adds the chevron of the options bar's FC cells, a
+// slider under it.
 // Value protocol of the shared controls: the owner binds `value`; every change comes as started(),
 // moved(v)… (live, set the model here), committed(v) (one history step ends); a drag sends many
 // moved(), a typed value or a key one.
@@ -30,6 +31,7 @@ Item {
     property bool slider: false
     property real sliderMin: min
     property real sliderMax: max
+    property real boxHeight: 24
     readonly property bool editing: input.activeFocus
     readonly property bool scrubbing: st.scrubbing
     readonly property string shown: Fmt.unit(value, unit, decimals)
@@ -45,7 +47,7 @@ Item {
     signal committed(real v)
 
     implicitWidth: (outLabel.visible ? outLabel.implicitWidth + 6 : 0) + 64 + (inLabel.visible ? inLabel.implicitWidth + 4 : 0)
-    implicitHeight: 24
+    implicitHeight: boxHeight
 
     onShownChanged: if (!input.activeFocus) input.text = shown
 
@@ -126,7 +128,7 @@ Item {
         id: box
         x: outLabel.visible ? outLabel.width + 6 : 0
         width: f.width - x
-        height: 24
+        height: f.boxHeight
         anchors.verticalCenter: parent.verticalCenter
         radius: 4
         color: Theme.p2

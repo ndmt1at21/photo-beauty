@@ -151,7 +151,7 @@ Item {
             compare(Prefs.value("placeSmartObject"), true)
         }
 
-        function test_select() {  // index of the option; the box fits the longest
+        function test_select() {  // index of the option; the box as wide as its value, 150 or more, the list as the longest at its right
             const d = open({ page: "files" })
             const s = inRow(d, "recentFiles", Select)
             compare(s.displayText, "20")
@@ -161,13 +161,43 @@ Item {
             mouseClick(s.popup.contentItem.itemAtIndex(3))
             compare(Prefs.value("recentFiles"), 3)
             tryCompare(s, "displayText", "50")
-            compare(s.height, 26)
-            verify(s.width >= 150)
+            compare([s.height, s.width], [26, 150], "the prototype's min-width")
             const place = inRow(d, "quickPlace", Select)
-            verify(place.width > 150 && place.widest + place.leftPadding <= place.width - 28, "Thư mục assets cạnh tài liệu whole")
+            compare(place.width, 150, "Hỏi mỗi lần: the box as its value (U23)")
+            tryCompare(s.popup, "visible", false)  // a click while another list fades out opens nothing
+            mouseClick(place)
+            tryCompare(place.popup, "opened", true)
+            waitForRendering(place.popup.contentItem)
+            const longest = place.popup.contentItem.itemAtIndex(1)
+            verify(place.popup.width > place.width, "the list wider than the box")
+            verify(longest.contentItem.implicitWidth <= longest.availableWidth, "Thư mục assets cạnh tài liệu whole")
+            compare(place.popup.x + place.popup.width, place.width, "at the box's right, as the prototype's right: 0")
+            keyClick(Qt.Key_Escape)
+            tryCompare(place.popup, "visible", false)
             place.forceActiveFocus()
             keyClick(Qt.Key_Down)
             compare(Prefs.value("quickPlace"), 1, "↓ picks the next")
+            tryVerify(() => place.width > 150 && place.contentItem.implicitWidth <= place.availableWidth + 1, 1000, "the box follows its value")
+        }
+        // Nền quanh ảnh's Tùy chọn…: the Color Picker first, as Photoshop's Select Custom Color…; OK keeps its colour and
+        // picks it, Hủy leaves both (U23). The canvas around the image takes it (tst_u6's test_surround).
+        function test_custom_canvas() {
+            const d = open({ page: "interface" }, ["ColorPicker"])
+            const s = inRow(d, "canvasStandard", Select), calls = () => host(d).calls
+            compare(s.options[4][1], "Tùy chọn…")
+            s.activated(4)
+            compare(calls().length, 1)
+            compare([calls()[0][0], calls()[0][1].color, calls()[0][1].title], ["ColorPicker", "#282828", "Nền quanh ảnh · chuẩn"])
+            compare(Prefs.value("canvasStandard"), 1, "nothing until the colour is picked")
+            calls()[0][1].picked(Qt.color("#336699"))
+            compare([Prefs.value("canvasStandard"), Prefs.value("canvasStandardColor")], [4, "#336699"])
+            compare(s.displayText, "Tùy chọn…")
+            s.activated(4)  // again: the colour to change, from the one kept
+            compare(calls()[1][1].color, "#336699")
+            inRow(d, "canvasFull", Select).activated(4)
+            compare(calls()[2][1].color, "#000000", "a colour each screen mode")
+            s.activated(2)
+            compare([Prefs.value("canvasStandard"), calls().length], [2, 3], "another option at once")
         }
 
         function test_group() {

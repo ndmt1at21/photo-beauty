@@ -270,6 +270,11 @@ Item {
             acted.destroy()
         }
 
+        function test_new_box_heights() {  // the artboard's 28 px boxes (U23): W, H, resolution and the drop-downs
+            const d = newDialog(), boxes = nums(d).concat(items(d.contentItem, (i) => i instanceof Select && i.visible))
+            verify(boxes.length >= 8)
+            compare(boxes.map((b) => b.height), boxes.map(() => 28))
+        }
         function test_new_units() {
             const d = newDialog()
             const f = nums(d)

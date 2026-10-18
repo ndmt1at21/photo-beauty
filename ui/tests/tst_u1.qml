@@ -331,6 +331,17 @@ Item {
             compare(sel.displayText, "Display P3")
             compare(sel.currentIndex, 2)
             sel.value = "srgb"
+            // The list as wide as its longest option when the box is not (.pop's min-width: 100%, U23; tst_u21's
+            // test_select: in a dialog, where the font comes late)
+            const narrow = createTemporaryQmlObject("import PhotoBeauty; Select { x: 20; y: 20; width: 90; value: 'p3'; options: [['srgb', 'sRGB IEC61966-2.1'], ['p3', 'Display P3']] }", root)
+            mouseClick(narrow)
+            tryCompare(narrow.popup, "opened", true)
+            waitForRendering(narrow.popup.contentItem)
+            const row = narrow.popup.contentItem.itemAtIndex(0)
+            verify(narrow.popup.width > 90 && row.contentItem.implicitWidth <= row.availableWidth, narrow.popup.width)
+            compare(narrow.popup.x, 0, "from the box's left")
+            keyClick(Qt.Key_Escape)
+            tryCompare(narrow.popup, "visible", false)
         }
         function test_toggle() {
             const clicked = createTemporaryObject(signalSpy, root, { target: togOff, signalName: "clicked" })

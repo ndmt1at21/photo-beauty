@@ -376,7 +376,7 @@ ColumnLayout {
                     readonly property bool on: rows.values[row.r.key] === row.r.index
                     readonly property string k: row.r.key + row.r.index  // its colour or its pick
                     spacing: 8
-                    StrokeDialog.Radio {
+                    Radio {
                         Layout.minimumWidth: 96
                         text: row.r.label
                         checked: ra.on

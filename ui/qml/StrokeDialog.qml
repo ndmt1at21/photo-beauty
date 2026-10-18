@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls.Basic
 import "FilterSpec.js" as Spec
 
 // Edit › Stroke (build/proto/FillStroke.dc.html, plan.md's Hộp thoại): width and colour of the line, where it runs
@@ -29,45 +28,6 @@ DialogBox {
         close()
     }
 
-    // A radio button, the prototype's <input type=radio>: `checked` comes from the owner, clicked() asks it to pick this
-    // one. Shared with FilterDialog (StrokeDialog.Radio), so this file is not Bound: inline components of a Bound file
-    // cannot be made in another.
-    component Radio: AbstractButton {
-        id: r
-        objectName: "radio"
-        implicitWidth: implicitContentWidth
-        implicitHeight: 20
-        hoverEnabled: true
-        font.pointSize: Theme.pt(12)
-        Accessible.role: Accessible.RadioButton
-        Accessible.checked: checked
-        contentItem: Row {
-            spacing: 6
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 13
-                height: 13
-                radius: 6.5
-                color: "transparent"
-                border.width: r.checked ? 1.5 : 1
-                border.color: r.checked ? Theme.accent : r.hovered ? Theme.t2 : Theme.t3
-                Rectangle {
-                    visible: r.checked
-                    anchors.centerIn: parent
-                    width: 7
-                    height: 7
-                    radius: 3.5
-                    color: Theme.accent
-                }
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: r.text
-                font: r.font
-                color: Theme.t2
-            }
-        }
-    }
     component RowLabel: Text {
         color: Theme.t2
         font.pointSize: Theme.pt(12)
@@ -82,6 +42,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Độ dày") }
             NumberField {
+                boxHeight: 28
                 Layout.preferredWidth: 96
                 value: dlg.strokeWidth
                 unit: "px"
@@ -93,7 +54,7 @@ DialogBox {
         RowLayout {
             spacing: 10
             RowLabel { text: qsTr("Màu") }
-            FillDialog.ColorButton {
+            ColorButton {
                 Layout.preferredWidth: 60
                 color: dlg.strokeColor
                 title: qsTr("Màu viền")
@@ -124,6 +85,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Mode") }
             Dropdown {
+                implicitHeight: 28
                 Layout.fillWidth: true
                 options: Spec.MODES
                 value: dlg.mode
@@ -134,6 +96,7 @@ DialogBox {
             spacing: 10
             RowLabel { text: qsTr("Opacity") }
             NumberField {
+                boxHeight: 28
                 Layout.preferredWidth: 96
                 value: dlg.strokeOpacity
                 unit: "%"

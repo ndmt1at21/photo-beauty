@@ -55,7 +55,7 @@ DialogBox {
             spacing: 10
             Repeater {
                 model: dlg.choices
-                delegate: StrokeDialog.Radio {
+                delegate: Radio {
                     required property var modelData
                     implicitHeight: 17  // a line of the artboard's 12 px text
                     text: modelData[1]

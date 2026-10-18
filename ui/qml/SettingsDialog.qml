@@ -29,6 +29,15 @@ DialogBox {
     function pickColor(key, title) {
         openOther("ColorPicker", { color: Prefs.values[key], title: title, picked: c => Prefs.set(key, String(c)) })
     }
+    // An option of a select row. Nền quanh ảnh's last, Tùy chọn…, opens the Color Picker first, as Photoshop's Select
+    // Custom Color…: OK keeps the colour in <key>Color and picks the option, Hủy leaves both.
+    function pickOption(r, i) {
+        const custom = r.key + "Color"
+        if (i === r.options.length - 1 && custom in Prefs.defaults)
+            openOther("ColorPicker", { color: Prefs.values[custom], title: r.label, picked: c => { Prefs.set(custom, String(c)); Prefs.set(r.key, i) } })
+        else
+            Prefs.set(r.key, i)
+    }
     function act(r) {  // a button of a pane
         if (r.kind === "model") {
             Prefs.set(r.key, !Prefs.values[r.key])
@@ -433,15 +442,15 @@ DialogBox {
                             }
                             Component {
                                 id: selectC
-                                Select {  // wide enough for its longest option, which the list shows whole
+                                Select {  // as wide as its value, 150 or more; the list as wide as its longest option, at its right
                                     id: sel
-                                    readonly property real widest: fm.font.pointSize > 0 ? row.r.options.reduce((w, o) => Math.max(w, fm.advanceWidth(o)), 0) : 0
-                                    implicitWidth: Math.max(150, Math.ceil(widest) + leftPadding + rightPadding)
+                                    implicitWidth: Math.max(150, Math.ceil(fm.advanceWidth(displayText)) + leftPadding + rightPadding)
                                     implicitHeight: 26
+                                    popup.x: width - popup.width
                                     options: row.r.options.map((o, i) => [i, o])
                                     value: row.v
                                     Accessible.name: row.r.label
-                                    onPicked: i => Prefs.set(row.r.key, i)
+                                    onPicked: i => st.pickOption(row.r, i)
                                     FontMetrics { id: fm; font: sel.font }
                                 }
                             }

@@ -242,7 +242,7 @@ DialogBox {
             }
             Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: Theme.ln }
             Flickable {  // the settings
-                Layout.preferredWidth: 339
+                Layout.preferredWidth: Math.round(339 * Theme.fontScale)  // Lớn: "Resample Bicubic Sharper" whole
                 Layout.fillHeight: true
                 contentHeight: side.implicitHeight
                 clip: true
@@ -272,6 +272,7 @@ DialogBox {
                                     text: qsTr("Chất lượng")
                                 }
                                 NumberField {
+                                    boxHeight: 26
                                     Layout.preferredWidth: 56
                                     value: dlg.quality
                                     min: 1
@@ -323,6 +324,7 @@ DialogBox {
                         RowLayout {
                             spacing: 6
                             NumberField {
+                                boxHeight: 26
                                 Layout.fillWidth: true
                                 label: "W"
                                 labelColor: Theme.t3
@@ -340,6 +342,7 @@ DialogBox {
                                 onClicked: dlg.link = !dlg.link
                             }
                             NumberField {
+                                boxHeight: 26
                                 Layout.fillWidth: true
                                 label: "H"
                                 labelColor: Theme.t3
@@ -353,6 +356,7 @@ DialogBox {
                         RowLayout {
                             spacing: 6
                             NumberField {
+                                boxHeight: 26
                                 Layout.preferredWidth: 110
                                 label: qsTr("Tỉ lệ")
                                 labelColor: Theme.t3
@@ -394,6 +398,7 @@ DialogBox {
                         RowLayout {
                             spacing: 6
                             NumberField {
+                                boxHeight: 26
                                 Layout.fillWidth: true
                                 label: "W"
                                 labelColor: Theme.t3
@@ -404,6 +409,7 @@ DialogBox {
                                 onMoved: v => dlg.cw = v
                             }
                             NumberField {
+                                boxHeight: 26
                                 Layout.fillWidth: true
                                 label: "H"
                                 labelColor: Theme.t3

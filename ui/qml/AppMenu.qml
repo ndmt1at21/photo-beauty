@@ -41,6 +41,8 @@ MenuBar {
         implicitWidth: label.implicitWidth
         implicitHeight: 34  // 28 drawn; a menu opens under the item, so 6 px below the title as the prototype's
         padding: 0
+        leftPadding: 0  // over the style's 12 and 16: the title's own padding is the label's
+        rightPadding: 0
         bottomPadding: 6
         hoverEnabled: true  // a menu open, the mouse on a title opens it; also offscreen, where hover is off
         focusPolicy: Qt.NoFocus

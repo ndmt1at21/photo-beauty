@@ -3,6 +3,7 @@
 
 #include <QAbstractNativeEventFilter>
 #include <QGuiApplication>
+#include <QPointer>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -20,18 +21,41 @@ static QQuickItem* controlAt(QQuickItem* item, QPointF p) {
   return item->contains(item->mapFromScene(p)) && item->inherits("QQuickControl") ? item : nullptr;
 }
 
+// A popup open on win, tooltips aside: one showing; closing: one that a press outside it closes and lets through
+// (CloseOnPressOutside, CloseOnPressOutsideParent, not modal: a modal one keeps that press; not the toast) from the
+// moment Qt Quick puts its item on the overlay, before it shows, until the item leaves the overlay.
+static bool popupOn(const QQuickWindow* win, bool closing) {
+  for (const QQuickItem* top : win->contentItem()->childItems())
+    if (top->inherits("QQuickOverlay"))
+      for (const QQuickItem* c : top->childItems()) {  // popups' items, the toast
+        const QObject* p = c->parent();
+        if (p && p->inherits("QQuickPopup") && !p->inherits("QQuickToolTip") &&
+            (closing ? (p->property("closePolicy").toInt() & 3) && !p->property("modal").toBool() : c->isVisible()))
+          return true;
+      }
+  return false;
+}
+
+// The visible item named "titleBar" in win: the top bar, or the header of a space open over it.
+static QQuickItem* barOf(const QQuickWindow* win) {
+  if (win)
+    for (QQuickItem* b : win->findChildren<QQuickItem*>(QStringLiteral("titleBar")))
+      if (b->isVisible()) return b;
+  return nullptr;
+}
+
 TitleBar::Hit TitleBar::hit(QQuickItem* bar, QPointF p) {
   if (!bar || !bar->isVisible() || !bar->window() || !bar->contains(bar->mapFromScene(p))) return Quick;
   // An open menu or dialog takes every press, as Qt Quick closes the one and blocks for the other.
   // Tooltips close by themselves.
-  for (const QQuickItem* top : bar->window()->contentItem()->childItems())
-    if (top->inherits("QQuickOverlay"))
-      for (const QQuickItem* c : top->childItems())  // popups' items, the toast
-        if (c->isVisible() && c->parent() && c->parent()->inherits("QQuickPopup") && !c->parent()->inherits("QQuickToolTip"))
-          return Quick;
+  if (popupOn(bar->window(), false)) return Quick;
   const QQuickItem* c = controlAt(bar, p);
   return !c ? Move : c->objectName() == QLatin1String("maximize") ? Maximize : Quick;
 }
+
+QQuickItem* TitleBar::bar(QQuickWindow* win) const { return barOf(win); }
+
+bool TitleBar::popupOpen(QQuickItem* item) const { return item && item->window() && popupOn(item->window(), true); }
 
 #ifdef _WIN32
 // The window's messages that make the bar its title bar. Windows keeps the frame: resize edges,
@@ -52,18 +76,24 @@ class NativeBar : public QAbstractNativeEventFilter {
         auto* r = reinterpret_cast<RECT*>(m->lParam);  // NCCALCSIZE_PARAMS::rgrc[0] when wParam is TRUE
         const LONG top = r->top;
         *result = DefWindowProcW(hwnd, m->message, m->wParam, m->lParam);
-        // ponytail: Qt sizes the minimum from the last frame, so a window at its minimum height grows by
-        // edge() when restored from maximized; answer WM_GETMINMAXINFO here if that matters.
         r->top = top + (IsZoomed(hwnd) ? edge() : 0);  // maximized, the edges lie off the screen
+        return true;
+      }
+      case WM_GETMINMAXINFO: {  // the minimum with the frame the window has when not maximized: no top edge
+        // Qt adds the frame of the last state: restored from maximized at its minimum height, it grew by edge().
+        const QSize min = win->minimumSize() * win->devicePixelRatio();
+        auto* info = reinterpret_cast<MINMAXINFO*>(m->lParam);
+        info->ptMinTrackSize = {LONG(min.width() + 2 * edge()), LONG(min.height() + edge())};
+        *result = 0;
         return true;
       }
       case WM_NCHITTEST: {
         *result = DefWindowProcW(hwnd, m->message, m->wParam, m->lParam);  // the side and bottom edges
-        if (*result != HTCLIENT) return true;
+        if (*result != HTCLIENT || win->visibility() == QWindow::FullScreen) return true;  // full screen moves nowhere
         POINT p{GET_X_LPARAM(m->lParam), GET_Y_LPARAM(m->lParam)};
         ScreenToClient(hwnd, &p);
         if (p.y < edge() && !IsZoomed(hwnd)) *result = HTTOP;
-        else if (const TitleBar::Hit h = TitleBar::hit(bar, QPointF(p.x, p.y) / win->devicePixelRatio()); h != TitleBar::Quick)
+        else if (const TitleBar::Hit h = TitleBar::hit(shown(), QPointF(p.x, p.y) / win->devicePixelRatio()); h != TitleBar::Quick)
           *result = h == TitleBar::Move ? HTCAPTION : HTMAXBUTTON;
         return true;
       }
@@ -89,6 +119,12 @@ class NativeBar : public QAbstractNativeEventFilter {
 
  private:
   bool lit = false, pressed = false;
+  QPointer<QQuickItem> bar_;  // the title bar last found: the top bar, or the header of a space open over it
+
+  QQuickItem* shown() {
+    if (!bar_ || !bar_->isVisible()) bar_ = barOf(win);
+    return bar_;
+  }
 
   int edge() const {  // the top resize edge, as thick as Windows makes the others
     const UINT dpi = GetDpiForWindow(hwnd);

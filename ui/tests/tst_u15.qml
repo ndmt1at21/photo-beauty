@@ -331,13 +331,14 @@ Item {
                 mouseClick(control(s, Btn, "Invert"))
             s.put({ out: data.out })
             mouseClick(control(s, Btn, "OK"))
-            compare(Docs.current, d)
             if (data.docs) {
                 compare(Docs.docs.length, docs + 1)
                 compare(Docs.docs[docs].file, "chân dung bản sao.psd")
+                compare(Docs.current, Docs.docs[docs], "the new one in front, as Photoshop (U23)")
                 compare(d.history.length, n, "nothing on this one")
                 return
             }
+            compare(Docs.current, d)
             compare(Docs.docs.length, docs)
             compare(d.history.length, n + 1, "one step")
             compare(d.history[d.index].name, "Select and Mask")

@@ -24,4 +24,10 @@ class TitleBar : public QObject {
   // to the system to move the window, or to the maximize button.
   Q_INVOKABLE Hit hit(QQuickItem* bar, qreal x, qreal y) const { return hit(bar, QPointF(x, y)); }
   static Hit hit(QQuickItem* bar, QPointF p);
+  // The title bar of win now: the visible item named "titleBar", the top bar or the header of a space open over it
+  // (Workspace); null when none shows.
+  Q_INVOKABLE QQuickItem* bar(QQuickWindow* win) const;
+  // Whether a popup is open on item's window that a press outside it closes and lets through (not modal), tooltips
+  // aside: Main's scrim keeps that press from the canvas.
+  Q_INVOKABLE bool popupOpen(QQuickItem* item) const;
 };

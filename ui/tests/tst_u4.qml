@@ -368,6 +368,18 @@ Item {
             keyClick(Qt.Key_Escape)
             tryVerify(() => !b.open)
         }
+        // The prototype's header: 12, the mark 18, 8, the wordmark, 14, then the titles, each 9 px either side of its
+        // text. Basic's MenuBarItem pads 12 and 16 more unless told not to (U23: File was 10 px late).
+        function test_menu_place() {
+            const w = open({ startState: "Main" })
+            const b = bar(w), word = find(region(w, TopBar), o => o instanceof Text && o.text === "photo-beauty")
+            const x = o => o.mapToItem(null, 0, 0).x
+            compare(Math.round(x(b.itemAt(0)) - x(word) - word.width), 14)
+            for (let i = 0; i < b.count; i++) {
+                const t = b.itemAt(i), label = t.contentItem
+                compare([x(label) - x(t), label.width, label.leftPadding, label.rightPadding], [0, t.width, 9, 9], t.text)
+            }
+        }
         function test_menu_runs() {  // a click runs the item, in a submenu too; Enter the one ↓ picked
             const w = open({ startState: "Main" })
             const spy = createTemporaryObject(spyC, root, { target: w, signalName: "acted" })
@@ -548,6 +560,41 @@ Item {
             compare(probe.n, 1)
         }
 
+        // Any popup a press outside closes keeps that press from the canvas, not only the top bar's and the status
+        // bar's (U23): the slider under an options bar's field, a panel's menu. A tooltip does not.
+        function test_scrim_popups() {
+            const w = open({ startState: "Main" })
+            const vp = region(w, Viewport)
+            const probe = createTemporaryQmlObject("import QtQuick; MouseArea { anchors.fill: parent; property int n: 0; onPressed: n++ }", vp)
+            const fc = find(region(w, OptionsBar), o => o instanceof NumberField && o.slider && o.visible)
+            const slider = fc.resources.find(o => o instanceof Popup)
+            mouseClick(find(fc, o => o instanceof AbstractButton && o.visible))
+            tryVerify(() => slider.opened)
+            mouseClick(vp, 700, 300)
+            tryVerify(() => !slider.visible)
+            compare(probe.n, 0, "the slider's press")
+            wait(10)
+            const more = find(region(w, Dock), o => o instanceof ToolToggle && o.icon.name === "more_horiz" && o.visible)
+            const menu = more.parent.resources.find(o => o instanceof PopupMenu)
+            mouseClick(more)
+            tryVerify(() => menu.opened)
+            mouseClick(vp, 700, 300)
+            tryVerify(() => !menu.visible)
+            compare(probe.n, 0, "the panel menu's press")
+            wait(10)
+            mouseClick(more)  // closed by a key: the scrim goes with it
+            tryVerify(() => menu.opened)
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !menu.visible)
+            mouseClick(vp, 700, 300)
+            compare(probe.n, 1, "the click right after Esc")
+            const tip = createTemporaryQmlObject("import QtQuick.Controls.Basic; ToolTip { text: 'tip'; visible: true }", w.contentItem)
+            tryVerify(() => tip.opened)
+            wait(10)
+            mouseClick(vp, 700, 300)
+            compare(probe.n, 2, "a tooltip keeps nothing")
+        }
+
         // ---- the background job, the status bar ----------------------------------------------------------------------
         function test_job() {  // running: label, progress, Hủy; done: "Đã lưu …" and a tick, then gone
             const w = open({ startState: "Main" })
@@ -717,6 +764,38 @@ Item {
             compare(Docs.index, 1)
             compare(Tools.tool, "brush")
             verify(region(w, TopBar).visible)
+        }
+        // Ctrl held for Move (U5) when Ctrl Alt R opens Select and Mask: the tool given back is the one before (U23).
+        function test_space_held_key() {
+            const w = open({ startState: "Main" })
+            Tools.setTool("brush", "brush")
+            keyPress(Qt.Key_Control)
+            tryCompare(Tools, "tool", "move", 1000, "held")
+            keyClick(Qt.Key_R, Qt.ControlModifier | Qt.AltModifier)
+            verify(w.space instanceof SelectMaskSpace)
+            tryCompare(Tools, "tool", w.space.startTool)
+            keyRelease(Qt.Key_Control)
+            w.space.rejected()
+            compare(w.space, null)
+            compare(Tools.tool, "brush")
+        }
+        // While a space is open its header is the title bar: what moves the window on Windows (U23).
+        function test_space_title_bar() {
+            const w = open({ startState: "Main" })
+            createTemporaryQmlObject("import QtQuick; Item { objectName: 'titleBar'; visible: false }", w.contentItem)  // found first
+            compare(TitleBar.bar(w), region(w, TopBar), "the one showing")
+            const s = w.openSpace("SelectMask")
+            waitForRendering(w.contentItem)
+            const head = TitleBar.bar(w)
+            let up = head
+            while (up && up !== s)
+                up = up.parent
+            verify(up === s, "the space's own")
+            compare([head.height, head.mapToItem(null, 0, 0).y], [44, 0])
+            compare(TitleBar.hit(head, 700, 22), TitleBar.Move)
+            compare(TitleBar.hit(region(w, TopBar), 700, 22), TitleBar.Quick, "the top bar, hidden, moves nothing")
+            s.finished(false)
+            tryVerify(() => TitleBar.bar(w) === region(w, TopBar), 1000, "the top bar again, once the space is gone")
         }
         function test_close_asks() {  // closing what is not saved asks SaveChanges once there is one (U20)
             const w = open({ startState: "Main" })

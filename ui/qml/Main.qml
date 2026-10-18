@@ -126,20 +126,24 @@ ApplicationWindow {
         return d
     }
     // <name>Space.qml over the whole window in the work area's place, until it emits finished(ok); then the document and
-    // the tool are those it was opened on. Null when there is no such space, or one is open.
+    // the tool are those it was opened on, but a document it opened (Select and Mask's Output To New Document) stays
+    // in front, as in Photoshop. Null when there is no such space, or one is open.
     function openSpace(name, params) {
-        const c = type(name + "Space"), s = c && !space ? c.createObject(win.contentItem, { params: params || {} }) : null
+        const c = type(name + "Space")
+        if (c && !space)  // a key held for a tool (Space, Alt, Ctrl: U5) lets go of it, so the tool given back is the one before
+            toolbar.release(toolbar.held)
+        const s = c && !space ? c.createObject(win.contentItem, { params: params || {} }) : null
         if (!s) {
             console.warn("openSpace:", name, c ? (space ? "a space is open" : c.errorString()) : "no such space")
             return null
         }
-        const doc = Docs.current, tool = Tools.tool
+        const doc = Docs.current, docs = Docs.docs, tool = Tools.tool
         s.anchors.fill = win.contentItem
         s.finished.connect(() => {
             win.space = null
             s.destroy()
             const i = Docs.docs.indexOf(doc)
-            if (i >= 0)
+            if (i >= 0 && docs.indexOf(Docs.current) >= 0)
                 Docs.select(i)
             Tools.tool = tool
         })
@@ -204,7 +208,6 @@ ApplicationWindow {
         spacing: 0
         visible: !win.space
         TopBar {
-            id: topBar
             visible: win.screenMode < 2
             Layout.fillWidth: true
             can: item => win.can(item)
@@ -217,7 +220,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
-            Toolbar { visible: win.screenMode < 2 && Tools.showTools && !win.panelsHidden; Layout.fillHeight: true }
+            Toolbar { id: toolbar; visible: win.screenMode < 2 && Tools.showTools && !win.panelsHidden; Layout.fillHeight: true }
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -234,9 +237,16 @@ ApplicationWindow {
             SideColumn { visible: win.screenMode < 2 && !win.panelsHidden; Layout.fillHeight: true }
             Dock { visible: win.screenMode < 2 && !win.panelsHidden; Layout.fillHeight: true }
         }
-        StatusBar { id: statusBar; visible: win.hasDoc && win.screenMode === 0; Layout.fillWidth: true }
+        StatusBar { visible: win.hasDoc && win.screenMode === 0; Layout.fillWidth: true }
     }
-    readonly property bool popupOpen: topBar.popupOpen || statusBar.popupOpen
+    // A popup open that a press outside it closes and lets through (TitleBar.popupOpen(): not modal, tooltips aside):
+    // the top bar's menus, the status bar's list, a panel's menu or drop-down list, a slider under an options bar's
+    // field. Looked up as Qt Quick puts a popup on its overlay or takes one off.
+    property bool popupOpen: false
+    Connections {
+        target: win.Overlay.overlay
+        function onChildrenChanged() { win.popupOpen = TitleBar.popupOpen(win.contentItem) }
+    }
     onPopupOpenChanged: {
         if (popupOpen)
             scrim.visible = true
