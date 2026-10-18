@@ -61,47 +61,6 @@ Item {
     Rectangle { y: parent.height - 1; width: parent.width; height: 1; color: Theme.p2 }
     Rectangle { visible: !!row.p.tag && !row.fx; width: 3; height: parent.height; color: row.p.tag || "transparent" }  // the colour label
 
-    AbstractButton {  // the row for the keyboard (Enter picks it); the mouse is the MouseArea's
-        id: pick
-        x: 30
-        width: parent.width - 30
-        height: parent.height - 1
-        Accessible.name: row.fx ? row.text : qsTr("Chọn layer %1").arg(row.text)
-        onClicked: row.picked(0, "row")
-        MouseArea {
-            id: hit
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            preventStealing: true
-            property real x0
-            property real y0
-            property bool moved
-            onPressed: e => {
-                x0 = e.x
-                y0 = e.y
-                moved = false
-                if (e.button === Qt.RightButton)
-                    row.menuAsked(e.x + pick.x, e.y)
-            }
-            onPositionChanged: e => {
-                if (!(e.buttons & Qt.LeftButton) || (!moved && Math.abs(e.x - x0) + Math.abs(e.y - y0) < 6))
-                    return
-                moved = true
-                row.dragged(e.x + pick.x, e.y)
-            }
-            onReleased: e => {
-                if (e.button !== Qt.LeftButton)
-                    return
-                if (moved)
-                    row.dropped(e.modifiers)
-                else
-                    row.picked(e.modifiers, row.partAt(e.x + pick.x))
-            }
-            onCanceled: if (moved) row.dropped(-1)
-            onDoubleClicked: e => { if (e.button === Qt.LeftButton) row.opened(row.partAt(e.x + pick.x)) }
-        }
-    }
-
     AbstractButton {
         id: eye
         width: 30
@@ -280,6 +239,61 @@ Item {
                 border.color: row.selected && row.editMask ? Theme.t1 : Theme.t4
             }
         }
+    }
+    // The row for the keyboard (Enter picks it); the mouse is the MouseArea's. Tab goes as the prototype's row: the eye,
+    // the twist, the layer, its mask, fx; it follows the order of the children, so this comes after the twist, under
+    // the row's buttons (z) for the mouse.
+    AbstractButton {
+        id: pick
+        z: -1
+        x: 30
+        width: parent.width - 30
+        height: parent.height - 1
+        Accessible.name: row.fx ? row.text : qsTr("Chọn layer %1").arg(row.text)
+        onClicked: row.picked(0, "row")
+        MouseArea {
+            id: hit
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            preventStealing: true
+            property real x0
+            property real y0
+            property bool moved
+            onPressed: e => {
+                x0 = e.x
+                y0 = e.y
+                moved = false
+                if (e.button === Qt.RightButton)
+                    row.menuAsked(e.x + pick.x, e.y)
+            }
+            onPositionChanged: e => {
+                if (!(e.buttons & Qt.LeftButton) || (!moved && Math.abs(e.x - x0) + Math.abs(e.y - y0) < 6))
+                    return
+                moved = true
+                row.dragged(e.x + pick.x, e.y)
+            }
+            onReleased: e => {
+                if (e.button !== Qt.LeftButton)
+                    return
+                if (moved)
+                    row.dropped(e.modifiers)
+                else
+                    row.picked(e.modifiers, row.partAt(e.x + pick.x))
+            }
+            onCanceled: if (moved) row.dropped(-1)
+            onDoubleClicked: e => { if (e.button === Qt.LeftButton) row.opened(row.partAt(e.x + pick.x)) }
+        }
+    }
+
+    AbstractButton {  // the mask's Tab stop (the prototype's button); under pick, so the mouse stays pick's
+        x: items.x + maskBox.x
+        y: maskBox.y
+        z: -2
+        width: maskBox.width
+        height: maskBox.height
+        visible: maskBox.visible
+        Accessible.name: qsTr("Chọn Layer Mask của %1").arg(row.text)
+        onClicked: row.picked(0, "mask")
     }
     Text {
         id: nameText

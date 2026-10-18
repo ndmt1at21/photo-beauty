@@ -31,6 +31,41 @@ Dialog {
     enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
     exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 120 } }
 
+    // Tab goes as the prototype's page reads: the title bar's ×, the content, the buttons. Tab follows the order of the
+    // popup's children, where the footer comes first: each part put back last, in that order.
+    Component.onCompleted: {
+        for (const part of [header, contentItem, footer]) {
+            const p = part ? part.parent : null
+            if (p) {
+                part.parent = null
+                part.parent = p
+            }
+        }
+    }
+    // Enter that no control took (EnterPresses in look.h: no field, focused button or open list): the main button, as a
+    // desktop dialog's default one. The primary Btn, the footer's first: dialogs laying out their own buttons have it too.
+    function enterPressed() {
+        for (const part of [footer, header, contentItem]) {
+            const b = part ? primaryIn(part) : null
+            if (b) {
+                b.clicked()
+                return
+            }
+        }
+    }
+    function primaryIn(item) {
+        for (const c of item.children) {
+            if (!c.visible)
+                continue
+            if (c instanceof Btn && c.primary && c.enabled)
+                return c
+            const b = primaryIn(c)
+            if (b)
+                return b
+        }
+        return null
+    }
+
     background: Rectangle {
         radius: 10
         color: Theme.p1

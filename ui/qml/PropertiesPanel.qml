@@ -219,7 +219,7 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     NumberField {
-                        Layout.preferredWidth: 150  // the artboard's 132 cuts "300 ppi"
+                        Layout.preferredWidth: Math.round(150 * Theme.fontScale)  // the artboard's 132 cuts "300 ppi"; Lớn needs more
                         label: qsTr("Độ phân giải")
                         labelColor: Theme.t3
                         unit: "ppi"
@@ -253,10 +253,17 @@ Item {
                     Layout.topMargin: 4
                     text: qsTr("Thao tác nhanh")
                 }
-                Row {
+                // Side by side as the artboard, a label into the padding (Vừa's "Remove Background" up to 1 px past each side,
+                // as the artboard's); one under the other when a label is wider than half (Lớn).
+                Grid {
+                    id: quick
+                    readonly property real half: (dc.width - 6) / 2
+                    readonly property bool pair: Math.max(subject.implicitContentWidth, removeBg.implicitContentWidth) <= half + 2
+                    columns: pair ? 2 : 1
                     spacing: 6
                     Btn {
-                        width: (dc.width - 6) / 2
+                        id: subject
+                        width: quick.pair ? quick.half : dc.width
                         implicitHeight: 26
                         leftPadding: 10
                         rightPadding: 10
@@ -265,7 +272,8 @@ Item {
                         onClicked: panel.run({ op: "select", shape: "subject" })
                     }
                     Btn {
-                        width: (dc.width - 6) / 2
+                        id: removeBg
+                        width: quick.pair ? quick.half : dc.width
                         implicitHeight: 26
                         leftPadding: 10
                         rightPadding: 10

@@ -6,8 +6,8 @@ import QtQuick.Controls.Basic
 // the dock is folded, « unfolds it and an icon for each of its groups floats that group (Dock.Group) beside the
 // column; then the side panels, History; Brushes, Brush Settings; Navigator, Histogram, Info; Character, Paragraph,
 // each opening SidePanel beside the column with the tabs of its group. One floats at a time; a press on the canvas
-// closes it and goes no further, Esc in it closes it and takes the focus back to its icon. What floats is Tools'
-// (sidePanel, dockOpen), which the Window menu and F5, F8 set too.
+// closes it and goes no further, Esc closes it and takes the focus back to its icon. What floats is Tools' (sidePanel,
+// dockOpen), which the Window menu and F5, F8 set too.
 Rectangle {
     id: col
     implicitWidth: 36
@@ -56,6 +56,14 @@ Rectangle {
             if (p)
                 f.forceActiveFocus(Qt.TabFocusReason)
         })
+    }
+    // Esc closes what floats wherever the focus is, as a popup's Esc: on the icon a click left it on, on the canvas. In
+    // what floats it is that one's own (Keys below); a field being typed in elsewhere keeps it.
+    readonly property Item focused: Window.activeFocusItem
+    Shortcut {
+        sequence: "Esc"
+        enabled: col.visible && col.floating && !(col.focused instanceof TextInput)
+        onActivated: col.close("icon:" + (Tools.sidePanel || Tools.dockOpen))
     }
     Connections {  // one floats at a time
         target: Tools

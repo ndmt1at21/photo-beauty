@@ -61,7 +61,7 @@ AbstractButton {
         focus: true  // Esc closes it
         modal: true
         dim: false
-        width: 300
+        width: Math.round(300 * Theme.fontScale)  // Lớn: the presets' names whole
         padding: 12
         background: Rectangle {
             radius: 8

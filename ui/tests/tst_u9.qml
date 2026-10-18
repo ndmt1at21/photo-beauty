@@ -658,7 +658,8 @@ Item {
         }
 
         // ---- keyboard -----------------------------------------------------------------------------------------------
-        // A row is a button: Tab reaches it, Enter picks the layer; Tab on, its eye.
+        // A row is a button: Tab reaches it, Enter picks the layer; Shift Tab back, its eye (the eye comes first, as the
+        // prototype's row).
         function test_keyboard() {
             const w = open()
             const b = find(row(w, "Heal"), o => o instanceof AbstractButton && o.Accessible.name === "Chọn layer Heal")
@@ -666,7 +667,7 @@ Item {
             keyClick(Qt.Key_Return)
             settle(w)
             compare(Docs.current.selected, [2])
-            keyClick(Qt.Key_Tab)
+            keyClick(Qt.Key_Tab, Qt.ShiftModifier)
             verify(find(row(w, "Heal"), o => o instanceof AbstractButton && o.Accessible.name === "Ẩn hiện Heal").activeFocus)
             keyClick(Qt.Key_Return)
             compare([named("Heal").props.visible, last()], [false, "Ẩn layer"])

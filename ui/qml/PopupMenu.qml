@@ -19,7 +19,14 @@ Menu {
     id: menu
     property var items: []  // a submenu builds itself from these
     signal activated(var item)
-    Component.onCompleted: if (items.length) build(items)
+    // The narrowest it gets: the width it was made with, or one a caller sets before show() (a menu used for several);
+    // build() makes it as wide as its widest row (Thiết lập's Lớn, a long row with its keys).
+    property real minWidth
+    Component.onCompleted: {
+        minWidth = width
+        if (items.length)
+            build(items)
+    }
 
     popupType: Popup.Item
     width: 236
@@ -68,6 +75,10 @@ Menu {
                 addItem(it)
             }
         }
+        let w = minWidth
+        for (let i = 0; i < count; i++)
+            w = Math.max(w, itemAt(i).implicitWidth)
+        width = w
     }
 
     background: Rectangle {

@@ -59,6 +59,7 @@ Item {
 
     implicitWidth: 308
     implicitHeight: 320
+    clip: true  // too low a group: the rows, then the foot, cut at the bottom as the prototype's (never over the head)
 
     // ---- rows -----------------------------------------------------------------------------------------------------
     Connections {
@@ -286,15 +287,16 @@ Item {
         const items = resolve(kept.filter((it, i) => it.t !== "sep" || (i > 0 && kept[i - 1].t !== "sep")))
         const tag = active ? active.props.tag || null : null
         pop.cap = Infinity
-        pop.width = layerMenu().w
+        pop.minWidth = layerMenu().w
         pop.show(items.concat([MenuSpec.SEP, { l: qsTr("Màu nhãn"), w: 180, sub: labels.map(c => ({ l: c[0], check: tag === c[1], act: () => panel.setAll({ tag: c[1] }, true) })) }]), r, x, y)
     }
     // A footer button's menu, above it at the panel's right as the prototype's (.pop right 8, bottom 34), cap tall.
     function footMenu(items, cap) {
         const h = Math.min(cap, 12 + items.reduce((s, it) => s + (it.t === "sep" ? 11 : 28), 0))
         pop.cap = cap
-        pop.width = 220
-        pop.show(resolve(items), panel, panel.width - 8 - pop.width, foot.y - 2 - h)
+        pop.minWidth = 220
+        pop.build(resolve(items))  // first: a long row makes it wider
+        pop.popup(panel, panel.width - 8 - pop.width, foot.y - 2 - h)
     }
     PopupMenu {
         id: pop
@@ -425,7 +427,7 @@ Item {
         id: list
         y: 97
         width: parent.width
-        height: parent.height - 97 - 32
+        height: Math.max(0, parent.height - 97 - 32)
         clip: true
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
@@ -499,7 +501,7 @@ Item {
     // ---- foot ---------------------------------------------------------------------------------------------------------
     Item {
         id: foot
-        y: parent.height - 32
+        y: list.y + list.height
         width: parent.width
         height: 32
         Rectangle { width: parent.width; height: 1; color: Theme.ln }

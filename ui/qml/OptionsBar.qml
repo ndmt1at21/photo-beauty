@@ -149,12 +149,13 @@ Rectangle {
             id: fc
             readonly property Slot slot: parent as Slot
             readonly property var c: slot.modelData
+            readonly property int w: Math.round(c.w * Theme.fontScale)  // the box; Lớn: "144 px" whole
             readonly property bool view: ob.bar === "rot"  // Rotate View's angle: the view's
             readonly property real v: {
                 const x = view ? (ob.doc ? ob.doc.view.angle : 0) : slot.value
                 return typeof x === "number" ? x : Fmt.pnum(String(x ?? "")) ?? NaN
             }
-            implicitWidth: (c.kind === "IF" ? 20 : 0) + nf.implicitWidth - 64 + c.w
+            implicitWidth: (c.kind === "IF" ? 20 : 0) + nf.implicitWidth - 64 + w
             implicitHeight: 24
             enabled: !slot.off
             Icon {
@@ -191,9 +192,9 @@ Rectangle {
             Rectangle {  // an empty cell ("" as Xóa W, H leaves Crop's): no number until one is typed
                 objectName: "empty"
                 visible: isNaN(fc.v) && !nf.editing
-                x: parent.width - fc.c.w + 2
+                x: parent.width - fc.w + 2
                 y: (parent.height - height) / 2
-                width: fc.c.w - 4 - (nf.slider ? 20 : 0)
+                width: fc.w - 4 - (nf.slider ? 20 : 0)
                 height: 20
                 color: Theme.p2
             }

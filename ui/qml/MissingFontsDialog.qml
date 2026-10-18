@@ -87,7 +87,7 @@ DialogBox {
                             font.pointSize: Theme.pt(12)
                         }
                         Select {
-                            Layout.preferredWidth: 170
+                            Layout.preferredWidth: Math.round(170 * Theme.fontScale)  // Lớn needs more for "Space Grotesk Regular"
                             options: dlg.options.map(o => [o, o])
                             value: dlg.fontFor(fr.modelData)
                             Accessible.name: qsTr("Font thay cho %1: %2").arg(fr.modelData.miss).arg(displayText)

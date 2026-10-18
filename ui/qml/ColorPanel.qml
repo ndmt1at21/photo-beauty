@@ -222,7 +222,7 @@ Item {
         spacing: 8
         Dropdown {
             id: mode
-            width: panel.wheel ? 100 : 72
+            width: Math.round((panel.wheel ? 100 : 72) * Theme.fontScale)  // Lớn needs more for "Color Wheel"
             options: panel.modes
             value: Tools.colorMode
             Accessible.name: qsTr("Kiểu thanh màu")
