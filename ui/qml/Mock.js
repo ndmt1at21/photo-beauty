@@ -784,7 +784,8 @@ function makeDoc(o) {
     view: o.view || { x: s0.w / 2, y: s0.h / 2, zoom: (o.zoom || 100) / 100, angle: 0 },
     history: (o.history || [{ name: qsTr("Mở"), icon: "folder_open" }]).map((h) => ({ name: h.name, icon: h.icon, cmds: [], state: s0 })),
     snapshots: (o.snapshots || []).map((x) => ({ name: x.name, at: x.at, look: x.look || "none", state: s0 })),
-    snapshot: -1, collapsed: {}, editMask: false, maskOf: 0, channel: "RGB", hiddenChannels: {}, gesture: 0, gestureOpen: false, error: ""
+    snapshot: -1, collapsed: {}, editMask: false, maskOf: 0, channel: "RGB", gesture: 0, gestureOpen: false, error: "",
+    hiddenChannels: (s0.alphas || []).reduce((c, n) => { c[n] = true; return c; }, {})  // alpha channels open hidden (PanelsA, Photoshop)
   };
   d.index = d.history.length - 1;
 

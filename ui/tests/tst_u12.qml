@@ -215,16 +215,21 @@ Item {
             verify(find(p, o => o instanceof Histogram).counts === p.counts)
         }
         // The portrait's photo over its 4.400 × 5.600 canvas, 160 × 204: spread over the bins; the refresh button counts
-        // again; another document, its photo; a transparent one, none.
+        // again; another document, its photo; a transparent one, none. The compact view of PanelsB: the chart right under
+        // the tabs, 148 with them; the refresh on the tab strip, before ×; Histogram is in no group of the dock (U23).
         function test_histogram_photo() {
             const w = open(), p = side(w, "Histogram", HistogramPanel)
-            compare(p.implicitHeight, 142)
+            compare([p.implicitHeight, find(p, o => o instanceof Histogram).y], [118, 10])
+            const strip = find(w.contentItem, o => o instanceof PanelTabs && o.visible && o.tabs.indexOf("Histogram") >= 0)
+            verify(!button(p, "refresh") && button(strip, "refresh").visible, "on the tabs")
+            verify(button(strip, "refresh").x < button(strip, "close").x)
+            verify(all(find(w.contentItem, o => o instanceof Dock), o => o instanceof PanelTabs).every(t => t.tabs.indexOf("Histogram") < 0))
             tryVerify(() => !!p.counts)
             compare(p.counts.map(sum), [160 * 204, 160 * 204, 160 * 204])
             for (const c of p.counts)
                 verify(c.filter(x => x > 0).length > 100)
             const before = p.counts
-            click(w, button(p, "refresh"))
+            click(w, button(strip, "refresh"))
             tryVerify(() => p.counts !== before)
             compare(p.counts, before)
             Docs.select(1)  // san-pham.webp, 1.800 × 1.200
@@ -340,6 +345,18 @@ Item {
             compare(texts(p).slice(6, 12), ["H", "227°", "S", "87%", "B", "100%"])
             Docs.select(1)
             compare(texts(p)[21], "6,48 MB / 6,48 MB")
+        }
+        // Rows in CSS's line boxes, 1.35 of the size as PanelsB's: 11,5 px in 15,525 (two apart in a readout), the hint's
+        // lines 14,85; the panel as tall as the artboard's sections and gaps (U23).
+        function test_info_rows() {
+            const w = open(), p = side(w, "Info", InfoPanel)
+            const ts = all(p, o => o instanceof Text && o.visible && o.text !== "").filter(t => !(t instanceof Icon))
+            const at = text => ts.find(t => t.text === text), y = t => t.mapToItem(p, 0, 0).y
+            const r = at("R"), hint = ts[ts.length - 1]
+            compare([y(at("G")) - y(r), y(at("B")) - y(r)].map(v => Math.round(v * 1000) / 1000), [17.525, 35.05])
+            compare([r.height, ts[ts.indexOf(r) + 1].height, at("Tài liệu: ").height].map(v => Math.round(v * 1000) / 1000), [15.525, 15.525, 15.525])
+            verify(hint.lineCount === 2)
+            fuzzyCompare(p.implicitHeight, 8 + 50.575 + 8 + 40.05 + 8 + 22.525 + 8 + 2 * 14.85 + 10, 0.01)
         }
     }
 }

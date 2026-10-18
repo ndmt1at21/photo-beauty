@@ -217,9 +217,9 @@ Item {
                 readonly property var rows: panel.more[key] || []
                 readonly property bool open: rows.length > 0 && !!panel.opened[key]
                 width: col.width
-                Item {
+                Item {  // .bsh: 28 with its rule
                     width: parent.width
-                    height: 30
+                    height: 28
                     Rectangle { width: parent.width; height: 1; color: Theme.p2 }
                     CheckRow {
                         x: 12

@@ -80,6 +80,7 @@ Rectangle {
                                 readonly property string topId: Tools.top[gid] || ToolSpec.TOP0[gid]
                                 checked: ToolSpec.tool(Tools.tool).g === gid
                                 many: slot.modelData[1].length > 1
+                                corner: many && !tb.two
                                 icon.name: ToolSpec.tool(topId).icn
                                 ToolTip.text: ToolSpec.tip(topId, tb.tipKeys)
                                 Accessible.name: ToolTip.text

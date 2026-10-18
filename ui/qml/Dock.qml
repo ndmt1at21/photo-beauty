@@ -24,7 +24,8 @@ Rectangle {
         spacing: 1
         visible: !Tools.dockCollapsed
         Group { key: "c"; width: parent.width; active: !Tools.dockCollapsed }
-        Group { key: "p"; width: parent.width; room: 30 + 360; active: !Tools.dockCollapsed }
+        // Properties leaves the Layers tabs in the dock (Retouch under Gradients at 1280 × 800), its panel scrolled.
+        Group { id: props; key: "p"; width: parent.width; room: Math.max(30, Math.min(30 + 360, dock.height - props.y - 31)); active: !Tools.dockCollapsed }
         Group { id: layers; key: "l"; width: parent.width; room: Math.max(30, dock.height - layers.y); active: !Tools.dockCollapsed }
     }
 

@@ -25,6 +25,7 @@ Item {
     ]
     readonly property string hint: ToolSpec.hint(Tools.tool)
     property var menu: []
+    readonly property real line: 11.5 * 1.35 * Theme.fontScale  // CSS's line box of an 11,5 px row (line-height 1.35)
     implicitWidth: 280
     implicitHeight: col.height + 18
 
@@ -75,15 +76,19 @@ Item {
             Row {
                 y: 7
                 Text {
+                    height: panel.line
                     text: qsTr("Tài liệu: ")
                     color: Theme.t2
                     font.pointSize: Theme.pt(11.5)
+                    verticalAlignment: Text.AlignVCenter
                 }
                 Text {
+                    height: panel.line
                     text: panel.doc && panel.doc.mem || "—"
                     color: Theme.t2
                     font.family: Theme.mono
                     font.pointSize: Theme.pt(11.5)
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
         }
@@ -93,6 +98,8 @@ Item {
             color: Theme.t3
             font.pointSize: Theme.pt(11)
             wrapMode: Text.Wrap
+            lineHeightMode: Text.FixedHeight
+            lineHeight: 11 * 1.35 * Theme.fontScale
         }
     }
 
@@ -108,6 +115,8 @@ Item {
             Text {
                 required property int index
                 width: index % 2 ? implicitWidth : 14
+                height: panel.line
+                verticalAlignment: Text.AlignVCenter
                 text: g.pairs[index >> 1][index % 2]
                 color: index % 2 ? Theme.t1 : Theme.t3
                 font.family: index % 2 ? Theme.mono : Theme.sans

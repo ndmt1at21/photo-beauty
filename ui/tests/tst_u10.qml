@@ -31,6 +31,7 @@ Item {
         }
     }
     Component { id: dialogC; AdjustDialog {} }
+    Component { id: adjsC; Rectangle { width: 308; height: 260; color: "black"; AdjustmentsPanel { width: 308 } } }
 
     function find(item, pred) {
         for (const c of item.children) {
@@ -231,6 +232,7 @@ Item {
             pick(id("Curves 1"))
             is("adj", "an adjustment layer")
             compare(find(p, o => o instanceof AdjustRows).name, "Curves")
+            verify(find(page(), o => o instanceof Text && o.text === "Curves"), "its kind heads it, not the layer's name (U23)")
             compare(find(p, o => o instanceof CurveBox).points, Spec.presetPoints("Medium Contrast (RGB)"), "its preset's curve")
             d.setEditMask(true)
             is("mask", "its mask")
@@ -349,7 +351,9 @@ Item {
             verify(d.editMask)
             tryCompare(p, "page", "mask")
             waitForRendering(p)
-            mouseClick(find(p, o => o instanceof ToolToggle && o.visible && o.icon.name === Spec.ADJ.Vibrance.ic))
+            verify(!find(p, o => o instanceof ToolToggle && o.visible && o.icon.name === Spec.ADJ.Vibrance.ic),
+                   "the mask's page as PanelsA's: back to the rows by the layer's thumbnail in Layers (U23)")
+            d.setEditMask(false)
             tryCompare(p, "page", "adj")
             waitForRendering(p)
             const n = d.layers.length
@@ -384,6 +388,25 @@ Item {
             mouseClick(foot("delete"))
             compare(d.active.props.mask, null)
             tryCompare(p, "page", "adj", 1000, "no mask: the rows")
+        }
+        function test_page_rows() {  // where PanelsA's CSS puts the rows, to a layout's whole pixels: .cap's line box 10,5 × 1,35 (U23)
+            const d = doc(), p = panel()
+            const near = (name, css) => {
+                tryCompare(p, "page", name)
+                waitForRendering(p)
+                const qt = []
+                for (const c of find(p, o => o.objectName === "page:" + name).children[0].children)
+                    if (c.visible)
+                        qt.push(c.y)
+                qt.push(p.implicitHeight)
+                verify(qt.length === css.length && qt.every((y, i) => Math.abs(y - css[i]) < 0.6), name + ": " + qt + " for " + css)
+            }
+            pick()
+            near("doc", [0, 28, 50.175, 82.175, 114.175, 150.175, 172.35, 216.35])  // the rows, then the page's height
+            d.run({ op: "newShapeLayer", shape: "rectS" })
+            near("shape", [0, 28, 92, 114.175, 148.175, 170.35, 234.35, 256.525, 298.525])
+            d.run({ op: "placeEmbedded" })
+            near("so", [0, 28, 78.375, 140.375, 184.375])  // the file's box 6 + 16,2 + 14,175 + 6
         }
         function test_document_page() {  // canvas size, orientation, resolution, mode, profile, the quick buttons
             const d = doc(), p = panel()
@@ -487,6 +510,24 @@ Item {
                 const p = find(w.contentItem, o => o instanceof PropertiesPanel && o.visible)
                 compare([p.page, find(p, o => o instanceof AdjustRows).name], ["adj", name])
             }
+        }
+        // A button's label starts 10 px under its icon's ink, as in PanelsA (a column 5 apart in CSS's line box) (U23).
+        function test_adjustments_label() {
+            const r = createTemporaryObject(adjsC, root)
+            waitForRendering(r)
+            const g = grabImage(r), b = find(r, o => o instanceof AbstractButton && o.modelData === "Brightness/Contrast"), p = b.mapToItem(r, 0, 0)
+            const runs = []  // the rows with ink, top down: the icon's, the label's
+            for (let y = Math.round(p.y); y < p.y + b.height; y++) {
+                let on = false
+                for (let x = Math.round(p.x); x < p.x + b.width && !on; x++)
+                    on = g.red(x, y) > 60
+                if (on && runs.length && runs[runs.length - 1][1] === y - 1)
+                    runs[runs.length - 1][1] = y
+                else if (on)
+                    runs.push([y, y])
+            }
+            compare(runs.length, 2, JSON.stringify(runs))
+            verify(Math.abs(runs[1][0] - runs[0][1] - 10) <= 1, "icon to label " + JSON.stringify(runs))
         }
         function test_color_picker() {  // a swatch of a page, of the rows: U11's Color Picker; OK is one step with its colour
             const w = createTemporaryObject(mainC, root, { startState: "Main" })

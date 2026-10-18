@@ -113,8 +113,7 @@ Item {
             Accessible.name: qsTr("Thêm swatch")
             onClicked: panel.add()
         }
-        ToolToggle {
-            enabled: panel.canDelete
+        ToolToggle {  // lit with none picked, as PanelsB's: then it deletes nothing
             icon.name: "delete"
             ToolTip.text: qsTr("Xóa swatch · Delete swatch")
             Accessible.name: qsTr("Xóa swatch")

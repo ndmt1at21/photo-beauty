@@ -12,6 +12,8 @@ Item {
     width: 200
     height: 100
     Component { id: mainC; Main {} }
+    Component { id: rowC; LayerRow { width: 307 } }
+    Component { id: blackRowC; Rectangle { property alias row: r; width: 307; height: 32; color: "black"; LayerRow { id: r; width: 307 } } }
 
     function find(item, pred) {
         for (const c of item.children) {
@@ -194,7 +196,7 @@ Item {
             compare(locks.map(n => button(w, n).checked), [true, true, true, true], "the Background is locked all")
             list(w).positionViewAtEnd()
             settle(w)
-            click(w, find(list(w), o => o instanceof AbstractButton && o.Accessible.name === "Bỏ chọn layer, xem thuộc tính tài liệu"))
+            click(w, find(panel(w), o => o instanceof AbstractButton && o.Accessible.name === "Bỏ chọn layer, xem thuộc tính tài liệu"))
             compare(Docs.current.selected, [])
             compare(on(), [false, false, false, false, false, false, false])
         }
@@ -608,6 +610,39 @@ Item {
             settle(w)
             compare(rows(w)[0].height, 24)
         }
+        // A photo's thumbnail through a look (Cao, Thấp of Tách tần số) shows though its image is in the cache already, as
+        // the other row's is: the Canvas gets no imageLoaded for it (U23).
+        function test_thumb_cached() {
+            const e = { id: 1, kind: "pixel", depth: 0, props: { name: "Cao", photo: 0, look: "grayscale(1) contrast(0.16) brightness(1.25)" } }
+            const drawn = r => {  // the thumbnail's middle 16 × 16 painted over the window's white
+                const img = grabImage(r)
+                let n = 0
+                for (let y = 8; y < 24; y += 2)
+                    for (let x = 46; x < 62; x += 2)
+                        n += img.pixel(x, y).r < 0.9 ? 1 : 0
+                return n === 64
+            }
+            const a = createTemporaryObject(rowC, root, { entry: e, src: Mock.photoUrl(0) })
+            tryVerify(() => drawn(a), 5000, "the first row")
+            const b = createTemporaryObject(rowC, root, { y: 40, entry: e, src: Mock.photoUrl(0) })
+            tryVerify(() => drawn(b), 5000, "the second, its image in the cache")
+        }
+        // The mask's thumbnail: a 1 px t4 ring on its edge, as box-shadow 0 0 0 1px of the prototype; one of t1 round
+        // that while the mask takes the brush (U23).
+        function test_mask_ring() {
+            const b = createTemporaryObject(blackRowC, root, { "row.entry": { id: 1, kind: "pixel", depth: 0, props: { name: "M", thumb: "empty", mask: "#ffffff" } } })
+            const mask = find(b.row, o => o instanceof Canvas && o.parent.width === 24 && o.parent.x > 30)
+            waitForRendering(b)
+            const at = (img, dx) => { const p = mask.mapToItem(b, 0, 12); return img.pixel(Math.round(p.x) + dx, Math.round(p.y)) }
+            const t4 = c => Math.abs(c.r - Theme.t4.r) < 0.05, black = c => c.r < 0.05, t1 = c => c.r > 0.85
+            let g = grabImage(b)
+            verify(t4(at(g, -1)) && black(at(g, -2)), "one ring on the edge: " + at(g, -1) + " " + at(g, -2))
+            b.row.selected = true
+            b.row.editMask = true
+            waitForRendering(b)
+            g = grabImage(b)
+            verify(t4(at(g, -1)) && t1(at(g, -2)), "the brush's ring round it: " + at(g, -1) + " " + at(g, -2))
+        }
         // The panel's menu, the … of its tabs (U23): the seven Layer commands of the Shortcuts artboard with their keys,
         // greyed as the Layer menu greys them, each with its English name for Phím tắt (U20); then the thumbnails.
         function test_panel_menu() {
@@ -671,6 +706,20 @@ Item {
             verify(find(row(w, "Heal"), o => o instanceof AbstractButton && o.Accessible.name === "Ẩn hiện Heal").activeFocus)
             keyClick(Qt.Key_Return)
             compare([named("Heal").props.visible, last()], [false, "Ẩn layer"])
+        }
+        // The room below the rows (the prototype's last item of the list) comes after the rows for Tab, before the foot;
+        // Enter there picks no layer (U23).
+        function test_tab_after_rows() {
+            const w = open()
+            const desel = find(panel(w), o => o instanceof AbstractButton && o.Accessible.name === "Bỏ chọn layer, xem thuộc tính tài liệu")
+            const foot = find(panel(w), o => o instanceof ToolToggle && o.Accessible.name === "Thêm Layer Mask").parent
+            const within = (o, a) => { for (let q = o; q; q = q.parent) if (q === a) return true; return false }
+            verify(within(desel.nextItemInFocusChain(false), list(w)), "after a row")
+            verify(within(desel.nextItemInFocusChain(true), foot), "before the foot")
+            desel.forceActiveFocus(Qt.TabFocusReason)
+            keyClick(Qt.Key_Return)
+            settle(w)
+            compare(Docs.current.selected, [])
         }
 
         // ---- many layers --------------------------------------------------------------------------------------------

@@ -53,6 +53,15 @@ FocusScope {
         menu: sp.panel ? sp.panel.menu || [] : []
         onPicked: t => Tools.sidePanel = t
         onTabDoubleClicked: Tools.sidePanel = ""  // folds the group back to its icon
+        ToolToggle {  // the panel's own button on the strip, its tabTool { icon, tip, name, act } (Histogram's refresh)
+            readonly property var tool: sp.panel ? sp.panel.tabTool || null : null
+            visible: !!tool
+            icon.name: tool ? tool.icon : ""
+            icon.width: 16
+            ToolTip.text: tool ? tool.tip : ""
+            Accessible.name: tool ? tool.name : ""
+            onClicked: tool.act()
+        }
         ToolToggle {
             icon.name: "close"
             icon.width: 16

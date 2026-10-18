@@ -10,6 +10,7 @@ import QtQuick.Controls.Basic
 AbstractButton {
     id: b
     property bool many
+    property bool corner: many  // its ◢ drawn: none in the two-column bar, as the Toolbar artboard
     property bool lit
     property bool hover
     property bool held  // the press that opened the flyout
@@ -54,7 +55,7 @@ AbstractButton {
         radius: 6
         color: b.checked ? Theme.p3 : b.lit ? Theme.acc2 : b.hover && b.hovered ? Theme.sel : "transparent"
         Shape {  // ◢ 4 px, 3 px off the corner
-            visible: b.many
+            visible: b.corner
             x: parent.width - 7
             y: parent.height - 7
             width: 4

@@ -264,10 +264,10 @@ Item {
             verify(icon(w, "Info").on && !icon(w, "Navigator").on)
             click(w, find(sp, o => o instanceof ToolToggle && o.icon.name === "close"))
             compare(Tools.sidePanel, "")
-            click(w, icon(w, "Brush Settings"))  // 868 tall: as tall as the column lets it, scrolled
+            click(w, icon(w, "Brush Settings"))  // 856 tall (its .bsh rows 28, U23): as tall as the column lets it, scrolled
             compare(box(w, sp), [812, 86, 280, 784])
             const f = find(sp, o => o instanceof Flickable)
-            compare([f.height, f.contentHeight], [754, 868])
+            compare([f.height, f.contentHeight], [754, 856])
         }
         // A press on the canvas closes what floats and goes no further; one on it, or off the canvas, does not.
         function test_scrim() {
@@ -408,6 +408,12 @@ Item {
             verify(!d.hiddenChannels.Blue)
             compare(d.history.length, n)
         }
+        // The portrait opens with its alpha channel hidden, as PanelsA and Photoshop; the colour channels shown (U23).
+        function test_alpha_hidden() {
+            const w = open(), p = channels(w), d = Docs.current
+            compare(d.hiddenChannels, { "Vùng chọn da": true })
+            compare(["RGB", "Red", "Vùng chọn da"].map(n => find(eye(chRow(p, n)), o => o instanceof Icon).name), ["visibility", "visibility", "visibility_off"])
+        }
         // New, delete: an alpha channel each, one step each; undo gives it back; delete only on an alpha channel.
         function test_channel_add_delete() {
             const w = open(), p = channels(w), d = Docs.current, n = d.history.length
@@ -488,6 +494,22 @@ Item {
             Prefs.set("channelsInColor", true)
             tryVerify(() => { const c = at("Red", 13, 16); return c.g < 0.01 && c.b < 0.01 && c.r > 0.05 }, 3000, "Red in red")
             verify(grey(at("RGB", 13, 16)) === grey(rgb))
+        }
+        // The smallest window, Gradients over Retouch: the groups above give way, the Layers tabs stay whole in the dock
+        // (not under the status bar), Retouch scrolls in its group (U23).
+        function test_low_dock() {
+            const w = open({ startState: "Main", width: 1280, height: 800 })
+            Tools.dockTab = { c: "Gradients", p: "Retouch", l: "Layers" }
+            waitForRendering(w.contentItem)
+            const d = region(w, Dock), s = strip(w, "Layers"), rt = shown(w, "Retouch")
+            const bottom = s.mapToItem(d, 0, s.height).y
+            verify(bottom <= d.height, "the Layers tabs end at " + bottom + ", the dock at " + d.height)
+            const top = strip(w, "Retouch").mapToItem(d, 0, 0).y
+            verify(rt.mapToItem(d, 0, 0).y >= top && rt.height > s.mapToItem(d, 0, 0).y - top - 30, "Retouch taller than its room")
+            let f = rt.parent
+            while (f && !(f instanceof Flickable))
+                f = f.parent
+            verify(f.clip && f.mapToItem(d, 0, f.height).y <= s.mapToItem(d, 0, 0).y, "scrolled above the Layers tabs")
         }
     }
 }

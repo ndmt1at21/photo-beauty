@@ -419,10 +419,6 @@ Item {
     Rectangle { y: 96; width: parent.width; height: 1; color: Theme.ln }
 
     // ---- rows ---------------------------------------------------------------------------------------------------------
-    MouseArea {  // a press below the rows: no layer picked, Properties shows the document
-        anchors.fill: list
-        onClicked: panel.deselect()
-    }
     ListView {
         id: list
         y: 97
@@ -467,12 +463,19 @@ Item {
             onDropped: mods => panel.dropAt(mods)
             onRenamed: (name, ok) => panel.rename(r.item.l, name, ok)
         }
-        footer: AbstractButton {  // the prototype's: room to pick no layer
+        footer: Item {  // room below the rows to pick no layer (the button after the list)
             width: ListView.view.width
             height: 40
-            Accessible.name: qsTr("Bỏ chọn layer, xem thuộc tính tài liệu")
-            onClicked: panel.deselect()
         }
+    }
+    AbstractButton {  // the prototype's last item of the list, the room below the rows: no layer picked; after them for Tab
+        readonly property real below: list.footerItem ? Math.max(0, list.footerItem.y - list.contentY) : 0  // the rows' end in the list
+        y: list.y + below
+        width: list.width
+        height: Math.max(0, list.height - below)
+        Accessible.name: qsTr("Bỏ chọn layer, xem thuộc tính tài liệu")
+        onClicked: panel.deselect()
+        onActiveFocusChanged: if (activeFocus) list.positionViewAtEnd()  // as Tab reaching it in the list did
     }
     // A drag held at the list's top or bottom edge, or past it, scrolls it, faster the further in.
     // ponytail: the rows between the one held and the view stay made while it scrolls far (all 1.000 at worst).

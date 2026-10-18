@@ -1,12 +1,11 @@
 import QtQuick
-import QtQuick.Controls.Basic
 import "Mock.js" as Mock
 
 // The Histogram panel (docs/ui-tasks.md, U12; PanelsB, the histo part of Main.dc.html), opened beside the icon column:
 // the compact RGB view (Histogram, as snapone's), counted from a copy of what the canvas shows 160 px wide, drawn in a
 // hidden Canvas as snapone's probe: the document's sample photo cropped to it as MockCanvas draws it, a new
 // document's background colour; nothing for a transparent one. Counted again while shown when either changes, and by
-// the refresh button.
+// the refresh button on the tab strip (tabTool).
 Item {
     id: panel
     readonly property Doc doc: Docs.current
@@ -17,8 +16,11 @@ Item {
     readonly property string fill: !photo && bgl && shown && bgl.props.color ? bgl.props.color : ""
     property var counts: null  // [r, g, b], 256 bins each, as the core's Histogram; null for none
     property var menu: []
+    // The refresh, on the side panel's tab strip as PanelsB's compact view (SidePanel shows a panel's tabTool).
+    readonly property var tabTool: ({ icon: "refresh", tip: qsTr("Tính lại từ ảnh hiện tại · Uncached Refresh"), name: qsTr("Tính lại histogram"),
+                                      act: () => panel.refresh() })
     implicitWidth: 280
-    implicitHeight: 142
+    implicitHeight: 118  // 10 + 96 + 12: the chart right under the tabs
 
     // The counts of RGBA pixels px (an ImageData's data): [r, g, b], 256 bins each.
     function tally(px) {
@@ -38,18 +40,9 @@ Item {
     readonly property var deps: [src, fill, probe.size, visible]
     onDepsChanged: if (visible) refresh()
 
-    ToolToggle {
-        x: parent.width - 34
-        y: 6
-        icon.name: "refresh"
-        icon.width: 16
-        ToolTip.text: qsTr("Tính lại từ ảnh hiện tại · Refresh")
-        Accessible.name: qsTr("Tính lại histogram")
-        onClicked: panel.refresh()
-    }
     Histogram {
         x: 12
-        y: 34
+        y: 10
         width: parent.width - 24
         counts: panel.counts
     }

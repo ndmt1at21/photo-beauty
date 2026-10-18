@@ -17,6 +17,7 @@ Item {
     Component { id: charC; CharacterPanel { width: 280 } }
     Component { id: paraC; ParagraphPanel { width: 280 } }
     Component { id: tipC; TipShape { width: 120; height: 120 } }
+    Component { id: tipOnBlackC; Rectangle { width: 120; height: 120; color: "black"; TipShape { anchors.fill: parent } } }
     Component { id: strokeC; StrokePreview { width: 260; height: 40 } }
     Component { id: mainC; Main {} }
 
@@ -81,6 +82,17 @@ Item {
         function v(key) { return Tools.values[key] }
 
         // ---- Brushes ---------------------------------------------------------------------------------------------------
+        // A row as PanelsB's .br (U23): its dot within 2 px of the artboard's (22, 14, 18; 22, 10, 12), the line under the
+        // name whole as CSS lets it run on (the name is cut).
+        function test_brush_rows() {
+            const p = make(brushesC)
+            const dot = n => root.find(button(p, n), o => o.width === 28 && o.height === 28 && o.children.length === 1).children[0].width  // the 28 box's tip
+            const want = { "Tròn mềm": 22, "Tròn cứng": 14, "Tròn vừa": 18, "Dodge & Burn mềm": 22, "Heal cứng": 10, "Mask tóc": 12 }
+            for (const n in want)
+                verify(Math.abs(dot(n) - want[n]) <= 2, n + ": " + dot(n))
+            const meta = root.find(button(p, "Dodge & Burn mềm"), o => o instanceof Text && o.text.indexOf("Flow") >= 0)
+            verify(!meta.truncated, meta.text)
+        }
         function test_preset_sets_brush() {  // nhấp preset đặt cỡ, độ cứng cho công cụ vẽ đang dùng
             const p = make(brushesC)
             compare(Tools.tool, "brush")
@@ -335,6 +347,27 @@ Item {
             verify(Math.abs(t.roundness - 50) <= 1, "half way to the centre: " + t.roundness)
             compare(t.angle, 30)
             compare(root.log[root.log.length - 1], "c30/" + t.roundness)
+        }
+        // Drawn as Brush Settings of PanelsB and Main (U23): the ring of 52 (of 120) and its horizontal axis in t4, the tip's
+        // circle of 40 in t1 with a dot at each end of its short axis, a line to 46; no vertical axis, no arrow head.
+        function test_tip_shape_drawn() {
+            const b = make(tipOnBlackC)
+            waitForRendering(b)
+            const g = grabImage(b), lum = (x, y) => g.red(x, y) / 255
+            const c45 = 60 + 40 * Math.SQRT1_2, s45 = 60 - 40 * Math.SQRT1_2
+            verify(lum(Math.round(c45), Math.round(s45)) > 0.6, "the tip's circle of 40: " + lum(Math.round(c45), Math.round(s45)))
+            verify(lum(60, 20) > 0.8 && lum(60, 100) > 0.8, "a dot each end")
+            verify(lum(100, 60) > 0.8, "the line along the angle")
+            verify(lum(110, 60) < 0.5, "no arrow head past the line: " + lum(110, 60))
+            verify(lum(60, 13) < 0.1, "no vertical axis: " + lum(60, 13))
+            verify(lum(9, 60) > 0.2 && lum(9, 60) < 0.5, "the axis in t4: " + lum(9, 60))
+        }
+        // The rows with a box under the tip (Shape Dynamics … Wet Edges) are .bsh of PanelsB: 28 with their rule (U23).
+        function test_brush_settings_rows() {
+            const p = make(settingsC)
+            const y = t => check(p, t).parent.mapToItem(p, 0, 0).y
+            compare(["Build-up", "Noise", "Wet Edges"].map(t => y(t) - y("Smoothing")), [28, 56, 84])
+            compare(check(p, "Smoothing").parent.height, 28)
         }
         function test_brush_settings_values() {  // Hardness, Spacing, Flip, các mục có ô bật, Control
             const p = make(settingsC)

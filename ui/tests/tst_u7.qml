@@ -120,6 +120,30 @@ Item {
                 verify(!hit(img, at(v, { x: 1000.5, y: 700.5 }), line) || v.zoom < 6, "a pixel's middle " + tag)
             }
         }
+        function test_grid_thins() {  // lines closer than 50 px thin out 1-2-5 (U23); the subdivisions from 8 px apart, lighter
+            const f = frame()
+            const g = put(gridC, f, { docW: 4400, docH: 5600, grid: true, spacing: 100, subdivisions: 4, gridColor: "#ff00ff" })
+            const major = c => c.r - c.g > 0.4, minor = c => c.r - c.g > 0.15 && c.r - c.g < 0.35, none = c => !grey(c)
+            const line = (v, x, test) => hit(grabImage(f), at(v, { x: x, y: 712.5 }), test)  // y between the lines across
+            // 12,5 %: 100 px are 12,5, so a line each 500 (62,5 px, the prototype's ov.grid), no subdivisions
+            let v = { x: 1250, y: 700, zoom: 0.125, angle: 0 }
+            g.view = v
+            verify(line(v, 1000, major) && line(v, 1500, major), "each 500 px at 12,5 %")
+            for (const x of [1100, 1200, 1300, 1400, 1250])
+                verify(!line(v, x, none), "nothing at " + x + " at 12,5 %")
+            // 45 %: 45 px, so each 2nd (90 px); the subdivisions 11,25 px apart, the line left out among them
+            v = { x: 1100, y: 700, zoom: 0.45, angle: 0 }
+            g.view = v
+            verify(line(v, 1000, major) && line(v, 1200, major), "each 200 px at 45 %")
+            verify(line(v, 1100, minor) && line(v, 1025, minor) && line(v, 1150, minor), "the subdivisions at 45 %")
+            verify(!line(v, 1012.5, none), "between the subdivisions at 45 %")
+            // 100 %: each 100 px, the subdivisions each 25
+            v = { x: 1050, y: 700, zoom: 1, angle: 0 }
+            g.view = v
+            verify(line(v, 1000, major) && line(v, 1100, major), "each 100 px at 100 %")
+            verify(line(v, 1025, minor) && line(v, 1050, minor) && line(v, 1075, minor), "the subdivisions at 100 %")
+            verify(!line(v, 1012, none), "between the subdivisions at 100 %")
+        }
         function test_ants_place() {  // the ants on the selection's edge, nothing inside; Quick Mask tints the rest
             const f = frame()
             const a = put(antsC, f, { docW: 4400, docH: 5600, shape: "rect" })  // [0,39; 0,19] + [0,375 × 0,46] of the page

@@ -309,6 +309,20 @@ Item {
             const logo = createTemporaryObject(textC, root, { "font.family": Theme.logo, "font.weight": Font.ExtraBold })
             compare(logo.fontInfo.styleName, "ExtraBold")
         }
+        // Each CSS weight of the prototype's Space Grotesk is its own face (U23): 600 is SpaceGrotesk-SemiBold.ttf, not
+        // the variable font's Medium; more ink at each step.
+        function test_weights() {
+            const sheet = createTemporaryObject(blackC, root, { width: 420, height: 4 * 34 })
+            const ws = [Font.Normal, Font.Medium, Font.DemiBold, Font.Bold], ts = ws.map((w, i) =>
+                createTemporaryObject(textC, sheet, { y: i * 34, color: "white", text: "Hamburgefonstiv Dodge & Burn", "font.family": Theme.sans,
+                                                      "font.pixelSize": 24, "font.weight": w }))
+            waitForRendering(sheet)
+            const g = grabImage(sheet), n = ts.map((t, i) => ink(g, 0, i * 34, 420, i * 34 + 34).n)
+            compare(ts.map(t => t.fontInfo.weight), [400, 500, 600, 700])
+            compare(ts[2].fontInfo.styleName, "SemiBold")
+            for (let i = 1; i < 4; i++)
+                verify(n[i] > n[i - 1] * 1.05, "ink " + n.join(", "))
+        }
         function test_unknown_icon() {
             const i = createTemporaryObject(iconC, root, { name: "no_such_icon" })
             compare(i.text, "")

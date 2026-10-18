@@ -57,10 +57,12 @@ Item {
                 p += "M" + x0 * s + " " + at(k * d) + "H" + x1 * s
         return p
     }
-    // Lines closer than 8 px are left out, as the prototype's grid: the subdivisions first.
+    // Thiết lập's lines, each 1st, 2nd, 5th, 10th… while closer than 50 px: 62,5 px at 12,5 % as the prototype's ov.grid
+    // (a line each 500 px). The subdivisions show from 8 px apart, the lines left out among them.
+    readonly property real every: [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(m => spacing * s * m >= 50) || 1000
     readonly property real minor: spacing / Math.max(1, subdivisions)
-    readonly property string majorPath: ok && grid && spacing * s >= 8 ? lines(spacing, () => true, 0, docW, 0, docH) : ""
-    readonly property string minorPath: ok && grid && subdivisions > 1 && minor * s >= 8 ? lines(minor, k => k % subdivisions !== 0, 0, docW, 0, docH) : ""
+    readonly property string majorPath: ok && grid ? lines(spacing * every, () => true, 0, docW, 0, docH) : ""
+    readonly property string minorPath: ok && grid && subdivisions > 1 && minor * s >= 8 ? lines(minor, k => k % (subdivisions * every) !== 0, 0, docW, 0, docH) : ""
     readonly property string pixelPath: pixels ? lines(1, () => true, seen.x, seen.x + seen.width, seen.y, seen.y + seen.height) : ""
     readonly property string guidePath: {
         if (!ok || !guides)

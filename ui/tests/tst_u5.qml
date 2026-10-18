@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic
+import QtQuick.Shapes
 import QtTest
 import PhotoBeauty
 import "../qml/ToolSpec.js" as ToolSpec
@@ -195,6 +196,7 @@ Item {
                 "Spot Healing Brush (J)", "Brush (B)", "Clone Stamp (S)", "Eraser (E)", "Gradient (G)", "Dodge (O)", "Horizontal Type (T)", "Rectangle (U)", "Hand (H)",
                 "Zoom (Z)"])
             compare(groups.filter(b => b.many).map(b => b.gid), ["marquee", "lasso", "wand", "crop", "heal", "brush", "grad", "dodge", "shape", "hand"])
+            compare(groups.filter(corner).map(b => b.gid), ["marquee", "lasso", "wand", "crop", "heal", "brush", "grad", "dodge", "shape", "hand"], "◢ on a group's")
             compare(groups.filter(b => b.checked).map(b => b.gid), ["brush"])
             const pair = region(w, ColorPair)
             compare([pair.mapToItem(tb, 0, 0).x, pair.mapToItem(tb, 0, 0).y, pair.width], [5, 605, 34])
@@ -348,6 +350,7 @@ Item {
             compare(Tools.screen, 2)
             verify(!toolbar(w).visible)
         }
+        function corner(b) { return !!root.find(b.background, o => o instanceof Shape && o.visible) }  // its ◢ drawn
         // Two columns (Thiết lập › Workspace › Thanh công cụ hai cột, twoColumnTools): 80 wide, the groups two by two with
         // no separators, the canvas beside it; the value kept between starts comes back.
         function test_two_columns() {
@@ -372,6 +375,8 @@ Item {
                     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(i => [i % 2 ? 42 : 6, 6 + Math.floor(i / 2) * 34]))
             const q = bs[16].mapToItem(tb, 0, 0), s = bs[17].mapToItem(tb, 0, 0)
             compare([q.y, s.x - q.x], [s.y, 36])
+            compare(bs.slice(0, 16).filter(corner).length, 0, "no ◢ in two columns, as the Toolbar artboard (U23)")
+            verify(bs.slice(0, 16).filter(b => b.many).length === 10, "the groups still open on a long press")
             mouseClick(bs[15])
             compare(Tools.tool, "zoom")
             Prefs.set("twoColumnTools", false)

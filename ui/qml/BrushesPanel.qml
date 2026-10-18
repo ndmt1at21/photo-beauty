@@ -146,8 +146,8 @@ Item {
                                 width: 28
                                 height: 28
                                 anchors.verticalCenter: parent.verticalCenter
-                                TipShape.Glyph {
-                                    readonly property int s: Math.max(6, Math.min(22, Math.round(Math.sqrt(row.modelData[1]) * 1.1)))
+                                TipShape.Glyph {  // 10 at 24 px to 22 at 400, by the log of the size: within 2 of PanelsB's dots
+                                    readonly property int s: Math.round(Math.max(10, Math.min(22, 10 + 12 * Math.log(row.modelData[1] / 24) / Math.log(400 / 24))))
                                     anchors.centerIn: parent
                                     width: s
                                     height: s
@@ -164,13 +164,11 @@ Item {
                                     font.pointSize: Theme.pt(12)
                                     elide: Text.ElideRight
                                 }
-                                Text {
-                                    width: parent.width
+                                Text {  // runs on past the column as CSS's (no ellipsis on it in PanelsB)
                                     text: qsTr("%1 px").arg(Fmt.vn(row.modelData[1])) + row.modelData[3]
                                     color: Theme.t3
                                     font.family: Theme.mono
                                     font.pointSize: Theme.pt(10.5)
-                                    elide: Text.ElideRight
                                 }
                             }
                             StrokePreview {

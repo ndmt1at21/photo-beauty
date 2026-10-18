@@ -157,7 +157,9 @@ Item {
                             return
                         const k = Math.max(w / iw, h / ih), cw = Math.ceil(iw * k), ch = Math.ceil(ih * k)
                         if (!isImageLoaded(url))
-                            return loadImage(url, Qt.size(cw, ch))
+                            loadImage(url, Qt.size(cw, ch))  // one in the cache (the other row's) comes at once, no imageLoaded
+                        if (!isImageLoaded(url))
+                            return
                         ctx.drawImage(url, (w - cw) / 2, (h - ch) / 2, cw, ch)
                         return row.filter(ctx, row.p.look, w, h)
                     }
@@ -230,13 +232,21 @@ Item {
                     ctx.stroke()
                 }
             }
-            Rectangle {  // 1 px off it: t4, t1 while the mask takes the brush
+            Rectangle {  // on its edge, t4; round that, t1 while the mask takes the brush (box-shadow 0 0 0 1px, 2px)
                 anchors.fill: parent
                 anchors.margins: -2
                 radius: 4
                 color: "transparent"
                 border.width: 1
-                border.color: row.selected && row.editMask ? Theme.t1 : Theme.t4
+                border.color: row.selected && row.editMask ? Theme.t1 : "transparent"
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: 3
+                    color: "transparent"
+                    border.width: 1
+                    border.color: Theme.t4
+                }
             }
         }
     }

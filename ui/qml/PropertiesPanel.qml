@@ -49,6 +49,8 @@ Item {
         font.weight: Font.Medium
         font.letterSpacing: 0.63
         font.capitalization: Font.AllUppercase
+        // CSS's line box (line-height 1.35), whole as layouts round heights up: Qt's 15 pushed the rows under each one
+        Layout.preferredHeight: Math.round(10.5 * 1.35 * Theme.fontScale)
     }
     component Dim: Text {
         color: Theme.t3
@@ -451,7 +453,7 @@ Item {
                 }
                 Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: 40
+                    implicitHeight: Math.round(12 + (12 + 10.5) * 1.35 * Theme.fontScale)  // padding 6 around CSS's line boxes of the two
                     radius: 6
                     color: Theme.p2
                     Row {
@@ -858,9 +860,9 @@ Item {
                         size: 17
                         color: Theme.t2
                     }
-                    Text {
+                    Text {  // the kind, as the artboard's and Photoshop's: the layer's name is in Layers
                         Layout.fillWidth: true
-                        text: panel.active.props.name
+                        text: apg.adj
                         color: Theme.t1
                         elide: Text.ElideRight
                         font.weight: Font.DemiBold
@@ -959,14 +961,6 @@ Item {
                         elide: Text.ElideRight
                         font.family: Theme.mono
                         font.pointSize: Theme.pt(11)
-                    }
-                    ToolToggle {  // back to an adjustment layer's rows
-                        visible: panel.active.kind === "adj"
-                        icon.name: Spec.ADJ[panel.active.props.adj] ? Spec.ADJ[panel.active.props.adj].ic : "tune"
-                        icon.width: 15
-                        ToolTip.text: qsTr("Thông số adjustment")
-                        Accessible.name: qsTr("Thông số adjustment")
-                        onClicked: panel.doc.setEditMask(false)
                     }
                 }
                 SliderField {

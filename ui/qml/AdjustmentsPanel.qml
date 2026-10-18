@@ -41,9 +41,9 @@ Item {
                     color: b.hovered || b.down ? Theme.sel : "transparent"
                 }
                 contentItem: Item {
-                    Column {
+                    Column {  // gap 5 in CSS's line box of 1.35: 2 between Qt's tighter one
                         anchors.centerIn: parent
-                        spacing: 5
+                        spacing: 2
                         Icon {
                             anchors.horizontalCenter: parent.horizontalCenter
                             name: Spec.ADJ[b.modelData].ic

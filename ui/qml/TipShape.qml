@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Shapes
 
-// The angle and roundness of a brush tip (docs/ui-tasks.md, U13; TipShape of Controls.dc.html, 84 px in Brush Settings
-// of PanelsB.dc.html): the tip's ellipse in a ring, turned to `angle` (°, anticlockwise from the right as Photoshop's,
-// −180–180) and flattened to `roundness` (%, 0–100). Drag the arrow, or anywhere off the two dots, to turn it (Shift:
-// steps of 15°); drag a dot to flatten it. Value protocol of the shared controls: started(), moved(angle, roundness) at
-// each change, committed(angle, roundness) when the mouse lets go. Glyph draws a tip as the brush pickers show one.
+// The angle and roundness of a brush tip (docs/ui-tasks.md, U13; 84 px in Brush Settings as PanelsB.dc.html and
+// Main.dc.html draw it, TipShape of Controls.dc.html its drag): the tip's ellipse in a ring, turned to `angle` (°,
+// anticlockwise from the right as Photoshop's, −180–180) and flattened to `roundness` (%, 0–100). Drag the line, or
+// anywhere off the two dots, to turn it (Shift: steps of 15°); drag a dot to flatten it. Value protocol of the shared
+// controls: started(), moved(angle, roundness) at each change, committed(angle, roundness) when the mouse lets go. Glyph
+// draws a tip as the brush pickers show one.
 Item {
     id: ts
     property real angle
@@ -19,7 +20,7 @@ Item {
 
     readonly property real k: Math.min(width, height) / 120  // the artboard's box is 120
     readonly property real rad: angle * Math.PI / 180
-    readonly property real half: 46 * k  // the ellipse's long half axis
+    readonly property real half: 40 * k  // the ellipse's long half axis
     // The dot at one end of the short axis, from the centre; the other is opposite.
     readonly property point dot: Qt.point(Math.sin(rad) * half * roundness / 100, Math.cos(rad) * half * roundness / 100)
     readonly property bool dragging: area.active
@@ -40,14 +41,12 @@ Item {
             const c = getContext("2d"), k = ts.k
             c.reset()
             c.translate(width / 2, height / 2)
-            c.lineWidth = 1
+            c.lineWidth = 1.5 * k
             c.strokeStyle = Theme.t4
-            c.beginPath()
+            c.beginPath()  // the ring and its horizontal axis
             c.arc(0, 0, 52 * k, 0, 2 * Math.PI)
             c.moveTo(-52 * k, 0)
             c.lineTo(52 * k, 0)
-            c.moveTo(0, -52 * k)
-            c.lineTo(0, 52 * k)
             c.stroke()
             c.rotate(-ts.rad)
             c.save()
@@ -57,21 +56,15 @@ Item {
             c.restore()
             c.fillStyle = Theme.faint
             c.fill()
-            c.lineWidth = 1.5
+            c.lineWidth = 2 * k
             c.strokeStyle = Theme.t1
             c.stroke()
-            c.beginPath()  // the arrow, its head past the ring as the artboard's
+            c.beginPath()  // the line along the angle, to 46
             c.moveTo(0, 0)
-            c.lineTo(50 * k, 0)
+            c.lineTo(46 * k, 0)
             c.stroke()
             c.fillStyle = Theme.t1
-            c.beginPath()
-            c.moveTo(58 * k, 0)
-            c.lineTo(47.5 * k, -5.5 * k)
-            c.lineTo(47.5 * k, 5.5 * k)
-            c.closePath()
-            c.fill()
-            const r = ts.half * ts.roundness / 100, dot = Math.max(3, 4 * k)
+            const r = ts.half * ts.roundness / 100, dot = Math.max(3, 4.5 * k)
             c.beginPath()
             c.arc(0, -r, dot, 0, 2 * Math.PI)
             c.arc(0, r, dot, 0, 2 * Math.PI)
