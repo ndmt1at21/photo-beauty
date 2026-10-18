@@ -19,7 +19,7 @@ Control {
     signal committed(var v)
 
     implicitWidth: 320
-    implicitHeight: 56
+    implicitHeight: 54  // the fields 22, 4, the bar 28
     padding: 0
 
     // value with half i at x, or both halves of i's triangle when whole, held between the neighbours.
@@ -36,6 +36,8 @@ Control {
         required property int i
         readonly property bool whole: s.wholeAt(i)
         width: 46
+        boxHeight: 22  // the artboard's .bf, its number to the right as .fld input
+        horizontalAlignment: TextInput.AlignRight
         value: s.value[i]
         min: i === 0 ? 0 : s.value[i - 1]
         max: i === 3 || whole && i === 2 ? 255 : s.value[i + (whole ? 2 : 1)]
@@ -73,7 +75,7 @@ Control {
         }
         Item {
             id: bar
-            y: 28
+            y: 26
             width: parent.width
             height: 28
             Rectangle {

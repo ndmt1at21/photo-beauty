@@ -264,10 +264,10 @@ Item {
             verify(icon(w, "Info").on && !icon(w, "Navigator").on)
             click(w, find(sp, o => o instanceof ToolToggle && o.icon.name === "close"))
             compare(Tools.sidePanel, "")
-            click(w, icon(w, "Brush Settings"))  // 856 tall (its .bsh rows 28, U23): as tall as the column lets it, scrolled
+            click(w, icon(w, "Brush Settings"))  // 852 tall (its .bsh rows 28, the check rows 16, U23): as tall as the column lets it, scrolled
             compare(box(w, sp), [812, 86, 280, 784])
             const f = find(sp, o => o instanceof Flickable)
-            compare([f.height, f.contentHeight], [754, 856])
+            compare([f.height, f.contentHeight], [754, 852])
         }
         // A press on the canvas closes what floats and goes no further; one on it, or off the canvas, does not.
         function test_scrim() {

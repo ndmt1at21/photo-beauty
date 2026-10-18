@@ -31,6 +31,10 @@ QtObject {
     readonly property color closeFill: "#c42b1c"  // the window's close button under the mouse, as Windows 11
     readonly property color closeInk: "#ffffff"
     readonly property color knob: "#f5f5f5"  // switch knob
+    // Chrome's native checkbox and radio (the prototype's inputs with accent-color): the box, its edge, the tick on accent.
+    readonly property color checkFill: dark ? "#3b3b3b" : "#ffffff"
+    readonly property color checkLine: dark ? "#858585" : "#767676"
+    readonly property color checkTick: "#3b3b3b"
     readonly property color scrim: Qt.rgba(0, 0, 0, 0.5)  // behind dialogs
     readonly property color shadow: Qt.rgba(0, 0, 0, 0.45)
     readonly property color onPhoto: Qt.rgba(0, 0, 0, 0.55)  // labels over the image

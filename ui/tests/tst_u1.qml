@@ -375,6 +375,11 @@ Item {
             const ok = find(d.footer, o => o instanceof Btn && o.text === "OK")
             verify(ok.primary && ok.width >= 84, "primary at least 84 wide")
             compare(d.header.height, 46)
+            compare([d.footer.height, ok.mapToItem(d.footer, 0, 0).y, ok.height], [53, 13, 28], ".df: its rule, 12, the 28 px buttons, 12 (U23)")
+            const bg = d.background
+            compare([bg.x, bg.y, bg.width, bg.height], [-1, -1, d.width + 2, d.height + 2], "the edge outside, as .dlg's box-shadow")
+            d.boxWidth = 441
+            verify(Number.isInteger(d.x) && Number.isInteger(d.y), "centred on whole pixels: " + d.x + ", " + d.y)
             mouseClick(ok)
             compare(did, "ok")
             keyClick(Qt.Key_Escape)

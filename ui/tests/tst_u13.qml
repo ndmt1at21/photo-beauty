@@ -371,10 +371,11 @@ Item {
         }
         function test_brush_settings_values() {  // Hardness, Spacing, Flip, các mục có ô bật, Control
             const p = make(settingsC)
-            mouseClick(slider(p, "Hardness"), slider(p, "Hardness").width * 0.25, 22)
+            mouseClick(slider(p, "Hardness"), 5.5 + (slider(p, "Hardness").width - 11) * 0.25, 22)
             compare(v("brush:hard"), 25)
             const sp = root.find(p, o => o instanceof SliderField && o.Accessible.name === "Spacing")
-            mouseClick(sp, 0, 6)
+            compare([sp.y, sp.height], [22, 3], "the bare track where a labelled row has its own (U23)")
+            mouseClick(sp, 0, 1)
             compare(v("brush:spacing"), 1)
             const preview = root.find(p, o => o instanceof StrokePreview)
             compare(preview.spacing, 1)

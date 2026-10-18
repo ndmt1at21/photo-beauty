@@ -313,6 +313,8 @@ Item {
             waitForRendering(s)
             const fields = () => root.all(s, o => o instanceof NumberField && o.visible)
             compare(fields().map(f => f.value), [0, 255], "a field a triangle")
+            compare([s.height].concat(fields().map(f => [f.height, f.horizontalAlignment])), [54, [22, TextInput.AlignRight], [22, TextInput.AlignRight]],
+                    "the artboard's .bf, 22 high, its number to the right; 4, the 28 px bar (U23)")
             drag(s, 0, 40, false)
             compare(s.value, [26, 26, 255, 255], "a plain drag moves the whole triangle")
             compare(root.log[0], "s")
@@ -394,6 +396,11 @@ Item {
                 settle(d)
                 const boxes = shown(d, NumberField).concat(shown(d, Dropdown))
                 compare(boxes.map(o => o.height), boxes.map(() => 26), k)
+                // .fld input{text-align:right}, the unit apart in t3 ("35 %") (U23)
+                const nf = shown(d, NumberField)
+                compare(nf.map(f => [f.unitApart, f.horizontalAlignment]), nf.map(() => [true, TextInput.AlignRight]), k)
+                const caps = root.all(page(d), o => o instanceof Text && o.visible && o.font.capitalization === Font.AllUppercase && o.parent instanceof ColumnLayout)  // not the one by the title
+                compare(caps.map(c => c.height), caps.map(() => 14), k + ": .cap, 10.5 px × 1.35")
             }
         }
 

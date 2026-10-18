@@ -108,6 +108,14 @@ Item {
             const boxes = root.findAll(d.contentItem, c => (c instanceof NumberField || c instanceof Dropdown) && c.visible)
             verify(boxes.length >= 8)
             compare(boxes.map(c => c.height), boxes.map(() => 26))
+            const caps = root.findAll(d.contentItem, c => c instanceof Text && c.visible && c.font.capitalization === Font.AllUppercase)
+            verify(caps.length >= 5)
+            compare(caps.map(c => c.height), caps.map(() => 14), ".cap, 10.5 px × 1.35")
+            // Chất lượng: its number to the right, the 3 px track 7 under the field (U23)
+            const q = root.find(d.contentItem, c => c.objectName === "quality"), nf = root.find(q, c => c instanceof NumberField)
+            const sl = root.find(q, c => c instanceof SliderField)
+            compare(nf.horizontalAlignment, TextInput.AlignRight)
+            compare([sl.height, sl.mapToItem(q, 0, 0).y - nf.mapToItem(q, 0, 0).y - nf.height], [3, 7])
         }
         // Lớn (U23): the settings' column grows with the text, "Resample Bicubic Sharper" whole.
         function test_export_large_font() {
@@ -288,6 +296,7 @@ Item {
             compare(d.quality, 3)
             compare(d.estimate, "1,3 MB")
             const nf = root.find(d.contentItem, c => c instanceof NumberField)
+            compare([nf.height, nf.horizontalAlignment], [26, TextInput.AlignRight], ".fld 26, text-align:right (U23)")
             type(nf, "20")
             compare(d.quality, 12)  // its maximum
             compare(level.displayText, "Tối đa")
@@ -304,6 +313,11 @@ Item {
         function test_save_tiff() {
             const d = open(saveC, { format: "tiff" })
             verify(!root.labelled(d, "JPEG").enabled)  // chân dung.psd is 16 bits
+            // the shared Radio, a line of .pb's 12 px × 1.4 high: the grid 6 apart, the column 10 (U23)
+            const top = t => root.labelled(d, t).mapToItem(d.contentItem, 0, 0).y
+            verify(root.labelled(d, "ZIP") instanceof Radio)
+            compare([top("ZIP") - top("None"), top("Giữ layer, nén ZIP") - top("Giữ layer, nén RLE")], [23, 27])
+            compare(root.labelled(d, "ZIP").spacing, 8, ".ck's gap")
             mouseClick(root.labelled(d, "ZIP"))
             compare(d.compression, "zip")
             mouseClick(root.labelled(d, "Bỏ layer, lưu bản phẳng"))
@@ -420,6 +434,10 @@ Item {
             const doc = Docs.current, n = steps()
             const d = open(assignC)
             compare(d.choice, "ws")
+            const radios = ["Không quản lý màu cho tài liệu này", "Không gian làm việc: sRGB IEC61966-2.1"].map(t => root.labelled(d, t))
+            verify(radios[0] instanceof Radio, "the shared Radio (U23)")
+            compare(radios.map(r => [r.height, r.spacing]), [[16, 8], [16, 8]])
+            compare(radios[1].mapToItem(d.contentItem, 0, 0).y - radios[0].mapToItem(d.contentItem, 0, 0).y, 26)
             const list = root.find(d.contentItem, c => c instanceof Select)
             verify(!list.enabled)
             mouseClick(root.labelled(d, "Hồ sơ"))

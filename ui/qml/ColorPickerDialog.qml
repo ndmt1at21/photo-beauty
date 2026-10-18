@@ -98,6 +98,8 @@ DialogBox {
     }
 
     Row {
+        topPadding: 2  // the artboard's padding:18px, the body's 16 + 2
+        bottomPadding: 2
         spacing: 16
         ColorField {
             id: field

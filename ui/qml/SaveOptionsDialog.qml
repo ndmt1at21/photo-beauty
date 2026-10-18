@@ -77,9 +77,11 @@ DialogBox {
         rowSpacing: 10
         Repeater {
             model: radios.options
-            AssignProfileDialog.Radio {
+            Radio {
                 id: radio
                 required property var modelData
+                spacing: 8  // .ck
+                implicitHeight: 17  // a line of .pb's 12 px × 1.4
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1  // the columns share the width alike
                 text: radio.modelData[1]
@@ -116,6 +118,8 @@ DialogBox {
             }
             NumberField {
                 Layout.preferredWidth: 54
+                boxHeight: 26  // .fld
+                horizontalAlignment: TextInput.AlignRight
                 value: dlg.quality
                 min: 0
                 max: 12

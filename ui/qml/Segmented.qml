@@ -102,12 +102,12 @@ Rectangle {
                             GradientStop { position: 0; color: "#ffffff" }
                             GradientStop { position: 1; color: "#000000" }
                         }
-                        ConicalGradient {
+                        ConicalGradient {  // Qt turns counter-clockwise, CSS's conic-gradient clockwise: the stops reversed
                             id: angle
                             centerX: 8; centerY: 8
                             angle: 90
-                            GradientStop { position: 0; color: "#ffffff" }
-                            GradientStop { position: 1; color: "#000000" }
+                            GradientStop { position: 0; color: "#000000" }
+                            GradientStop { position: 1; color: "#ffffff" }
                         }
                         ConicalGradient {
                             id: diamond

@@ -49,6 +49,7 @@ Item {
     Component { id: swatchC; Swatch {} }
     Component { id: pairC; ColorPair {} }
     Component { id: checkC; CheckRow { text: "Flip X" } }
+    Component { id: radioC; Radio { text: "Uniform" } }
     Component { id: toggleC; ToolToggle { icon.name: "brush" } }
     Component { id: sectionC; Section { width: 280; title: "Tách tần số"; Text { text: "body" } } }
     Component { id: tabsC; PanelTabs { width: 308; tabs: ["Layers", "Channels"]; current: "Layers" } }
@@ -58,6 +59,7 @@ Item {
     Component { id: gridC; PresetGrid { width: 280 } }
     Component { id: tileC; Rectangle { required property var modelData; anchors.fill: parent; color: modelData } }
     Component { id: histC; Histogram { width: 256 } }
+    FontMetrics { id: fm }
 
     TestCase {
         name: "U2"
@@ -124,6 +126,7 @@ Item {
 
         // ---- NumberField: the cases of the Controls board ------------------------------------
         function input(f) { return root.find(f, o => o instanceof TextField) }
+        function at(s, p) { return 5.5 + p * (s.width - 11) }  // a slider's x for a fraction of its range
         function edit(f, text) {  // click into the field and type text over its value
             mouseClick(input(f))
             tryVerify(() => f.editing)
@@ -286,6 +289,24 @@ Item {
             mouseDoubleClickSequence(root.find(g, o => o instanceof Text && o.text === "W" && o.visible), 3, 8)
             compare(root.log, [], "no default, nothing")
         }
+        // The review page (U23): no 4 px of Basic's TextField before the text, the .fld padding (6; 8 in dialogs' boxes over
+        // 24), the dialogs' numbers to the right with the unit apart in t3 ("120 %"); off, a label before the box keeps its
+        // colour (.lbl; the options bar fades the whole cell).
+        function test_number_review() {
+            const f = createTemporaryObject(numberC, root, { value: 6, unit: "%" })
+            const box = root.find(f, o => o instanceof Rectangle && o.radius === 4), t = input(f)
+            compare([t.leftPadding, t.rightPadding, t.mapToItem(box, 0, 0).x], [0, 0, 6])
+            f.boxHeight = 26
+            compare(t.mapToItem(box, 0, 0).x, 8)
+            const u = createTemporaryObject(numberC, root, { value: 120, unit: "%", unitApart: true, horizontalAlignment: TextInput.AlignRight, boxHeight: 26, y: 40 })
+            const ub = root.find(u, o => o instanceof Rectangle && o.radius === 4), unit = root.find(u, o => o instanceof Text && o.text === "%")
+            compare([input(u).text, input(u).horizontalAlignment], ["120", TextInput.AlignRight])
+            verify(unit.visible && Qt.colorEqual(unit.color, Theme.t3))
+            compare(unit.mapToItem(ub, 0, 0).x + unit.width, ub.width - 8, "the unit last")
+            compare(unit.mapToItem(ub, 0, 0).x - input(u).mapToItem(ub, 0, 0).x - input(u).width, 6, "the number before it, .fld's gap:6px")
+            const o = createTemporaryObject(numberC, root, { label: "W", labelInside: false, value: 0, unit: "px", enabled: false, y: 80 })
+            verify(Qt.colorEqual(root.find(o, x => x instanceof Text && x.text === "W").color, Theme.t2), "off: .lbl keeps its colour")
+        }
         function test_number_label_outside() {  // options bar, Layers: label before the box
             const f = createTemporaryObject(numberC, root, { label: "Opacity", labelInside: false, value: 100, unit: "%", width: undefined })
             const lbl = root.find(f, o => o instanceof Text && o.text === "Opacity")
@@ -310,9 +331,9 @@ Item {
             keyClick(Qt.Key_Left)
             compare(root.log, ["s", "m44", "c44"])
             root.log = []
-            mousePress(s, s.width * 0.2, 7)
-            mouseMove(s, s.width * 0.3, 7, -1, Qt.LeftButton)
-            mouseRelease(s, s.width * 0.3, 7)
+            mousePress(s, at(s, 0.2), 1)
+            mouseMove(s, at(s, 0.3), 1, -1, Qt.LeftButton)
+            mouseRelease(s, at(s, 0.3), 1)
             compare(root.log, ["s", "m20", "m30", "c30"], "the slider speaks for the field")
             compare(input(f).text, "30%")
             keyClick(Qt.Key_Right)
@@ -325,14 +346,14 @@ Item {
         function test_slider_drag() {  // kéo đổi liền, thả tay gọi commit
             const s = root.record(createTemporaryObject(sliderC, root, { value: 35 }))
             compare(s.valueText, "35")
-            mousePress(s, 100, 23)
+            mousePress(s, at(s, 0.5), 23)
             compare(root.log, ["s", "m50"])
-            mouseMove(s, 150, 23, -1, Qt.LeftButton)
+            mouseMove(s, at(s, 0.75), 23, -1, Qt.LeftButton)
             compare(s.value, 75)
             verify(s.dragging)
-            mouseRelease(s, 150, 23)
+            mouseRelease(s, at(s, 0.75), 23)
             compare(root.log, ["s", "m50", "m75", "c75"])
-            mouseClick(s, 150, 23)
+            mouseClick(s, at(s, 0.75), 23)
             compare(root.log.length, 4, "a click on the value is no gesture")
             mousePress(s, 190, 23)
             mouseMove(s, 260, 23, -1, Qt.LeftButton)
@@ -349,8 +370,21 @@ Item {
             const knob = root.find(s, o => o instanceof Rectangle && Qt.colorEqual(o.color, Theme.thumb))
             compare([knob.width, knob.height, knob.parent.width, knob.parent.height], [7, 7, 11, 11])
             verify(Qt.colorEqual(knob.parent.color, Theme.p1))
-            const mid = knob.mapToItem(s, 3.5, 3.5)
-            compare([mid.x, mid.y], [70, 23.5], "its middle on the value, on the track's middle")
+            const mid = () => knob.mapToItem(s, 3.5, 3.5)
+            fuzzyCompare(mid().x, at(s, 0.35), 0.001, "its middle on the value")
+            compare(mid().y, 23.5, "on the track's middle")
+            s.value = 0
+            compare(mid().x, 5.5, "Chrome's range: the thumb stays on the track")
+            s.value = 100
+            compare(mid().x, 194.5)
+            s.gap = 7  // Adjustments' rows: label, 7, the track
+            compare([s.height, mid().y], [26, 24.5])
+            const bare = root.record(createTemporaryObject(sliderC, root, { label: "", value: 0, y: 50 }))
+            compare(bare.height, 3, "the track alone, 3 px as <input type=range>; the thumb spills over it")
+            const k = root.find(bare, o => o instanceof Rectangle && Qt.colorEqual(o.color, Theme.thumb)).mapToItem(bare, 3.5, 3.5)
+            compare([k.x, k.y], [5.5, 1.5])
+            mouseClick(bare, at(bare, 0.4), -5)
+            compare(root.log, ["s", "m40", "c40"], "the mouse reaches it above the track")
         }
         function test_slider_keys_track() {
             const s = root.record(createTemporaryObject(sliderC, root, { value: 35, track: ["#ff0000", "#ffff00", "#00ff00", "#00ffff"] }))
@@ -372,8 +406,6 @@ Item {
             keyClick(Qt.Key_Right)
             compare(s.value, 0.51)
             compare(s.valueText, "0,51")
-            const bare = createTemporaryObject(sliderC, root, { label: "" })
-            compare(bare.height, 15, "the track alone")
         }
 
         // ---- Dropdown ------------------------------------------------------------------------
@@ -428,6 +460,51 @@ Item {
             compare(picked, "m20")
         }
 
+        // The review page (U23): no row lit as the list opens, rows of text + 38 (Main's .mi), the 1 px edge outside the
+        // list (.pop's box-shadow), a 16 px chevron in dialogs' boxes; `plain` as Start's .mi (text at 12, tick on the right).
+        function test_dropdown_review() {
+            const d = createTemporaryObject(dropC, root, { options: ["Normal", "Multiply", "Linear Light long name"], value: "Multiply", width: 60, y: 20 })
+            const chevron = root.find(d, o => o instanceof Icon && o.name === "expand_more")
+            compare(chevron.size, 14)
+            d.height = 26
+            compare(chevron.size, 16, "a dialog's box")
+            d.height = 24
+            mouseClick(d)
+            tryVerify(() => d.popup.opened)
+            waitForRendering(d.popup.contentItem)
+            const lit = () => root.all(d.popup.contentItem, o => o instanceof ItemDelegate && o.highlighted).map(o => o.index)
+            compare(lit(), [], "only the tick marks the value")
+            fm.font.pointSize = Theme.pt(12.5)
+            compare(d.popup.width, Math.ceil(fm.advanceWidth("Linear Light long name")) + 38)
+            const bg = d.popup.background
+            compare([bg.x, bg.y, bg.width, bg.height], [-1, -1, d.popup.width + 2, d.popup.height + 2], "the edge outside")
+            keyClick(Qt.Key_Down)
+            compare(lit(), [2], "a key lights a row")
+            const row0 = root.find(d.popup.contentItem, o => o instanceof ItemDelegate && o.index === 0)
+            mouseMove(row0, 20, 14)
+            tryCompare(row0, "highlighted", true)
+            d.popup.close()
+            tryVerify(() => !d.popup.visible)
+            mouseMove(root, 900, 700)
+            mouseClick(d)
+            tryVerify(() => d.popup.opened)
+            compare(lit(), [], "lit again only once moved")
+            d.popup.close()
+            tryVerify(() => !d.popup.visible)
+
+            const p = createTemporaryObject(dropC, root, { options: ["Ngày sửa", "Tên", "Dung lượng"], value: "Tên", width: 170, height: 28, plain: true })
+            mouseClick(p)
+            tryVerify(() => p.popup.opened)
+            waitForRendering(p.popup.contentItem)
+            compare([p.popup.width, p.popup.y], [170, 32], "as wide as the box, 4 under it")
+            const r1 = root.find(p.popup.contentItem, o => o instanceof ItemDelegate && o.index === 1)
+            const label = root.find(r1, o => o instanceof Text && o.text === "Tên"), tick = root.find(r1, o => o instanceof Icon && o.name === "check")
+            compare(label.mapToItem(r1, 0, 0).x, 12)
+            verify(tick.visible)
+            compare(tick.parent.mapToItem(r1, 0, 0).x + tick.parent.width, r1.width - 12, "the tick's 16 px on the right")
+            p.popup.close()
+        }
+
         // ---- Segmented, Swatch, ColorPair, CheckRow, ToolToggle, Chips --------------------------
         function test_segmented() {
             const g = createTemporaryObject(segC, root, { options: ["Cả hai", "Thấp", "Cao"], current: 0 })
@@ -453,6 +530,13 @@ Item {
             verify(root.find(ib[1], o => o instanceof Shape).visible, "a gradient swatch")
             compare(ib[1].ToolTip.text, "Radial")
             compare(ib[0].width, 26)
+            // Angle as CSS's conic-gradient(#fff, #000): clockwise from 12 o'clock, white just right of the top, black just left (U23).
+            const a = createTemporaryObject(segC, root, { options: [{ grad: "angle", t: "Angle" }], y: 100 })
+            const sw = root.find(a, o => o instanceof Shape)
+            waitForRendering(sw)
+            const img = grabImage(root), o = sw.mapToItem(root, 0, 0), px = (x, y) => img.pixel(o.x + x, o.y + y).r  // grabImage(sw) leaves the Shape out
+            verify(px(10, 2) > 0.8 && px(6, 2) < 0.2, px(10, 2) + " " + px(6, 2))
+            verify(Math.abs(px(14, 8) - 0.75) < 0.1, "a quarter round at 3 o'clock: " + px(14, 8))
         }
         function test_swatch_pair() {
             const s = createTemporaryObject(swatchC, root, { color: "#c0587e" })
@@ -468,6 +552,12 @@ Item {
             verify(line.visible, "no colour: struck through")
             compare(line.color, Theme.danger)
             compare(s.background.color, Qt.color("#ffffff"))
+            // The stroke stops at the round corners, as the prototype's border-radius clips it (U23).
+            const n4 = createTemporaryObject(swatchC, root, { none: true, width: 30, height: 22, radius: 4, ring: "transparent", x: 300, y: 300 })
+            waitForRendering(n4)
+            const img = grabImage(root), px = (x, y) => img.pixel(300 + x, 300 + y)
+            verify(px(0, 0).g > 0.9 && px(29, 21).g > 0.9, "past the corners: " + px(0, 0) + " " + px(29, 21))
+            verify(px(15, 11).g < 0.5, "red across the middle: " + px(15, 11))
 
             const p = createTemporaryObject(pairC, root, { fg: "#e9c7b3", bg: "#000000" })
             const hits = []
@@ -491,7 +581,6 @@ Item {
             let n = 0
             c.clicked.connect(() => n++)
             const box = root.find(c, o => o instanceof Rectangle && o.width === 13)
-            compare(box.color, Qt.rgba(0, 0, 0, 0))
             mouseClick(c)
             compare(n, 1)
             verify(!c.checked, "the owner flips it")
@@ -524,6 +613,44 @@ Item {
         }
 
         // ---- Section, PanelTabs ---------------------------------------------------------------
+        // Chrome's native <input type=checkbox> and radio with accent-color, a 16 px row (12 px × 1.35) (U23).
+        function test_check_radio_chrome() {
+            const c = createTemporaryObject(checkC, root)
+            const box = root.find(c, o => o instanceof Rectangle && o.width === 13)
+            compare([c.height, box.height, box.radius], [16, 13, 2])
+            const tokens = () => [Theme.checkFill, Theme.checkLine, Theme.checkTick].map(x => x.toString())
+            compare(tokens(), ["#3b3b3b", "#858585", "#3b3b3b"])
+            Theme.dark = false
+            compare(tokens(), ["#ffffff", "#767676", "#3b3b3b"])
+            Theme.dark = true
+            verify(Qt.colorEqual(box.color, Theme.checkFill) && Qt.colorEqual(box.border.color, Theme.checkLine), "unchecked: a filled box")
+            const tick = root.find(c, o => o instanceof Shape)
+            verify(!tick.visible)
+            c.checked = true
+            verify(Qt.colorEqual(box.color, Theme.accent) && Qt.colorEqual(box.border.color, Theme.accent))
+            verify(tick.visible, "a drawn tick, no glyph")
+            const path = tick.data.find(o => o instanceof ShapePath)
+            verify(Qt.colorEqual(path.strokeColor, Theme.checkTick))
+            verify(path.strokeWidth >= 1.8, "Chrome's 2 px tick")
+            const label = root.find(c, o => o instanceof Text)
+            c.enabled = false
+            compare(c.opacity, 0.4, "off: the whole row faded")
+            verify(Qt.colorEqual(box.color, Theme.accent) && Qt.colorEqual(label.color, Theme.t2), "its colours kept")
+
+            const r = createTemporaryObject(radioC, root)
+            const ring = root.find(r, o => o instanceof Rectangle && o.width === 13)
+            const dot = root.find(ring, o => o instanceof Rectangle && o.width === 7)
+            compare([r.height, ring.radius, ring.border.width], [16, 6.5, 1])
+            verify(Qt.colorEqual(ring.color, Theme.checkFill) && Qt.colorEqual(ring.border.color, Theme.checkLine) && !dot.visible)
+            r.checked = true
+            verify(Qt.colorEqual(ring.color, Theme.checkFill) && Qt.colorEqual(ring.border.color, Theme.accent), "a ring of accent around the box colour")
+            verify(dot.visible && Qt.colorEqual(dot.color, Theme.accent))
+            compare(ring.border.width, 1)
+            r.spacing = 8  // the dialogs' .ck
+            tryVerify(() => root.find(r, o => o instanceof Text).mapToItem(ring, 0, 0).x === 13 + 8, 1000, "the label 8 past the ring")
+            r.enabled = false
+            compare(r.opacity, 0.4)
+        }
         function test_section() {
             const s = createTemporaryObject(sectionC, root, { open: true, badge: "Đã có nhóm" })
             let n = 0
@@ -638,6 +765,49 @@ Item {
             verify(m.visible)
             keyClick(Qt.Key_Escape)
             tryVerify(() => !m.visible)
+        }
+        // The review page (U23): the 1 px edge outside the menu (.pop's box-shadow), rows scrolling under the 6 px
+        // above and below; `plain` as Start's .mi: no tick column, 12 px each side, the keys on the right.
+        function test_menu_review() {
+            const m = createTemporaryObject(menuC, root)
+            m.show([{ l: "Mở", k: "Enter" }, { l: "Mở thư mục chứa file" }, { t: "sep" }, { l: "Bỏ khỏi danh sách", k: "Del" }], root, 100, 100)
+            tryCompare(m, "opened", true)
+            waitForRendering(m.contentItem)
+            const bg = m.background
+            compare([bg.x, bg.y, bg.width, bg.height], [-1, -1, m.width + 2, m.height + 2], "the edge outside")
+            compare([m.contentItem.y, m.contentItem.height, m.height], [0, m.height, 3 * 28 + 11 + 2 * 6], "the list under the 6 px")
+            const row = m.itemAt(0)
+            const text = r => root.find(r, o => o instanceof Text && o.text === r.text)
+            compare(text(row).mapToItem(row, 0, 0).x, 6 + 16 + 6, "Main's .mi: the tick column")
+            m.close()
+            tryVerify(() => !m.visible)
+            m.plain = true
+            m.show([{ l: "Mở", k: "Enter" }, { l: "Mở thư mục chứa file" }], root, 100, 100)
+            tryCompare(m, "opened", true)
+            waitForRendering(m.contentItem)
+            const r0 = m.itemAt(0), keys = root.find(r0, o => o instanceof Text && o.text === "Enter")
+            compare(text(r0).mapToItem(r0, 0, 0).x, 12, "Start's .mi")
+            compare(keys.mapToItem(r0, 0, 0).x + keys.width, r0.width - 12)
+            m.close()
+            tryVerify(() => !m.visible)
+            m.minWidth = 0  // as wide as its row: 12, the text, 24 at least, the keys, 12
+            m.show([{ l: "Mở thư mục chứa file", k: "Ctrl ⇧ Alt O" }], root, 100, 100)
+            tryCompare(m, "opened", true)
+            const r1 = m.itemAt(0), k1 = root.find(r1, o => o instanceof Text && o.text === "Ctrl ⇧ Alt O")
+            fuzzyCompare(m.width, 12 + text(r1).implicitWidth + 24 + k1.implicitWidth + 12, 2, "Start's gap:24px")
+            m.close()
+            tryVerify(() => !m.visible)
+            m.minWidth = 236
+
+            const long = []
+            for (let i = 0; i < 40; i++) long.push({ l: "Mục " + i })
+            m.show(long, root, 100, 10)
+            tryCompare(m, "opened", true)
+            waitForRendering(m.contentItem)
+            const list = m.contentItem
+            verify(list.interactive && m.height < 40 * 28, "it scrolls")
+            compare(list.height, m.height, "a row shows in the bottom 6 px: there is more")
+            m.close()
         }
         function test_menu_tool_group() {  // the flyout of a tool group: mark, icons, keys
             const m = createTemporaryObject(menuC, root)

@@ -72,6 +72,8 @@ DialogBox {
                     color: index % 2 ? Theme.t1 : Theme.t3
                     font.family: index === 3 ? Theme.mono : Theme.sans
                     font.pointSize: Theme.pt(11.5)
+                    lineHeightMode: Text.FixedHeight  // Notices' .pb line-height:1.4, whole pixels
+                    lineHeight: Math.round(16.1 * Theme.fontScale)
                     elide: Text.ElideRight
                 }
             }
@@ -83,6 +85,8 @@ DialogBox {
                 : qsTr("%1 dừng ở %2 / %3. %4 dùng được khi tải xong; kiểm tra mạng rồi thử lại.").arg(dlg.model.label).arg(dlg.megabytes(dlg.got)).arg(dlg.model.size).arg(dlg.feature)
             color: Theme.t2
             font.pointSize: Theme.pt(12)
+            lineHeightMode: Text.FixedHeight  // Notices' .pb line-height:1.4, whole pixels
+            lineHeight: Math.round(16.8 * Theme.fontScale)
             wrapMode: Text.Wrap
         }
         Item {  // the download going: a bar and how far it is

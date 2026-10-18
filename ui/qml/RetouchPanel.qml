@@ -252,10 +252,10 @@ Item {
                     Accessible.name: qsTr("Cách dựng Dodge & Burn")
                     Repeater {
                         model: [qsTr("Cặp Curves sáng, tối, Mask đen"), qsTr("Layer xám 50% Soft Light")]
-                        AssignProfileDialog.Radio {
+                        Radio {
                             required property string modelData
                             required property int index
-                            implicitHeight: 16  // a line of the prototype's label
+                            spacing: 8
                             text: modelData
                             checked: panel.rt.dbm === index
                             onClicked: panel.set({ dbm: index })

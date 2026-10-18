@@ -52,7 +52,7 @@ Rectangle {
     }
 
     Component { id: newDocC; NewDocDialog {} }
-    PopupMenu { id: menu; onClosed: screen.menuFile = "" }
+    PopupMenu { id: menu; plain: true; onClosed: screen.menuFile = "" }
     TextEdit { id: clip; visible: false }
 
     // Tạo mới…, Mở… of the left column.
@@ -337,6 +337,7 @@ Rectangle {
                         Dropdown {
                             Layout.preferredWidth: 170 * Theme.fontScale
                             implicitHeight: 28
+                            plain: true
                             prefix: qsTr("Sắp xếp: ")
                             options: [[0, qsTr("Ngày sửa")], [1, qsTr("Tên")], [2, qsTr("Dung lượng")]]
                             value: screen.sort

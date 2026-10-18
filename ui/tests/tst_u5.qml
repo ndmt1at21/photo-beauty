@@ -651,13 +651,18 @@ Item {
                 return
             }
             verify(it, at)
-            const off = c.dis || (b === "marquee" && (i === 5 || (i >= 9 && i <= 11))) || (!!c.act && c.act[0] === "=" && !w.hasSpace(c.act.slice(1)))
+            const dim = c.dis || (b === "marquee" && (i === 5 || (i >= 9 && i <= 11)))
+            const off = dim || (!!c.act && c.act[0] === "=" && !w.hasSpace(c.act.slice(1)))
             if (c.kind !== "ic" && c.kind !== "|" && c.kind !== "L")
                 compare(it.enabled, !off, at + " enabled")
+            compare(it.parent.opacity, dim ? 0.4 : 1, at + " a dimmed cell fades whole, as the artboard's opacity:.4 (U23)")
             switch (c.kind) {
             case "ic": compare(root.find(it, o => o instanceof Icon).name, b === "xf" ? "crop_free" : b === "warp" ? "grid_on" : ToolSpec.tool(Tools.tool).icn, at); break
             case "|": compare([it.width, it.height], [1, 20], at); break
-            case "L": compare(it.text, c.text, at); break
+            case "L":
+                compare(it.text, c.text, at)
+                verify(Qt.colorEqual(it.color, Theme.t2), at + " its colour kept: the cell fades")
+                break
             case "D":
                 verify(it instanceof Dropdown, at)
                 compare([it.width, it.displayText, it.options.length], [c.w, c.def, c.list.length], at)
@@ -681,7 +686,7 @@ Item {
                 break
             case "C":
                 verify(it instanceof CheckRow, at)
-                compare([it.text, it.checked], [c.text, c.def], at)
+                compare([it.text, it.checked, it.opacity], [c.text, c.def, 1], at + " (faded once, by the cell)")
                 break
             case "BT":
             case "BI":
@@ -702,6 +707,7 @@ Item {
             case "SW":
                 verify(it instanceof Swatch, at)
                 compare([it.none, it.width, it.height], [c.def === "none", 30, 22], at)
+                compare([it.background.x, it.background.width, it.background.height], [-1, 32, 24], at + " the t4 ring outside, as box-shadow (U23)")
                 break
             case "G": verify(root.find(it, o => o instanceof Canvas), at); break
             case "AN": compare([it.anchor, it.compact], [4, true], at); break

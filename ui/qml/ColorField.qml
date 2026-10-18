@@ -192,14 +192,14 @@ Item {
                 return f.rgbOf(c)
             }
         }
-        Rectangle {  // the handle, 4 px across the strip and past it
-            x: -4
-            y: (1 - f.norm(f.spec[1], f.t[f.spec[1]])) * f.size - 2
-            width: parent.width + 8
-            height: 4
-            radius: 2
-            border.color: "#80000000"
-            Rectangle { anchors.fill: parent; anchors.margins: 1; radius: 1; color: "#ffffff" }
+        Rectangle {  // the handle: white, 4 px past the strip each side, in a faint dark ring 1 px outside it (box-shadow)
+            x: -5
+            y: (1 - f.norm(f.spec[1], f.t[f.spec[1]])) * f.size - 3
+            width: parent.width + 10
+            height: 6
+            radius: 3
+            color: "#80000000"
+            Rectangle { anchors.fill: parent; anchors.margins: 1; radius: 2; color: "#ffffff" }
         }
         MouseArea {
             anchors.fill: parent

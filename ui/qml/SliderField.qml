@@ -5,7 +5,8 @@ import "Fmt.js" as Fmt
 
 // Slider row of the prototype (.sr): label and value over a 3 px track with an 11 px thumb (7 px inside its ring); `track`
 // lists the colours of a gradient track (hue, saturation…, evenly spaced), plain trk when empty; no
-// label: the track alone (the slider of a number field). Press or drag the track, ← → ↑ ↓ (Shift ×10)
+// label: the track alone, 3 px tall as <input type=range>, the thumb and the mouse reaching 7 px past it. As Chrome's
+// range the thumb's middle goes from 5.5 to width − 5.5, inside the track. Press or drag the track, ← → ↑ ↓ (Shift ×10)
 // when focused. Value protocol of NumberField: started(), moved(v)… while the value follows the
 // mouse, committed(v) when the mouse lets go; a key sends the three at once.
 Control {
@@ -18,6 +19,7 @@ Control {
     property int decimals: 0
     property string unit
     property var track: []
+    property int gap: 6  // from the label row to the track: .sr's 6, Adjustments' rows 7
     property string valueText: (min < 0 ? Fmt.sg(value, decimals) : Fmt.vn(value, decimals)) + Fmt.suffix(unit)
     readonly property real pos: max > min ? Math.max(0, Math.min(1, (value - min) / (max - min))) : 0
     readonly property bool dragging: area.active
@@ -26,7 +28,7 @@ Control {
     signal committed(real v)
 
     implicitWidth: 200
-    implicitHeight: label !== "" ? 25 : 15
+    implicitHeight: label !== "" ? 16 + gap + 3 : 3
     focusPolicy: Qt.StrongFocus
     hoverEnabled: true
     padding: 0
@@ -65,7 +67,7 @@ Control {
         }
         Item {
             id: bar
-            y: s.label !== "" ? 22 : 6
+            y: s.label !== "" ? 16 + s.gap : 0
             width: parent.width
             height: 3
             Rectangle {
@@ -92,7 +94,7 @@ Control {
                 }
             }
             Rectangle {  // thumb: the prototype's 11 px, its 2 px border a ring in the panel colour
-                x: s.pos * bar.width - 5.5
+                x: s.pos * (bar.width - 11)
                 y: -4
                 width: 11
                 height: 11
@@ -109,7 +111,7 @@ Control {
                 height: 17
                 preventStealing: true
                 function go(x) {
-                    const nv = s.snap(s.min + x / width * (s.max - s.min))
+                    const nv = s.snap(s.min + (x - 5.5) / (width - 11) * (s.max - s.min))
                     if (nv === (active ? v : s.value)) return
                     if (!active) { active = true; s.started() }
                     v = nv

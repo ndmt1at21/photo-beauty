@@ -269,6 +269,8 @@ Item {
             const cur = root.find(d.contentItem, o => o instanceof Rectangle && o.width === 72 && o.height === 72 && o.radius === 5)
             verify(Qt.colorEqual(cur.color, "#e9c7b3"), String(cur.color))  // hiện tại, under mới
             const f = root.find(d.contentItem, o => o instanceof ColorField), sq = f.children[0], strip = f.children[1]
+            const fy = f.mapToItem(d.contentItem, 0, 0).y
+            compare([fy, d.contentItem.contentHeight - fy - f.parent.implicitHeight + f.parent.topPadding + f.parent.bottomPadding], [18, 18], "the artboard's padding:18px under the title's rule (U23)")
             sq.forceActiveFocus(Qt.TabFocusReason)  // Tab: FocusRing rings Controls
             verify(sq.visualFocus && sq.focusPolicy === Qt.TabFocus)
             mousePress(sq, 128, 64)  // Saturation 50%, Brightness 75%
@@ -282,6 +284,11 @@ Item {
             compare([Math.round(d.s * 100), Math.round(d.v * 100)], [49, 65])
             mouseClick(strip, 10, 64)  // the hue, from the top: 270°
             compare(Math.round(d.h), 270)
+            // The artboard's handle (U23): white 28 × 4 centred on the hue, round ends, a faint dark ring 1 px outside it.
+            const ring = root.find(strip, o => o instanceof Rectangle && Qt.colorEqual(o.color, "#80000000")), handle = ring.children[0]
+            compare([ring.width, ring.height, ring.radius], [30, 6, 3])
+            compare([handle.width, handle.height, handle.radius, handle.mapToItem(strip, 0, 0).x, handle.mapToItem(strip, 0, 0).y], [28, 4, 2, -4, 62])
+            verify(Qt.colorEqual(handle.color, "#ffffff"))
             keyClick(Qt.Key_Up, Qt.ShiftModifier)
             compare(Math.round(d.h), 280)
             compare(got, null)

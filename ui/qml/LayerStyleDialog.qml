@@ -189,6 +189,7 @@ DialogBox {
         font.weight: Font.Medium
         font.capitalization: Font.AllUppercase
         font.letterSpacing: 0.63
+        Layout.preferredHeight: Math.round(14.2 * Theme.fontScale)  // 10.5 px × 1.35, 15 of its own (capitals: no descender cut)
     }
     component Line: RowLayout {  // .rw
         Layout.fillWidth: true
@@ -235,6 +236,8 @@ DialogBox {
         NumberField {
             id: fld
             boxHeight: 26
+            unitApart: true  // .fld input{text-align:right}, the unit in t3 after it
+            horizontalAlignment: TextInput.AlignRight
             x: r.width - 92
             width: 92
             anchors.verticalCenter: parent.verticalCenter
@@ -303,6 +306,8 @@ DialogBox {
         id: an
         required property string fx
         boxHeight: 26
+        unitApart: true
+        horizontalAlignment: TextInput.AlignRight
         Layout.preferredWidth: 92
         value: dlg.v[fx].angle
         min: -180

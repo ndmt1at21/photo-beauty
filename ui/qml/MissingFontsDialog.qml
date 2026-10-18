@@ -46,6 +46,8 @@ DialogBox {
             textFormat: Text.StyledText
             color: Theme.t2
             font.pointSize: Theme.pt(12)
+            lineHeightMode: Text.FixedHeight  // Notices' .pb line-height:1.4, whole pixels
+            lineHeight: Math.round(16.8 * Theme.fontScale)
             wrapMode: Text.Wrap
         }
         Column {
@@ -71,6 +73,8 @@ DialogBox {
                                 text: fr.modelData.miss
                                 color: Theme.t1
                                 font.pointSize: Theme.pt(12)
+                                lineHeightMode: Text.FixedHeight  // Notices' .pb line-height:1.4, whole pixels
+                                lineHeight: Math.round(16.8 * Theme.fontScale)
                                 elide: Text.ElideRight
                             }
                             Text {
@@ -78,6 +82,8 @@ DialogBox {
                                 text: fr.modelData.layers.join(", ")
                                 color: Theme.t3
                                 font.pointSize: Theme.pt(11)
+                                lineHeightMode: Text.FixedHeight  // a line of the row's 12 px × 1.4, as its span in the artboard
+                                lineHeight: Math.round(16.8 * Theme.fontScale)
                                 elide: Text.ElideRight
                             }
                         }
@@ -85,6 +91,8 @@ DialogBox {
                             text: "→"
                             color: Theme.t3
                             font.pointSize: Theme.pt(12)
+                            lineHeightMode: Text.FixedHeight  // Notices' .pb line-height:1.4, whole pixels
+                            lineHeight: Math.round(16.8 * Theme.fontScale)
                         }
                         Select {
                             Layout.preferredWidth: Math.round(170 * Theme.fontScale)  // Lớn needs more for "Space Grotesk Regular"

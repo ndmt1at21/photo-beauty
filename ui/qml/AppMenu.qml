@@ -30,6 +30,7 @@ MenuBar {
         id: menuC
         PopupMenu {
             property var spec: []
+            plain: Docs.docs.length === 0  // Start's menus
             onAboutToShow: build(bar.resolve(spec))
             onActivated: item => bar.activated(item)
         }

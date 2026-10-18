@@ -196,7 +196,7 @@ Item {
                 }
                 SliderField {
                     id: spacing
-                    y: 16
+                    y: 22  // the track of a labelled row
                     width: parent.width
                     enabled: panel.value("spacingOn")
                     min: 1

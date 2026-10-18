@@ -10,7 +10,9 @@ import "Fmt.js" as Fmt
 // ↑ ↓ (Shift ×10), type a sum or a unit ("1240*2", "5cm" at ppi, "50%" of percentOf) then Enter, Esc to drop
 // the typing, double-click the label for defaultValue. Past min or max the box turns red with "Tối đa
 // 1.000 px" under it, and Enter takes the limit. `slider` adds the chevron of the options bar's FC cells, a
-// slider under it.
+// slider under it. Dialogs' boxes (boxHeight over 24) keep 8 px inside as their .fld; `horizontalAlignment` and
+// `unitApart` (the unit after the number in t3, as the filters' and Layer Style's .fld) are theirs too. Off, a label
+// before the box (bars, Layers) keeps its colour as the prototype's .lbl; the options bar fades the whole cell.
 // Value protocol of the shared controls: the owner binds `value`; every change comes as started(),
 // moved(v)… (live, set the model here), committed(v) (one history step ends); a drag sends many
 // moved(), a typed value or a key one.
@@ -32,9 +34,11 @@ Item {
     property real sliderMin: min
     property real sliderMax: max
     property real boxHeight: 24
+    property bool unitApart: false
+    property alias horizontalAlignment: input.horizontalAlignment
     readonly property bool editing: input.activeFocus
     readonly property bool scrubbing: st.scrubbing
-    readonly property string shown: Fmt.unit(value, unit, decimals)
+    readonly property string shown: unitApart ? Fmt.vn(value, decimals) : Fmt.unit(value, unit, decimals)
     readonly property real typed: editing ? read(input.text) : NaN
     readonly property bool over: !isNaN(typed) && (round(typed) > max || round(typed) < min)
     readonly property string note: !over ? "" : round(typed) > max ? qsTr("Tối đa %1").arg(Fmt.unit(max, unit, decimals))
@@ -114,7 +118,7 @@ Item {
     }
     component Lbl: Text {
         text: f.label
-        color: !f.enabled ? Theme.t4 : f.scrubbing ? Theme.t1 : f.labelColor
+        color: !f.enabled && f.labelInside ? Theme.t4 : f.scrubbing ? Theme.t1 : f.labelColor
         font.pointSize: Theme.pt(12)
     }
 
@@ -146,9 +150,9 @@ Item {
         }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 6
-            anchors.rightMargin: f.slider ? 2 : 6
-            spacing: 4
+            anchors.leftMargin: f.boxHeight > 24 ? 8 : 6
+            anchors.rightMargin: f.slider ? 2 : anchors.leftMargin
+            spacing: f.unitApart ? 6 : 4  // .fld's gap in the dialogs
             Lbl {
                 id: inLabel
                 visible: f.labelInside && f.label !== ""
@@ -160,6 +164,8 @@ Item {
                 Layout.fillHeight: true
                 implicitWidth: 20
                 padding: 0
+                leftPadding: 0  // Basic's TextField adds 4
+                rightPadding: 0
                 background: null
                 verticalAlignment: TextInput.AlignVCenter
                 font.family: Theme.mono
@@ -180,6 +186,12 @@ Item {
                 Keys.onEscapePressed: { st.cancelled = true; focus = false }
                 Keys.onUpPressed: e => f.nudge(e.modifiers & Qt.ShiftModifier ? 10 : 1)
                 Keys.onDownPressed: e => f.nudge(e.modifiers & Qt.ShiftModifier ? -10 : -1)
+            }
+            Text {
+                visible: f.unitApart && f.unit !== ""
+                text: f.unit
+                color: Theme.t3
+                font.pointSize: Theme.pt(11)
             }
             Text {
                 visible: f.preview !== ""

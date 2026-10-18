@@ -8,7 +8,8 @@ import QtQuick.Controls.Basic
 // buttons at the bottom right. buttons is [{ text, primary, disabled, act }]; children go into the
 // content column, or a dialog sets its own contentItem. Esc or a click on the dimmed backdrop
 // closes it; `closable` adds the ×, `icon` an icon in iconColor before the title (Notices), `note`
-// a paragraph above the content; `compact` drops the rules (small boxes such as a rename).
+// a paragraph above the content; `compact` drops the rules (small boxes such as a rename). The 1 px edge lies outside the
+// box (.dlg's box-shadow); the footer is .df: its rule, 12, the 28 px buttons, 12.
 Dialog {
     id: d
     property string note
@@ -23,10 +24,16 @@ Dialog {
     popupType: Popup.Item
     modal: true
     focus: true
-    anchors.centerIn: Overlay.overlay
+    parent: Overlay.overlay  // centred on the window on whole pixels: an odd height centred would sit on half a pixel
+    x: Math.round((parent.width - width) / 2)
+    y: Math.round((parent.height - height) / 2)
     width: Math.min(boxWidth, Overlay.overlay.width - 40)
     height: Math.min(implicitHeight, Overlay.overlay.height - 60)
     padding: 0
+    topInset: -1  // the edge outside
+    bottomInset: -1
+    leftInset: -1
+    rightInset: -1
     Overlay.modal: Rectangle { color: Theme.scrim }
     enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
     exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 120 } }
@@ -144,13 +151,14 @@ Dialog {
         }
     }
     footer: Item {
+        readonly property int rule: d.compact ? 0 : 1
         visible: d.buttons.length > 0
-        implicitHeight: visible ? 52 : 0
+        implicitHeight: visible ? rule + 52 : 0
         Rectangle { visible: !d.compact; width: parent.width; height: 1; color: Theme.ln }
         Row {
             anchors.right: parent.right
             anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
+            y: parent.rule + 12
             spacing: 8
             Repeater {
                 model: d.buttons

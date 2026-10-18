@@ -22,12 +22,16 @@ AbstractButton {
         border.width: 1
         border.color: s.ring
         clip: true
-        Rectangle {  // top left to bottom right, as linear-gradient(to top right…) draws it
+        Rectangle {  // top left to bottom right, as linear-gradient(to top right…) draws it, stopping at the round corners
+            // where the diagonal meets a corner's arc, + 1 for the stroke's own width: clip only cuts square
+            readonly property real u: (s.width + s.height) / Math.hypot(s.width, s.height)
+            readonly property real cut: s.radius * (u - Math.sqrt(u * u - 1)) + 1
             visible: s.none
             anchors.centerIn: parent
-            width: Math.hypot(s.width, s.height)
+            width: Math.hypot(s.width, s.height) - 2 * cut
             height: 2
             rotation: Math.atan2(s.height, s.width) * 180 / Math.PI
+            antialiasing: true
             color: Theme.danger
         }
     }

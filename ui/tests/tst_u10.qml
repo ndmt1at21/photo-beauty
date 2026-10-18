@@ -172,6 +172,7 @@ Item {
                     const f = slider(r, s[0])
                     verify(f, n + " " + s[0])
                     compare([f.min, f.max, f.valueText], [s[1], s[2], s[3]], n + " " + s[0])
+                    compare([f.gap, f.height], [7, 26], "the artboard's label, 7, the track (U23)")
                 }
             }
             const lv = createTemporaryObject(rowsC, root, { name: "Levels" })
@@ -266,11 +267,12 @@ Item {
             const s = slider(p, "Brightness"), n = d.history.length, seen = []
             const watch = () => seen.push(d.active.props.vals.b)
             d.revChanged.connect(watch)
-            drag(s, s.width / 2, 23, s.width * 0.75, 23)
+            const x = Math.round(5.5 + (s.width - 11) * 0.75)  // the thumb's middle runs 5.5 in (U23); a whole pixel, as the mouse
+            drag(s, s.width / 2, 23, x, 23)
             d.revChanged.disconnect(watch)
             compare(d.history.length, n + 1)
             compare(last(d).name, "Sửa " + l.props.name)
-            compare(d.active.props.vals.b, 75)
+            compare(d.active.props.vals.b, Math.round(s.min + (x - 5.5) / (s.width - 11) * (s.max - s.min)))
             verify(seen.length > 2, "the value follows the mouse")
             d.undo()
             compare(d.active.props.vals, {})

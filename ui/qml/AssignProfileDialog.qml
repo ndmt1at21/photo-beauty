@@ -1,11 +1,10 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls.Basic
 
 // Edit › Assign Profile (build/proto/ColorSettings.dc.html): tags Docs.current with a profile and leaves its numbers:
 // none (Không quản lý màu), the working space of Color Settings, or one picked. It opens on the document's own choice.
 // OK is one History step (assignProfile; none when the profile stays); Hủy, Esc, × leave it. Preview only switches: the
-// mock's image does not follow (decision 3 of docs/ui-tasks.md). Not Bound: SaveOptionsDialog makes its Radio.
+// mock's image does not follow (decision 3 of docs/ui-tasks.md).
 DialogBox {
     id: dlg
     property var params: ({})
@@ -32,54 +31,17 @@ DialogBox {
         close()
     }
 
-    // A radio button, the prototype's <input type=radio>: `checked` comes from the owner, clicked() asks it to pick this one.
-    component Radio: AbstractButton {
-        id: r
-        implicitWidth: implicitContentWidth
-        implicitHeight: 20
-        padding: 0
-        hoverEnabled: true
-        font.pointSize: Theme.pt(12)
-        Accessible.role: Accessible.RadioButton
-        Accessible.checkable: true
-        Accessible.checked: checked
-        contentItem: Row {
-            spacing: 8
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 13
-                height: 13
-                radius: 6.5
-                color: "transparent"
-                border.width: r.checked ? 1.5 : 1
-                border.color: !r.enabled ? Theme.t4 : r.checked ? Theme.accent : r.hovered ? Theme.t2 : Theme.t3
-                Rectangle {
-                    visible: r.checked
-                    anchors.centerIn: parent
-                    width: 7
-                    height: 7
-                    radius: 3.5
-                    color: r.enabled ? Theme.accent : Theme.t4
-                }
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: r.text
-                font: r.font
-                color: r.enabled ? Theme.t2 : Theme.t4
-            }
-        }
-    }
-
     ColumnLayout {
         width: parent.width
         spacing: 10
         Radio {
+            spacing: 8  // .ck
             text: qsTr("Không quản lý màu cho tài liệu này")
             checked: dlg.choice === "none"
             onClicked: dlg.choice = "none"
         }
         Radio {
+            spacing: 8
             text: qsTr("Không gian làm việc: %1").arg(dlg.working)
             checked: dlg.choice === "ws"
             onClicked: dlg.choice = "ws"
@@ -87,6 +49,7 @@ DialogBox {
         RowLayout {
             spacing: 10
             Radio {
+                spacing: 8
                 text: qsTr("Hồ sơ")
                 checked: dlg.choice === "prof"
                 onClicked: dlg.choice = "prof"

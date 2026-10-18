@@ -102,6 +102,7 @@ DialogBox {
         font.weight: Font.Medium
         font.letterSpacing: 0.63  // .06em
         font.capitalization: Font.AllUppercase
+        Layout.preferredHeight: Math.round(14.2 * Theme.fontScale)  // 10.5 px × 1.35, 15 of its own (capitals: no descender cut)
     }
     component Plain: Text {
         color: Theme.t2
@@ -274,6 +275,7 @@ DialogBox {
                                 NumberField {
                                     boxHeight: 26
                                     Layout.preferredWidth: 56
+                                    horizontalAlignment: TextInput.AlignRight
                                     value: dlg.quality
                                     min: 1
                                     max: 100

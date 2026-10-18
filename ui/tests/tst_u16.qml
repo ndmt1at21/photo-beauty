@@ -128,6 +128,7 @@ Item {
         function test_sort() {
             const s = start()
             const dd = one(s, (i) => i instanceof Dropdown, "sort")
+            verify(dd.plain, "Start's .mi (U23)")
             dd.forceActiveFocus()
             keyClick(Qt.Key_Down)  // Tên, in Vietnamese order: a < â, so "chan-" before "chân"
             compare(s.sort, 1)
@@ -172,6 +173,7 @@ Item {
         function test_menu_right_click_copy() {
             const s = start()
             const menu = menuOf(s)
+            verify(menu.plain, "Start's .mi (U23)")
             const c = cards(s)[3]
             mouseClick(c, c.width / 2, 40, Qt.RightButton)
             tryVerify(() => menu.opened)
@@ -244,6 +246,8 @@ Item {
             const s = one(w.contentItem, (i) => i instanceof StartScreen, "start screen")
             verify(s.visible)
             compare([s.width, s.height], [1440, 856])
+            const menus = one(w.contentItem, (i) => i instanceof AppMenu, "menu bar")
+            verify(menus.menuAt(0).plain, "Start's .mi (U23)")
             keySequence("Ctrl+N")  // File › Tạo mới…
             tryVerify(() => w.dialogs.length === 1)
             verify(w.dialogs[0] instanceof NewDocDialog)
@@ -267,6 +271,7 @@ Item {
             tryVerify(() => Docs.docs.length === 1)
             tryVerify(() => !s.visible)
             compare(Docs.current.w, 2480)
+            verify(!menus.menuAt(0).plain, "Main's .mi")
             acted.destroy()
         }
 
@@ -274,6 +279,12 @@ Item {
             const d = newDialog(), boxes = nums(d).concat(items(d.contentItem, (i) => i instanceof Select && i.visible))
             verify(boxes.length >= 8)
             compare(boxes.map((b) => b.height), boxes.map(() => 28))
+            const sizes = items(d.contentItem, (i) => i instanceof Text && i.visible && i.font.family === Theme.mono && i.parent instanceof Column && i.parent.parent instanceof AbstractButton)
+            verify(sizes.length >= 4, "the cards' sizes")
+            compare(sizes.map((t) => t.height), sizes.map((t) => 14 * t.lineCount), "a card's size: lines of 10.5 px × 1.35 (U23)")
+            const note = one(d.footer, (i) => i instanceof Text && i.text === "Nền: trắng, đen, màu sau, trong suốt hay màu tùy chọn.", "the footer's note (U23)")
+            compare([note.x, note.font.pointSize], [16, Theme.pt(11)])
+            verify(Qt.colorEqual(note.color, Theme.t3))
         }
         function test_new_units() {
             const d = newDialog()

@@ -14,10 +14,13 @@ import QtQuick.Controls.Basic
 //       submenu that opens on hover or →, w its width; act a function to call, or anything else (a
 //       command name): either way the menu, closing, emits activated(item), a submenu's items too.
 //   { t: "sep" }    a separator
-// Rows are 28 px; ↑ ↓ (past separators and greyed rows) → ← Enter Esc come with Controls' Menu.
+// Rows are 28 px; ↑ ↓ (past separators and greyed rows) → ← Enter Esc come with Controls' Menu. The 1 px edge lies
+// outside the menu (.pop's box-shadow) and the rows scroll under its 6 px above and below. `plain`: Start's .mi, no tick
+// column, 12 px each side, the keys on the right.
 Menu {
     id: menu
     property var items: []  // a submenu builds itself from these
+    property bool plain
     signal activated(var item)
     // The narrowest it gets: the width it was made with, or one a caller sets before show() (a menu used for several);
     // build() makes it as wide as its widest row (Thiết lập's Lớn, a long row with its keys).
@@ -30,10 +33,14 @@ Menu {
 
     popupType: Popup.Item
     width: 236
-    topPadding: 6
-    bottomPadding: 6
+    topPadding: 0  // the list's own margins: rows scroll under them
+    bottomPadding: 0
     leftPadding: 0
     rightPadding: 0
+    topInset: -1  // the edge outside, as .pop's box-shadow
+    bottomInset: -1
+    leftInset: -1
+    rightInset: -1
     margins: 8
     overlap: 4
     delegate: entry  // the rows addMenu() makes for submenus
@@ -65,7 +72,7 @@ Menu {
                 sub.activated.connect(menu.activated)
                 addMenu(sub)
             } else {
-                const it = entry.createObject(null, { text: s.l, keys: s.k || "", tick: !!s.check, mark: !!s.mark, icons: icons, enabled: !s.disabled }) as MenuItem
+                const it = entry.createObject(null, { text: s.l, keys: s.k || "", tick: !!s.check, mark: !!s.mark, icons: icons, plain: menu.plain, enabled: !s.disabled }) as MenuItem
                 made.push(it)
                 it.icon.name = s.icon || ""
                 it.triggered.connect(() => {
@@ -81,6 +88,16 @@ Menu {
         width = w
     }
 
+    contentItem: ListView {
+        implicitHeight: contentHeight + topMargin + bottomMargin
+        topMargin: 6
+        bottomMargin: 6
+        model: menu.contentModel
+        interactive: Window.window ? implicitHeight > menu.height : false
+        clip: true
+        currentIndex: menu.currentIndex
+        ScrollIndicator.vertical: ScrollIndicator {}
+    }
     background: Rectangle {
         implicitWidth: 236
         radius: 8
@@ -104,9 +121,10 @@ Menu {
             property bool tick
             property bool mark
             property bool icons
+            property bool plain
             implicitHeight: 28
-            leftPadding: 6
-            rightPadding: 10
+            leftPadding: plain ? 12 : 6
+            rightPadding: plain ? 12 : 10
             topPadding: 0
             bottomPadding: 0
             hoverEnabled: true  // hover opens submenus; the default follows styleHints
@@ -115,8 +133,9 @@ Menu {
             font.pointSize: Theme.pt(12.5)
             background: Rectangle { color: e.highlighted && e.enabled ? Theme.sel : "transparent" }
             contentItem: RowLayout {
-                spacing: 6
+                spacing: e.plain ? 24 : 6
                 Item {
+                    visible: !e.plain
                     Layout.preferredWidth: e.icons ? 10 : 16
                     Layout.preferredHeight: 16
                     Icon { anchors.centerIn: parent; visible: e.tick; name: "check"; size: 16; color: Theme.t2 }

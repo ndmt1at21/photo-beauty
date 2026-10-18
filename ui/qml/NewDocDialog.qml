@@ -95,6 +95,14 @@ DialogBox {
         }
     }
 
+    Text {  // the footer's note at its left, as the artboard's .df (its "P2: Artboards." a design note)
+        parent: dlg.footer
+        x: 16
+        anchors.verticalCenter: parent.verticalCenter
+        text: qsTr("Nền: trắng, đen, màu sau, trong suốt hay màu tùy chọn.")
+        color: Theme.t3
+        font.pointSize: Theme.pt(11)
+    }
     contentItem: Item {
         implicitHeight: 502
         RowLayout {
@@ -210,10 +218,14 @@ DialogBox {
                                         wrapMode: Text.Wrap
                                     }
                                     Text {
+                                        readonly property int line: Math.round(14.2 * Theme.fontScale)  // 10.5 px × 1.35 (15 of its own)
                                         width: parent.width
+                                        height: lineCount * line
                                         text: Spec.sizeText(card.modelData)
                                         font.family: Theme.mono
                                         font.pointSize: Theme.pt(10.5)
+                                        lineHeightMode: Text.FixedHeight
+                                        lineHeight: line
                                         color: Theme.t3
                                         wrapMode: Text.Wrap
                                     }

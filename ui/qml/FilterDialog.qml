@@ -125,7 +125,7 @@ DialogBox {
                 required property var modelData
                 readonly property real value: dlg.values[modelData.key]
                 Layout.fillWidth: true
-                implicitHeight: 33
+                implicitHeight: 35  // the field 26, 6, the 3 px track
                 RowLayout {
                     width: parent.width
                     spacing: 10
@@ -136,6 +136,8 @@ DialogBox {
                     NumberField {
                         boxHeight: 26
                         Layout.preferredWidth: 86
+                        unitApart: true
+                        horizontalAlignment: TextInput.AlignRight
                         value: sl.value
                         unit: sl.modelData.unit
                         decimals: sl.modelData.dec
@@ -146,7 +148,7 @@ DialogBox {
                     }
                 }
                 SliderField {
-                    y: 24  // its track 6 px under the field
+                    y: 32  // the track 6 px under the field
                     width: parent.width
                     value: sl.value
                     min: sl.modelData.min
@@ -192,6 +194,7 @@ DialogBox {
                     Radio {
                         id: opt
                         required property var modelData
+                        spacing: 8
                         text: opt.modelData[1]
                         checked: dlg.values[ra.modelData.key] === opt.modelData[0]
                         onClicked: dlg.set(ra.modelData.key, opt.modelData[0])
@@ -229,6 +232,7 @@ DialogBox {
                             required property int index
                             boxHeight: 32
                             width: 56
+                            horizontalAlignment: TextInput.AlignHCenter
                             value: dlg.values[ke.modelData.key][cell.index]
                             min: ke.modelData.min
                             max: ke.modelData.max
@@ -257,6 +261,7 @@ DialogBox {
                             NumberField {
                                 boxHeight: 26
                                 width: 64
+                                horizontalAlignment: TextInput.AlignRight
                                 value: dlg.values[fi.modelData.key]
                                 min: fi.modelData.min
                                 max: fi.modelData.max

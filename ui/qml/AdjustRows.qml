@@ -146,6 +146,7 @@ ColumnLayout {
                 id: slider
                 SliderField {
                     label: row.r.label
+                    gap: 7  // the artboard's rows
                     value: rows.val(row.r.key, row.r.def)
                     min: row.r.min
                     max: row.r.max

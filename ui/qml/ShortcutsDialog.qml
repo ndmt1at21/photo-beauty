@@ -62,8 +62,9 @@ DialogBox {
         }
         return out
     }
-    // The panels' menus, in the Window menu's order (its "@win:<panel>"), keys or none, as the artboard lists them. A
-    // panel is made in a hidden item (a parent for its bindings), read, and destroyed before any event reaches it.
+    // The panels' menus, keys or none, as the artboard lists them: its Layers, History, Channels, Brushes first, then the
+    // others in the Window menu's order (its "@win:<panel>"). A panel is made in a hidden item (a parent for its
+    // bindings), read, and destroyed before any event reaches it.
     function panelKeys() {
         const out = []
         for (const m of MenuSpec.MENUS)
@@ -79,7 +80,8 @@ DialogBox {
                 if (rows.length)
                     out.push([it.l, rows])
             }
-        return out
+        const first = ["Layers", "History", "Channels", "Brushes"]
+        return first.map(n => out.filter(g => g[0] === n)).reduce((a, b) => a.concat(b), []).concat(out.filter(g => first.indexOf(g[0]) < 0))
     }
     function menuOf(panel) { return panel.menu || [] }  // untyped: any panel's
     function toolKeys() { return ToolSpec.KEYS.map(g => [g[0], g[1].map(r => row(r.l, r.l, r.en, r.k))]) }

@@ -528,6 +528,8 @@ Item {
                 const d = show(c), boxes = fields(d).concat(drops(d).filter(o => o.visible))
                 verify(boxes.length >= 2, name)
                 compare(boxes.map(o => o.height), boxes.map(() => h), name)
+                const caps = root.all(d.contentItem, o => o instanceof Text && o.visible && o.font.capitalization === Font.AllUppercase)
+                compare(caps.map(o => o.height), caps.map(() => 14), name + ": .cap, 10.5 px × 1.35 (U23)")
                 d.close()
             }
             const m = show(filterC, { filter: "maximum" }), boxes = fields(m).concat(drops(m))
@@ -537,13 +539,33 @@ Item {
             compare(cells.slice(0, 25).every(o => o.height === 32), true, "the grid")
             compare([cells[25].height, cells[26].height], [26, 26], "Scale, Offset")
         }
+        // The review page (U23): Filters' .fld numbers to the right with the unit apart in t3, a slider row 26 + 6 + its 3 px
+        // track, Custom's grid centred, Add Noise's radios 24 apart and Monochromatic 28 under Gaussian.
+        function test_filter_review() {
+            const d = show(filterC, { filter: "unsharpMask" }), nf = fields(d), sf = root.all(d.contentItem, o => o instanceof SliderField)
+            compare(nf.map(f => [f.unitApart, f.horizontalAlignment]), nf.map(() => [true, TextInput.AlignRight]))
+            compare(input(nf[0]).text, "120")
+            verify(root.find(nf[0], o => o instanceof Text && o.text === "%" && o.visible), "the unit apart")
+            compare(sf.map(s => [s.y, s.height, s.parent.height]), sf.map(() => [32, 3, 35]), "26 + 6 + 3")
+            d.close()
+            const k = show(filterC, { filter: "custom" }), cells = fields(k)
+            compare(cells.slice(0, 25).every(f => f.horizontalAlignment === TextInput.AlignHCenter), true, "the grid centred")
+            compare([cells[25].horizontalAlignment, cells[26].horizontalAlignment], [TextInput.AlignRight, TextInput.AlignRight])
+            k.close()
+            const n = show(filterC, { filter: "addNoise" })
+            const top = o => o.mapToItem(n.contentItem, 0, 0).y
+            const radios = root.all(n.contentItem, o => o.objectName === "radio")
+            compare([top(radios[1]) - top(radios[0]), top(checkRow(n, "Monochromatic")) - top(radios[1])], [24, 28])
+            compare(radios.map(r => r.spacing), [8, 8], "gap:8px")
+        }
         // Radio and ColorButton, controls of their own (U23; once inline components of StrokeDialog and FillDialog).
         function test_shared_controls() {
             const r = createTemporaryObject(radioC, root, { text: "Center", checked: true })
-            compare([r.objectName, r.text, r.checked, r.height], ["radio", "Center", true, 20])
+            compare([r.objectName, r.text, r.checked, r.height], ["radio", "Center", true, 16])
             const cb = createTemporaryObject(colorButtonC, root, { color: "#123456", title: qsTr("Màu viền") })
             verify(cb instanceof Swatch)
-            compare([cb.height, cb.Accessible.name], [24, "Màu viền"])
+            compare([cb.height, cb.Accessible.name], [28, "Màu viền"])
+            compare([cb.background.x, cb.background.height, cb.radius], [-1, 30, 5], ".sw: 28 high, its t4 ring outside (U23)")
             const e = show(strokeC)
             compare(root.all(e.contentItem, o => o instanceof Radio).length, 3, "Stroke's Vị trí")
             verify(root.find(e.contentItem, o => o instanceof ColorButton), "Stroke's Màu")

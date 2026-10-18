@@ -36,6 +36,7 @@ DialogBox {
         font.weight: Font.Medium
         font.letterSpacing: 0.63
         font.capitalization: Font.AllUppercase
+        Layout.preferredHeight: Math.round(14.2 * Theme.fontScale)  // 10.5 px × 1.35, 15 of its own (capitals: no descender cut)
     }
     component RowLabel: Text {
         color: Theme.t2

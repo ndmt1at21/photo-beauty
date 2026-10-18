@@ -309,10 +309,11 @@ Item {
             mouseClick(button(p, "zoom_out"))
             mouseClick(button(p, "zoom_out"))
             compare(d.view.zoom, 0.3333)
-            mouseClick(slider, slider.width * 0.75, 7)
-            verify(near(d.view.zoom * 100, Math.exp(0.75 * Math.log(3200)), 0.6), d.view.zoom)
-            verify(near(slider.value, 750, 1), slider.value)
-            mouseClick(slider, 0, 7)
+            const x = Math.round(5.5 + (slider.width - 11) * 0.75), at = (x - 5.5) / (slider.width - 11)  // the thumb's middle runs 5.5 in (U23)
+            mouseClick(slider, x, 1)
+            verify(near(slider.value, at * 1000, 1), slider.value)
+            verify(near(d.view.zoom * 100, Math.exp(Math.round(at * 1000) / 1000 * Math.log(3200)), 0.6), d.view.zoom)
+            mouseClick(slider, 0, 1)
             compare(d.view.zoom, 0.01)
         }
 

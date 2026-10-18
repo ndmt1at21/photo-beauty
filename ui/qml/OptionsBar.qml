@@ -87,6 +87,7 @@ Rectangle {
         readonly property string key: ToolSpec.key(ob.bar, index)
         readonly property var value: Tools.value(key, key === ob.bar + ":angle" ? ob.tipAngle : modelData.def)
         readonly property bool off: ob.dimmed(index, modelData)
+        opacity: off ? 0.4 : 1  // the artboard's opacity:{{it.op}}: a dimmed cell fades whole
         Layout.fillWidth: modelData.kind === "SP"
         Layout.minimumWidth: modelData.kind === "SP" ? 0 : implicitWidth
         sourceComponent: ({ ic: icC, "|": ruleC, L: labelC, D: dropC, F: fieldC, FC: fieldC, IF: fieldC, T: toggleC, B: toggleC, C: checkC, BT: btnC,
@@ -118,7 +119,7 @@ Rectangle {
         Text {
             readonly property Slot slot: parent as Slot
             text: slot.modelData.text
-            color: slot.off ? Theme.t4 : Theme.t2
+            color: Theme.t2
             font.pointSize: Theme.pt(12)
         }
     }
@@ -224,6 +225,7 @@ Rectangle {
         CheckRow {
             readonly property Slot slot: parent as Slot
             enabled: !slot.off
+            opacity: 1  // the cell fades
             focusPolicy: Qt.TabFocus
             text: slot.modelData.text
             checked: !!slot.value
@@ -272,6 +274,10 @@ Rectangle {
             readonly property string css: String(slot.value)
             implicitWidth: 30
             implicitHeight: 22
+            topInset: -1  // the t4 ring outside, as the artboard's box-shadow
+            bottomInset: -1
+            leftInset: -1
+            rightInset: -1
             radius: 4
             ring: Theme.t4
             focusPolicy: Qt.TabFocus

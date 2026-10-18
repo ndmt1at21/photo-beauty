@@ -44,9 +44,8 @@ DialogBox {
         }
         Text {
             width: parent.width - 36
-            text: (dlg.steps > 0 ? qsTr("Không lưu thì mất %1 bước chỉnh từ lần lưu trước.", "", dlg.steps).arg(dlg.steps)
-                                 : qsTr("Không lưu thì mất các thay đổi từ lần lưu trước."))
-                  + (dlg.after > 0 ? " " + qsTr("Còn %1 tài liệu chưa lưu sau tài liệu này.", "", dlg.after).arg(dlg.after) : "")
+            text: dlg.steps > 0 ? qsTr("Không lưu thì mất %1 bước chỉnh từ lần lưu trước.", "", dlg.steps).arg(dlg.steps)
+                                : qsTr("Không lưu thì mất các thay đổi từ lần lưu trước.")
             color: Theme.t2
             font.pointSize: Theme.pt(12)
             wrapMode: Text.Wrap
