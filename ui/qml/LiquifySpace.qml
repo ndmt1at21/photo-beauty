@@ -103,6 +103,17 @@ Workspace {
             + ell(275, 276, 30, 14) + ell(370, 276, 30, 14) + ell(322, 381, 44, 20) + "M" + p(300, 300) + "L" + p(292, 336) + "L" + p(322, 350) + "L" + p(352, 336) + "L" + p(344, 300)
     }
     overlay: [
+        Ants {  // the frozen part (Mask Options' None, Mask All, Invert All), shown in Mask Color as Show Mask says: the mock's is all or nothing
+            anchors.fill: parent
+            view: lq.view
+            size: lq.size
+            docW: lq.doc ? lq.doc.w : 0
+            docH: lq.doc ? lq.doc.h : 0
+            shape: lq.get("frozen", false) && lq.get("vMask", true) ? "all" : null
+            inverse: true  // Ants tints what is not selected
+            ants: false
+            mask: Qt.alpha(lq.colorList.find(c => c[0] === lq.get("maskColor", "Red"))[2], 0.5)
+        },
         Item {  // the face (Face, Show Face Overlay): the document's page at the view's scale and turn
             id: page
             readonly property real s: lq.view ? View.scale(lq.view, lq.size) : 1
@@ -300,9 +311,9 @@ Workspace {
         }
         RowLayout {
             spacing: 6
-            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("None") }  // equal thirds
-            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("Mask All") }
-            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("Invert All") }
+            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("None"); onClicked: lq.put({ frozen: false }) }  // equal thirds
+            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("Mask All"); onClicked: lq.put({ frozen: true }) }
+            Btn { Layout.fillWidth: true; Layout.preferredWidth: 1; implicitHeight: 26; text: qsTr("Invert All"); onClicked: lq.put({ frozen: !lq.get("frozen", false) }) }
         }
     }
 

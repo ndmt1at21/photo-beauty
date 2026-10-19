@@ -45,7 +45,7 @@ var MENUS = [
         { l: qsTr("Hoàn tác"), k: "Ctrl Z", act: "@undo" },
         { l: qsTr("Làm lại"), k: "Ctrl ⇧ Z", act: "@redo" },
         { l: qsTr("Đổi qua lại bước cuối"), k: "Ctrl Alt Z", act: "@toggleLast" },
-        { l: qsTr("Fade…"), k: "Ctrl ⇧ F", act: "@noop", req: "undo", fade: true },
+        { l: qsTr("Fade…"), k: "Ctrl ⇧ F", dialog: "Fade", req: "undo", fade: true },
         SEP,
         { l: qsTr("Cắt"), k: "Ctrl X", act: "@noop", req: "sel" },
         { l: qsTr("Sao chép"), k: "Ctrl C", act: "@noop", req: "sel" },
@@ -76,7 +76,7 @@ var MENUS = [
             { l: qsTr("Lật dọc"), act: "@flip:v" }
         ] },
         SEP,
-        { l: qsTr("Define Brush Preset…"), act: "@noop" },
+        { l: qsTr("Define Brush Preset…"), dialog: "DefineBrush", req: "doc" },
         SEP,
         { l: qsTr("Color Settings…"), k: "Ctrl ⇧ K", dialog: "ColorSettings", free: true },
         { l: qsTr("Assign Profile…"), dialog: "AssignProfile", req: "doc" },
@@ -128,13 +128,13 @@ var MENUS = [
             { l: qsTr("180°"), act: "@crot:180" },
             { l: qsTr("90° theo chiều kim đồng hồ"), act: "@crot:90" },
             { l: qsTr("90° ngược chiều kim đồng hồ"), act: "@crot:270" },
-            { l: qsTr("Tùy ý…"), act: "@noop" },
+            { l: qsTr("Tùy ý…"), dialog: "RotateCanvas", req: "doc" },
             SEP,
             { l: qsTr("Lật canvas ngang"), act: "@cflip:h" },
             { l: qsTr("Lật canvas dọc"), act: "@cflip:v" }
         ] },
         { l: qsTr("Crop"), act: "@cropSel", req: "sel" },
-        { l: qsTr("Trim…"), act: "@noop" },
+        { l: qsTr("Trim…"), dialog: "Trim", req: "doc" },
         { l: qsTr("Reveal All"), act: "@noop" },
         SEP,
         { l: qsTr("Nhân bản…"), act: "@dupDoc" }
