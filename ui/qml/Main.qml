@@ -55,7 +55,7 @@ ApplicationWindow {
             Docs.cancelJob()  // the artboard has no job
         if (name === board)
             return
-        const key = ({ Filter: "filter", Adjust: "adjust", LayerStyle: "page", Settings: "page" })[name]
+        const key = ({ Filter: "filter", Adjust: "adjust", LayerStyle: "page", Settings: "page", Update: "state" })[name]
         const params = key && arg ? { [key]: arg } : {}
         if (hasSpace(name))
             openSpace(name, params)

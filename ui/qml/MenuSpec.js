@@ -414,14 +414,14 @@ var MENUS = [
         { l: qsTr("Hướng dẫn photo-beauty"), k: "F1", act: "@noop", free: true },
         { l: qsTr("Phím tắt…"), dialog: "Shortcuts", free: true },
         SEP,
-        { l: qsTr("Thông tin hệ thống…"), act: "@noop", free: true },
+        { l: qsTr("Thông tin hệ thống…"), dialog: "SystemInfo", free: true },
         { l: qsTr("Mở thư mục nhật ký"), act: "@noop", free: true },
         SEP,
-        { l: qsTr("Kiểm tra cập nhật…"), act: "@noop", free: true },
-        { l: qsTr("Gửi báo lỗi…"), act: "@noop", free: true },
+        { l: qsTr("Kiểm tra cập nhật…"), dialog: "Update", free: true },
+        { l: qsTr("Gửi báo lỗi…"), dialog: "BugReport", free: true },
         SEP,
         { l: qsTr("Giấy phép…"), dialog: "Settings", params: { page: "about" }, free: true },
-        { l: qsTr("Về photo-beauty"), act: "@noop", free: true }
+        { l: qsTr("Về photo-beauty"), dialog: "About", free: true }
     ] }
 ]
 // File with no document open (Start.dc.html's MENUS): eight rows of the one above, the same items.

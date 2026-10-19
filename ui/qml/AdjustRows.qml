@@ -50,6 +50,16 @@ ColumnLayout {
         setCurve(p)
     }
     function setCurve(p) { set({ pts: Object.assign({}, values.pts, { [values.ch || "RGB"]: p }) }) }
+    // Auto is on: the adjustment has Auto's values (Spec.AUTO). Tùy chọn Auto's OK keeps its options in values.auto, one
+    // change, and with Auto on runs it again in that change.
+    readonly property bool autoOn: {
+        const a = Spec.AUTO[name]
+        return !!a && Object.keys(a).every(k => JSON.stringify(values[k]) === JSON.stringify(a[k]))
+    }
+    function autoOptions() {
+        (rows.Window.window as Main)?.openDialog("AutoColor", { options: values.auto,
+            picked: o => rows.change(rows.autoOn ? Object.assign({}, Spec.AUTO[rows.name], { auto: o }) : { auto: o }) })
+    }
     function pick(k, title) {
         const w = rows.Window.window as Main
         if (w && w.hasDialog("ColorPicker"))
@@ -119,9 +129,10 @@ ColumnLayout {
                         text: qsTr("Auto")
                         onClicked: rows.change(Spec.AUTO[rows.name] || {})
                     }
-                    ToolToggle {  // Auto Color Correction Options: no such dialog yet
+                    ToolToggle {  // Auto Color Correction Options
                         visible: row.r.options
-                        enabled: false
+                        enabled: !!(rows.Window.window as Main)?.hasDialog("AutoColor")
+                        onClicked: rows.autoOptions()
                         icon.name: "settings"
                         icon.width: 16
                         ToolTip.text: qsTr("Tùy chọn Auto · Auto Options")
