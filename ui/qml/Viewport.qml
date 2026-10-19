@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "View.js" as View
 import "MenuSpec.js" as MenuSpec
+import "ToolSpec.js" as ToolSpec
 
 // The canvas area (docs/ui-tasks.md, U6; artboard Main): rulers, then in the frame the canvas (MockCanvas; V1's Canvas
 // in its place), the overlays (U7) and the pointer, on the grey Thiết lập picks for the screen mode. Pan: the Hand tool
@@ -24,6 +25,8 @@ Rectangle {
     property var origins: ({})  // the rulers' 0 of each document by file (the corner dragged), document pixels
     readonly property var origin: (doc && origins[doc.file]) || ({ x: 0, y: 0 })
     readonly property var unitNames: Prefs.panes.units[0].options  // Thiết lập › Thước: Pixels … Percent
+    // Brush and Eraser paint on the document PB_CANVAS opened (C3b): input lets the left button through to the canvas.
+    readonly property bool paints: canvas.docSize.width > 0 && (Tools.tool === "brush" || Tools.tool === "eraser") && !Tools.xf
     readonly property int cursor: {
         if (!doc)
             return Qt.ArrowCursor
@@ -87,6 +90,10 @@ Rectangle {
     // ---- the pointer ------------------------------------------------------------------------------------------------
     function press(m) {
         vp.forceActiveFocus()
+        if (vp.paints && m.button === Qt.LeftButton) {  // the canvas's, under this: BrushCursor's handlers on this take all buttons
+            m.accepted = false
+            return
+        }
         if (m.button === Qt.RightButton)
             return menu.show(resolve(menuItems()), input, m.x, m.y)
         const t = m.button === Qt.MiddleButton ? "hand" : Tools.tool
@@ -266,6 +273,22 @@ Rectangle {
             source: CanvasEnv.document
             pasteboard: vp.color
             onDocSizeChanged: if (docSize.width > 0) vp.show({ x: docSize.width / 2, y: docSize.height / 2, zoom: View.fit(docSize.width, docSize.height, vp.size, 0), angle: 0 })
+            // C3b, the least to paint in pb-ui: the tool, the bar's size and hardness, the foreground colour; N3 the rest
+            tool: vp.paints ? Tools.tool : ""
+            readonly property string bar: ToolSpec.brushBar(Tools.tool, false)
+            brush: ({ size: Tools.value(bar + ":size", ToolSpec.brush(bar).size), hardness: Tools.value(bar + ":hard", ToolSpec.brush(bar).hard) / 100, color: Tools.fg })
+            // The mock document's History has the step too, as CanvasClicks' click made it (Ctrl Z goes by it).
+            onPainted: step => { if (vp.doc) vp.doc.run({ op: "step", name: step, icon: ToolSpec.tool(step === "Eraser" ? "eraser" : "brush").icn }) }
+        }
+        Connections {  // Edit › Undo, Redo (menus, keys) on the canvas's history too. ponytail: two histories, one in step, until N1
+            target: canvas.docSize.width > 0 ? vp.Window.window as Main : null
+            function onActed(item) {
+                const n = MenuSpec.name(item.act)
+                if (n === "undo")
+                    canvas.undo()
+                else if (n === "redo")
+                    canvas.redo()
+            }
         }
         MouseArea {
             id: input
