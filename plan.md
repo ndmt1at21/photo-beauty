@@ -234,7 +234,7 @@ Chứng minh đường bút → ô → GPU → màn hình đạt KPI trên tài 
 
 ### P1 · MVP (tháng 3–8)
 
-Người dùng Photoshop làm được việc hằng ngày mà không cần Photoshop: retouch, ghép ảnh, poster, ảnh mạng xã hội, ảnh sản phẩm.
+Người dùng Photoshop làm được việc hằng ngày mà không cần Photoshop: retouch, ghép ảnh, poster, ảnh mạng xã hội, ảnh sản phẩm. Task cho agent: [docs/p1-tasks.md](docs/p1-tasks.md).
 
 - [ ] Compositor đủ: 27 blend mode, Blend If, mặt nạ, clipping, nhóm, khóa; 16 adjustment layer; 4 layer style; smart object nhúng.
 - [ ] Cọ đủ và các công cụ vẽ, tô, tẩy; gradient sửa lại được trên canvas.
@@ -252,6 +252,8 @@ Người dùng Photoshop làm được việc hằng ngày mà không cần Phot
 
 ### P2 · Chuyên nghiệp (tháng 9–15)
 
+Task cho agent: [docs/p2-tasks.md](docs/p2-tasks.md) (soạn sớm, soạn kỹ lại khi tới cổng G2).
+
 - [ ] CMYK và 32 bit trên toàn bộ compositor, bộ lọc, adjustment; in, soft proof.
 - [ ] Smart filter, smart object liên kết, Stack Mode; Camera Raw Filter, RAW thành smart object.
 - [ ] Đủ 10 layer style; Pen, path, mặt nạ vector, Custom Shape; artboard.
@@ -266,6 +268,8 @@ Người dùng Photoshop làm được việc hằng ngày mà không cần Phot
 **Cổng G3:** D2 và D4 đạt KPI trên laptop 16 GB; tài liệu CMYK chậm hơn RGB không quá 1,5 lần; bộ PSD thật (có chữ, layer style, smart filter) lệch Photoshop ΔE2000 trung bình dưới 1; nhóm beta làm trọn việc thật (studio cưới, kỷ yếu, ảnh sản phẩm, thiết kế in) trong app.
 
 ### P3 · Đủ như Photoshop (tháng 16–24)
+
+Task cho agent: [docs/p3-tasks.md](docs/p3-tasks.md) (soạn sớm, soạn kỹ lại khi tới cổng G3).
 
 - [ ] AI: Object Selection, Remove, Content-Aware Fill, Generative Fill và Expand, siêu phân giải, Depth Blur, Neural Filters, Content Credentials.
 - [ ] Mode Lab, Indexed Color, Duotone, Bitmap, Multichannel; Trap.
