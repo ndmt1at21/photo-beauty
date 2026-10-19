@@ -5,14 +5,19 @@
 //   (GpuComposite), every tile of it fit to a 1920 x 1080 screen (mip level 2, its mips made first) and those of the
 //   100 % view at its centre (level 0): the largest difference in levels of 16 bits, and of 8 once both are rounded
 //   to 8 bits, and how many samples differ.
-// pb-bench open-paint <doc.pbd> [--budget <MB>] [cpu] [log.jsonl ...]: a .pbd (D2) opened as the app opens it
-//   (open_pbd()), 20 strokes painted through a Painting (frame.h) at their own pace on the middle pixel layer of its
+// pb-bench open-paint <doc.pbd> [--budget <MB>] [cpu] [nozstd] [log.jsonl ...]: a .pbd (D2) opened as the app opens
+//   it (open_pbd()), 20 strokes painted through a Painting (frame.h) at their own pace on the middle pixel layer of its
 //   stack, each in its cell of a 5 x 4 grid over the canvas with the view about it until sharp, then a pan over all of
 //   it at 100 %, a view at a time; frames 1920 x 1080 offscreen. Meanwhile, every 100 ms, the process's anonymous
 //   resident memory (Linux RssAnon; Windows the private bytes, PrivateUsage) against the tile budget, and apart the
 //   file's pages mapped in (Linux RssFile), which the kernel takes back at will (E1 saw 6 GB of them reading D2 back):
 //   its peak, the budget, the part over it. The strokes: the logs given, else C4's four of D1 (made in g1-strokes/ of
-//   the working directory) shrunk into the cells, five times over.
+//   the working directory) shrunk into the cells, five times over. nozstd: cold tiles straight to scratch, the zstd
+//   tier off (set_tile_compression(false)), which E4 weighs.
+// pb-bench undo-thin [--budget <MB>]: the undo memory of fine strokes, which the tile's size sets (E4 weighs 128 px
+//   tiles against 256): C4's four D1 strokes five times over, 2 to 5 px wide without pressure, 64 px further down and
+//   right each time round, each a step of a Document of D1 (make_d1()) on Burn (selected, mid-stack, a fifth of it
+//   painted), then afresh on the Background (pixels all over): history_bytes() after the 20 steps, and the steps kept.
 // pb-bench g1 [d2.pbd] [--budget <MB>]: G1's four rows one after the other, each after a line with what to read and
 //   its target: RAM (open-paint on the file given, else build/docs' d2.pbd, else its d2mini.pbd), then on D1 the
 //   stroke latency (frame, on C4's strokes made in g1-strokes/), pan and zoom (pan) and the CPU against the GPU
@@ -252,24 +257,27 @@ BENCH(cpu_gpu) {
 BENCH(open_paint) {
   std::string file;
   Args logs;
-  bool cpu = false;
+  bool cpu = false, zstd = true;
   for (size_t i = 0; i < args.size(); i++)
     if (args[i] == "--budget" && i + 1 < args.size())
       set_tile_budget(size_t(std::stod(args[++i]) * kMB));
     else if (args[i] == "cpu")
       cpu = true;
+    else if (args[i] == "nozstd")
+      set_tile_compression(zstd = false);
     else if (file.empty())
       file = args[i];
     else
       logs.push_back(args[i]);
-  if (file.empty()) return void(std::puts("open-paint: pb-bench open-paint <doc.pbd> [--budget <MB>] [cpu] [log.jsonl ...]"));
+  if (file.empty())
+    return void(std::puts("open-paint: pb-bench open-paint <doc.pbd> [--budget <MB>] [cpu] [nozstd] [log.jsonl ...]"));
   if (logs.empty()) logs = d1_logs();
   std::vector<StrokeRecord> strokes;
   for (const std::string& l : logs) strokes.push_back(read_stroke_log(l));
   const std::unique_ptr<gpu::Device> dev = cpu ? nullptr : gpu::Device::create(true);
-  std::printf("open-paint: %s: %s, tile budget %.0f MB, device memory %.0f MB\n", file.c_str(),
+  std::printf("open-paint: %s: %s, tile budget %.0f MB%s, device memory %.0f MB\n", file.c_str(),
               dev ? (dev->name() + ", " + dev->driver()).c_str() : "on the CPU", tile_budget() / kMB,
-              dev ? dev->memory() / kMB : 0.);
+              zstd ? "" : " without the zstd tier", dev ? dev->memory() / kMB : 0.);
   const std::string n = "open_paint_" + std::filesystem::path(file).stem().string();
   report((n + "_rss_anon_base").c_str(), memory().anon / kMB, "MB");  // before the document: code, the driver
   Memory peak;
@@ -360,6 +368,30 @@ BENCH(open_paint) {
   report((n + "_rss_file_peak").c_str(), peak.file / kMB, "MB");
   report((n + "_budget").c_str(), tile_budget() / kMB, "MB");
   report((n + "_over").c_str(), std::max(over, 0.), "MB");
+}
+
+BENCH(undo_thin) {
+  for (size_t i = 0; i + 1 < args.size(); i++)
+    if (args[i] == "--budget") set_tile_budget(size_t(std::stod(args[i + 1]) * kMB));
+  const Args logs = d1_logs();
+  const DocPtr d1 = bench::make_d1();
+  for (const LayerId layer : {d1->selected[0], LayerId(1)}) {  // Burn, the Background (docs.h)
+    Document doc(d1, "Open");
+    for (int i = 0; i < 20; i++) {
+      StrokeRecord r = read_stroke_log(logs[size_t(i) % logs.size()]);
+      r.brush.size = float(2 + i % 4), r.brush.pressure_size = false;
+      Stroke s(doc.state(), layer, r.brush);
+      for (PenEvent e : r.events) {
+        e.x += 64.f * float(i / 4), e.y += 64.f * float(i / 4);
+        s.add(e);
+      }
+      s.finish();
+      doc.run(SetPixels{layer, s.wait()->pixels}, "Brush");
+    }
+    const std::string n = layer == 1 ? "undo_thin_d1_background" : "undo_thin_d1_burn";
+    report(n.c_str(), doc.history_bytes() / kMB, "MB");
+    report((n + "_steps").c_str(), double(doc.steps()), "steps");
+  }
 }
 
 BENCH(g1) {
