@@ -327,6 +327,12 @@ Item {
             const i = createTemporaryObject(iconC, root, { name: "no_such_icon" })
             compare(i.text, "")
         }
+        // The spinner turns on the GUI thread: an Animator's rotation only lands when it ends.
+        function test_spinner_turns() {
+            const r = spin.rotation
+            wait(150)
+            verify(spin.rotation !== r, "rotation " + r + " → " + spin.rotation)
+        }
 
         // ---- behaviour ----
         function test_select() {
