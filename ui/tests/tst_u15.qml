@@ -205,6 +205,32 @@ Item {
             keyClick(Qt.Key_P)
             keyClick(Qt.Key_V)
             compare(s.label, "Overlay · 100% · phần đỏ là phần không được chọn")
+            // The subject as the artboard's figure (U23): both shoulders selected, out of the red.
+            const red = c => Math.abs(c.r - 1) < 0.02 && c.g < 0.02 && c.b < 0.02
+            tryVerify(() => red(at(w, s, outside)) && !red(at(w, s, { x: d.w * 0.15, y: d.h * 0.8 })), 5000, "the shoulders selected")
+        }
+        // Properties as the artboard's (U23): a group's caps title a line box of 14, 9 above its first row; Show Edge, Show
+        // Original, High Quality Preview 6 apart.
+        function test_properties_rows() {
+            const w = open()
+            const s = enter(w, "SelectMask")
+            const y = o => o.mapToItem(s, 0, 0).y
+            const cap = control(s, Text, "Edge Detection"), radius = control(s, SliderField, "Radius")
+            const c = ["Show Edge (J)", "Show Original (P)", "High Quality Preview"].map(t => control(s, CheckRow, t))
+            compare([cap.height, y(radius) - y(cap), y(c[1]) - y(c[0]) - c[0].height, y(c[2]) - y(c[1]) - c[1].height], [14, 23, 6, 6])
+            // The slider rows: the label, 7, the 3 px .sl (a column of gap 7); 9 apart in their group.
+            const sl = [control(s, SliderField, "Opacity"), radius].concat(["Smooth", "Feather", "Contrast", "Shift Edge"].map(t => control(s, SliderField, t)))
+            compare(sl.map(x => x.gap).concat([y(sl[3]) - y(sl[2]) - sl[2].height]), [7, 7, 7, 7, 7, 7, 9])
+        }
+        // Liquify's Properties as the artboard's (U23): View Options' check rows 8 apart; Brush Tool Options' sliders the
+        // label, 7, the 3 px .sl.
+        function test_liquify_rows() {
+            const w = open()
+            const l = enter(w, "Liquify")
+            const y = o => o.mapToItem(l, 0, 0).y
+            const c = ["Show Guides", "Show Face Overlay", "Show Image"].map(t => control(l, CheckRow, t))
+            const b = ["Size", "Density", "Pressure", "Rate"].map(t => control(l, SliderField, t))
+            compare([y(c[1]) - y(c[0]) - c[0].height, y(c[2]) - y(c[1]) - c[1].height].concat(b.map(x => x.gap)), [8, 8, 7, 7, 7, 7])
         }
         // Alt and the right button dragged across the canvas from its middle: the size the brush asks for.
         function altDrag(s, dx) {
@@ -225,9 +251,9 @@ Item {
             verify(!ants.visible)
             keyClick(Qt.Key_M)
             verify(ants.visible)
-            compare([ants.shape, ants.inverse, ants.docW, ants.docH], ["subject", false, s.doc.w, s.doc.h])
+            compare([ants.shape, ants.inverse, ants.docW, ants.docH], ["figure", false, s.doc.w, s.doc.h], "the subject as the artboard's figure")
             mouseClick(control(s, Btn, "Invert"))
-            compare([ants.shape, ants.inverse], ["subject", true])
+            compare([ants.shape, ants.inverse], ["figure", true])
             keyClick(Qt.Key_P)
             verify(!ants.visible, "Show Original: the photo alone")
             keyClick(Qt.Key_P)

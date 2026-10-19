@@ -205,6 +205,7 @@ Workspace {
             SliderField {
                 required property var modelData
                 width: (brush.width - 14) / 2
+                gap: 7  // the artboard's: a column of gap 7
                 label: modelData[1]
                 min: modelData[2]
                 max: modelData[3]

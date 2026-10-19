@@ -57,9 +57,13 @@ var SHAPES = {
   teeth: [["e", 0.585, 0.547, 0.04, 0.008]],
   rect: [["r", 0.39, 0.19, 0.375, 0.46]],
   lasso: [["p", [[0.42, 0.22], [0.55, 0.16], [0.7, 0.2], [0.77, 0.33], [0.76, 0.5], [0.69, 0.62], [0.58, 0.66], [0.46, 0.6], [0.4, 0.46], [0.39, 0.32]]]],
-  subject: [["p", [[0.3, 1], [0.32, 0.82], [0.4, 0.7], [0.44, 0.62], [0.4, 0.45], [0.4, 0.28], [0.47, 0.17], [0.58, 0.14], [0.7, 0.18], [0.76, 0.3], [0.76, 0.45], [0.71, 0.62], [0.75, 0.7], [0.86, 0.8], [0.9, 1]]]]
+  subject: [["p", [[0.3, 1], [0.32, 0.82], [0.4, 0.7], [0.44, 0.62], [0.4, 0.45], [0.4, 0.28], [0.47, 0.17], [0.58, 0.14], [0.7, 0.18], [0.76, 0.3], [0.76, 0.45], [0.71, 0.62], [0.75, 0.7], [0.86, 0.8], [0.9, 1]]]],
+  // The artboard SelectMask's figure (its SIL on the 550 × 700 photo): head, neck and both shoulders. Select and Mask
+  // draws the subject with it (U23); the window's ants keep subject.
+  figure: [["p", "M200 250L205 190L230 140L270 108L322 98L375 108L410 140L425 190L427 260L416 330L400 380L384 420L381 466L440 480L512 505L550 560L550 700L0 700L0 592L40 520L120 490L226 470L236 430L224 380L209 330Z"
+    .slice(1, -1).split("L").map((p) => p.split(" ").map((v, i) => v / (i ? 700 : 550)))]]
 };
-var ANTS_NAME = { all: qsTr("Chọn tất cả"), subject: qsTr("Select Subject"), skin: qsTr("Chọn da"), eyes: qsTr("Chọn mắt"), lips: qsTr("Chọn môi"), teeth: qsTr("Chọn răng"), rect: qsTr("Rectangular Marquee"), ellip: qsTr("Elliptical Marquee"), lasso: qsTr("Lasso") };
+var ANTS_NAME = { all: qsTr("Chọn tất cả"), subject: qsTr("Select Subject"), figure: qsTr("Select Subject"), skin: qsTr("Chọn da"), eyes: qsTr("Chọn mắt"), lips: qsTr("Chọn môi"), teeth: qsTr("Chọn răng"), rect: qsTr("Rectangular Marquee"), ellip: qsTr("Elliptical Marquee"), lasso: qsTr("Lasso") };
 // Shape k on an image of W × H as SVG path data (the prototype's shapeD).
 function shapePath(k, W, H) {
   const r = (v) => Math.round(v * 10) / 10;

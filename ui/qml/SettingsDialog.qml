@@ -65,8 +65,8 @@ DialogBox {
     function gbs(gb) { return gb >= 1000 ? Fmt.vn(gb / 1000, 1) + " TB" : Fmt.vn(gb, 0) + " GB" }
 
     title: qsTr("Thiết lập")
-    boxWidth: 1000
-    implicitHeight: 700
+    boxWidth: 1002  // the prototype's 1000 × 700 box and its 1 px ring (box-shadow) outside it
+    implicitHeight: 702
     padding: 1  // inside the border
     header: null
     footer: null
@@ -104,9 +104,11 @@ DialogBox {
                 Item { Layout.fillWidth: true }
                 Text { id: note; color: Theme.t3; font.pointSize: Theme.pt(12) }
             }
-            SliderField {
+            SliderField {  // in the place of the 11 px .rg, its track in the middle
                 id: slider
                 Layout.fillWidth: true
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
                 value: Prefs.values[b.key]
                 Accessible.name: b.label
                 onMoved: v => Prefs.set(b.key, v)
@@ -119,6 +121,7 @@ DialogBox {
         property real percent
         property alias shown: v.text
         Layout.fillWidth: true
+        Layout.preferredHeight: Math.round(12 * 1.4 * Theme.fontScale)  // the grid row: a line of the artboard's 1.4
         spacing: 10
         Text { id: n; Layout.preferredWidth: 70; color: Theme.t3; font.pointSize: Theme.pt(12) }
         Rectangle {
@@ -489,8 +492,9 @@ DialogBox {
                             }
                             Component {
                                 id: colorsC
-                                Row {
-                                    spacing: 8
+                                Row {  // .cw: 30 × 22 and a 1 px ring outside it, 8 apart, the ring 1 px past the column
+                                    x: 1
+                                    spacing: 6
                                     Repeater {
                                         model: row.r.keys
                                         Swatch {
@@ -498,9 +502,9 @@ DialogBox {
                                             required property string modelData
                                             required property int index
                                             readonly property string name: row.r.keys.length > 1 ? row.r.label + " " + (index + 1) : row.r.label
-                                            implicitWidth: 30
-                                            implicitHeight: 22
-                                            radius: 4
+                                            implicitWidth: 32
+                                            implicitHeight: 24
+                                            radius: 5
                                             ring: Theme.t4
                                             color: Prefs.values[modelData]
                                             enabled: st.can("ColorPicker")

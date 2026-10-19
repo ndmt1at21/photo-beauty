@@ -34,6 +34,8 @@ Workspace {
 
     property var v: ({})  // the settings by the prototype's keys, get() the default of one not set
     property var sel: ({ shape: null, inverse: false })  // what is selected: a Mock.SHAPES key (null: nothing), inverted
+    // The shape drawn: the subject as the artboard's figure (U23), Output To still gives subject.
+    readonly property var drawn: sel.shape === "subject" ? "figure" : sel.shape
     readonly property var tool: toolSpec.find(t => t[0] === Tools.tool) || toolSpec[0]
     readonly property string mode: get("view", "overlay")
     readonly property bool original: get("orig", false)
@@ -228,7 +230,7 @@ Workspace {
             size: sm.size
             docW: sm.doc ? sm.doc.w : 0
             docH: sm.doc ? sm.doc.h : 0
-            shape: sm.sel.shape === "all" && sm.sel.inverse ? null : sm.sel.shape  // everything inverted: nothing
+            shape: sm.sel.shape === "all" && sm.sel.inverse ? null : sm.drawn  // everything inverted: nothing
             inverse: sm.sel.inverse
         },
         Rectangle {
@@ -277,7 +279,7 @@ Workspace {
         ctx.beginPath()
         if (!sel.inverse)
             ctx.rect(0, 0, W, H)
-        for (const p of sel.shape ? Mock.SHAPES[sel.shape] : []) {
+        for (const p of drawn ? Mock.SHAPES[drawn] : []) {
             if (p[0] === "r") {
                 ctx.rect(p[1] * W, p[2] * H, p[3] * W, p[4] * H)
             } else if (p[0] === "e") {
@@ -335,7 +337,7 @@ Workspace {
             }
         }
         ColumnLayout {
-            spacing: 2  // 22 apart, as the artboard's lines
+            spacing: 6  // the artboard's gap
             CheckRow { text: qsTr("Show Edge (J)"); checked: sm.get("edge", false); onClicked: sm.put({ edge: !checked }) }
             CheckRow { text: qsTr("Show Original (P)"); checked: sm.original; onClicked: sm.put({ orig: !checked }) }
             CheckRow { text: qsTr("High Quality Preview"); checked: sm.get("hq", true); onClicked: sm.put({ hq: !checked }) }
@@ -344,6 +346,7 @@ Workspace {
             spacing: 10
             SliderField {
                 Layout.fillWidth: true
+                gap: 7  // the artboard's slider rows: a column of gap 7
                 label: qsTr("Opacity")
                 unit: "%"
                 value: sm.opacityPct
@@ -385,6 +388,7 @@ Workspace {
         title: qsTr("Edge Detection")
         SliderField {
             Layout.fillWidth: true
+            gap: 7
             label: qsTr("Radius")
             max: 250
             unit: "px"
@@ -400,6 +404,7 @@ Workspace {
             SliderField {
                 required property var modelData
                 Layout.fillWidth: true
+                gap: 7
                 label: modelData[1]
                 min: modelData[2]
                 max: modelData[3]
@@ -450,6 +455,8 @@ Workspace {
             Layout.bottomMargin: 12
             spacing: 9
             Text {
+                // CSS's line box (line-height 1.35), whole as layouts round heights up: Qt's 15 pushed the rows down
+                Layout.preferredHeight: Math.round(10.5 * 1.35 * Theme.fontScale)
                 text: grp.title
                 color: Theme.t3
                 font.pointSize: Theme.pt(10.5)

@@ -20,16 +20,18 @@ MenuBar {
     }
     signal activated(var item)
 
-    spacing: 1
+    spacing: 0  // the prototype's nav has gap 1, but FreeType draws its 12.5 px titles 1 px wider each (U23)
     background: null
     Component.onCompleted: {
         for (const m of MenuSpec.MENUS)
-            addMenu(menuC.createObject(bar, { title: m.title, width: m.w, spec: m.items }))
+            addMenu(menuC.createObject(bar, { title: m.title, width: m.w, full: m.items, start: m.start || m.items }))
     }
     Component {
         id: menuC
         PopupMenu {
-            property var spec: []
+            property var full: []
+            property var start: []  // with no document open (the Start screen)
+            readonly property var spec: Docs.docs.length ? full : start  // the items shown
             plain: Docs.docs.length === 0  // Start's menus
             onAboutToShow: build(bar.resolve(spec))
             onActivated: item => bar.activated(item)

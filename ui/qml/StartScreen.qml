@@ -104,25 +104,25 @@ Rectangle {
                 Item { Layout.fillHeight: true; Layout.minimumHeight: 24 }
                 Item {  // a drop anywhere on the window opens (Main)
                     Layout.fillWidth: true
-                    implicitHeight: drop.implicitHeight + 47
+                    implicitHeight: drop.implicitHeight + 46
                     Shape {
                         anchors.fill: parent
-                        ShapePath {
+                        ShapePath {  // the prototype's 1.5px dashed as Chrome draws it at DPR 1: 1 px, dashes 3, gaps 2
                             strokeColor: Theme.t4
-                            strokeWidth: 1.5
+                            strokeWidth: 1
                             strokeStyle: ShapePath.DashLine
                             dashPattern: [3, 2]
                             fillColor: "transparent"
-                            PathRectangle { x: 0.75; y: 0.75; width: drop.width + 33.5; height: drop.height + 45.5; radius: 10 }
+                            PathRectangle { x: 0.5; y: 0.5; width: drop.width + 33; height: drop.height + 45; radius: 10 }
                         }
                     }
                     ColumnLayout {
                         id: drop
-                        x: 17.5
-                        y: 23.5
-                        width: parent.width - 35
+                        x: 17
+                        y: 23
+                        width: parent.width - 34
                         spacing: 8
-                        Icon { Layout.alignment: Qt.AlignHCenter; name: "upload_file"; size: 28; color: Theme.t2 }
+                        Icon { Layout.alignment: Qt.AlignHCenter; Layout.preferredHeight: 28; name: "upload_file"; size: 28; color: Theme.t2 }
                         Text {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
@@ -242,8 +242,11 @@ Rectangle {
                     spacing: 12
                     RowLayout {
                         width: parent.width
-                        Heading { Layout.fillWidth: true; text: qsTr("Tạo mới") }
-                        Link {
+                        Heading { Layout.fillWidth: true; Layout.alignment: Qt.AlignBaseline; text: qsTr("Tạo mới") }
+                        Link {  // the prototype's a: 26 tall, its text in the middle, on the heading's baseline
+                            Layout.alignment: Qt.AlignBaseline
+                            implicitHeight: 26
+                            topPadding: (26 - implicitContentHeight) / 2
                             leftPadding: 8
                             rightPadding: 8
                             text: qsTr("Mọi preset…")

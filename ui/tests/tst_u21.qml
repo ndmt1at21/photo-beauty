@@ -252,6 +252,15 @@ Item {
             compare([Prefs.value("gridColor"), Prefs.value("guideColor")], ["#00ff00", "#29d3f5"])
         }
 
+        // As the artboard (U23): the 1000 × 700 box, its 1 px ring outside it; a colour well 30 × 22 in a ring of t4
+        // outside it (32 × 24 in all), 8 between the wells (6 between the rings), the ring 1 px past the column.
+        function test_frame_wells() {
+            const d = open({ page: "transparency" })
+            compare([d.width, d.height, d.availableWidth, d.availableHeight], [1002, 702, 1000, 700])
+            const row = rowOf(d, "checkerColor1"), w = findAll(row, o => o instanceof Swatch), x = o => o.mapToItem(row, 0, 0).x
+            compare([w[0].width, w[0].height, x(w[1]) - x(w[0]) - w[0].width, x(w[1]) + w[1].width - row.width], [32, 24, 6, 1])
+        }
+
         function test_accent() {
             const d = open({ page: "interface" })
             const dots = findAll(rowOf(d, "accent"), o => o instanceof T.AbstractButton)
@@ -292,6 +301,16 @@ Item {
             compare(host(d).calls.map(c => c[0]), ["Shortcuts"])
             tryCompare(d, "visible", false, 2000, "Thiết lập leaves for it")
             compare(Object.keys(Prefs.values).filter(k => JSON.stringify(Prefs.values[k]) !== JSON.stringify(Prefs.defaults[k])), [])
+        }
+
+        // Hiệu năng as the artboard (U23): a budget's slider the 11 px .rg, its 3 px track in the middle: 7 under the value
+        // line and 4 in, then 4 and the page's 14 to the next row; the meters 25 apart, a line of 12 px × 1.4 and 8.
+        function test_perf_rows() {
+            const d = open()
+            const y = o => o.mapToItem(d.contentItem, 0, 0).y
+            const s = findAll(d.contentItem, o => o instanceof SliderField && o.visible), val = s[0].parent.children[0]
+            const m = ["RAM", "VRAM", "Scratch"].map(n => find(d.contentItem, o => o instanceof Text && o.visible && o.text === n).parent)
+            compare([y(s[0]) - y(val) - val.height, y(s[1].parent.parent) - y(s[0]) - s[0].height, y(m[1]) - y(m[0]), y(m[2]) - y(m[1])], [11, 18, 25, 25])
         }
 
         function test_notes() {

@@ -424,6 +424,8 @@ var MENUS = [
         { l: qsTr("Về photo-beauty"), act: "@noop", free: true }
     ] }
 ]
+// File with no document open (Start.dc.html's MENUS): eight rows of the one above, the same items.
+MENUS[0].start = (f => [f[0], f[1], SEP, f[4], f[7], f[13].sub[1], SEP, f[15]])(MENUS[0].items)
 
 // "@merge:down" → "merge", "down"; "" for none.
 function name(act) { return act ? String(act).replace(/^@/, "").split(":")[0] : "" }

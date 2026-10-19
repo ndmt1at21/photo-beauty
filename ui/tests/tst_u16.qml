@@ -84,6 +84,35 @@ Item {
             compare(Spec.untitled([{ file: "Chưa đặt tên-1" }, { file: "x" }]), "Chưa đặt tên-2")
         }
 
+        // As the artboard (U23): Tạo mới and Mọi preset… on one baseline in a row as tall as the link's 26.
+        function test_heading_row() {
+            const s = start()
+            const h = one(s, (i) => i instanceof Text && i.text === "Tạo mới", "Tạo mới"), l = button(s, "Mọi preset…")
+            const base = (o) => Math.round(o.mapToItem(s, 0, o.baselineOffset).y)
+            compare([l.height, h.parent.height, base(h)], [26, 26, base(l)])
+        }
+        // The drop area as the artboard's (U23): a 1 px border of dashes 3 and gaps 2 (Chrome's 1.5px dashed at DPR 1),
+        // the icon 28 tall, 22 px in from the border.
+        function test_drop_area() {
+            const s = start()
+            const icon = one(s, (i) => i instanceof Icon && i.name === "upload_file", "the icon")
+            const zone = icon.parent.parent, note = one(s, (i) => i instanceof Text && i.text.startsWith("Thả nhiều file"), "the note")
+            compare([icon.mapToItem(zone, 0, 0).y, icon.height, zone.height - note.mapToItem(zone, 0, note.height).y], [23, 28, 23])
+            const o = zone.mapToItem(s, 0, 0), img = grabImage(s), bg = img.pixel(Math.round(o.x + zone.width / 2), Math.round(o.y + 8))
+            const ink = (x, y) => {
+                const c = img.pixel(Math.round(o.x + x), Math.round(o.y + y))
+                return Math.abs(c.r - bg.r) + Math.abs(c.g - bg.g) + Math.abs(c.b - bg.b)
+            }
+            const top = [], below = []
+            for (let x = 15; x < 55; x++) {
+                top.push(ink(x, 0))
+                below.push(ink(x, 1))
+            }
+            const full = Math.max(...top), sum = top.slice(0, 20).reduce((a, b) => a + b, 0)
+            verify(full > 0.2 && Math.max(...below) < 0.02, "one row: " + top + " / " + below)
+            verify(top.every((v, i) => i + 5 >= top.length || Math.abs(v - top[i + 5]) < 0.02) && Math.abs(sum / full - 12) < 0.5, "dashes 3, gaps 2: " + top)
+        }
+
         function test_recent_grid() {
             const s = start()
             compare(files(s), Docs.recent.map((r) => r.file))  // Ngày sửa, newest first

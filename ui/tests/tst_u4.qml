@@ -264,8 +264,11 @@ Item {
         // No document: what Start.dc.html's menus leave on (and the recent files), the rest greyed.
         function test_menus_no_document() {
             const w = open({ startState: "Start" })
-            const on = [["Tạo mới…", "Mở…", "Mở gần đây", "Thoát"], ["Color Settings…", "Phím tắt…", "Thiết lập…"], [], [], ["Panel"], [], [], [],
+            const on = [["Tạo mới…", "Mở…", "Thoát"], ["Color Settings…", "Phím tắt…", "Thiết lập…"], [], [], ["Panel"], [], [], [],
                 MenuSpec.MENUS[8].items.filter(s => s.l).map(s => s.l), MenuSpec.MENUS[9].items.filter(s => s.l).map(s => s.l)]
+            compare(rows(openMenu(w, 0)), ["Tạo mới…|Ctrl N", "Mở…|Ctrl O", "-", "!Đóng|Ctrl W", "!Lưu|Ctrl S", "!Xuất thành…|Ctrl ⇧ Alt W", "-", "Thoát|Ctrl Q"],
+                "Start's File (Start.dc.html)")
+            keyClick(Qt.Key_Escape)
             for (let i = 0; i < 10; i++) {
                 const m = openMenu(w, i)
                 for (let r = 0; r < m.count; r++) {
@@ -281,6 +284,9 @@ Item {
             keySequence("Ctrl+Z")  // greyed keys do nothing
             keySequence("Ctrl+A")
             compare(Docs.docs.length, 0)
+            Docs.openRecent(0)
+            const m = openMenu(w, 0)
+            compare([m.count, m.itemAt(2).text], [16, "Mở gần đây"], "a document open: the whole File")
         }
         function test_menus_selection() {
             const w = open({ startState: "Main" })
@@ -379,6 +385,15 @@ Item {
                 const t = b.itemAt(i), label = t.contentItem
                 compare([x(label) - x(t), label.width, label.leftPadding, label.rightPadding], [0, t.width, 9, 9], t.text)
             }
+            // The left edges (the ring outside) of File, Layer, Filter, View, Help as the prototype's (Menus, menu-help), ±2:
+            // File 2 px left as the word photo-beauty, 13.5 px, is drawn at 13 (half-pixel sizes, a difference of all text).
+            const at = [0, 3, 6, 7, 9].map(i => {
+                const m = openMenu(w, i), e = Math.round(x(m.background))
+                keyClick(Qt.Key_Escape)
+                tryVerify(() => !m.visible)
+                return e
+            })
+            verify([141, 278, 437, 487, 600].every((e, k) => Math.abs(at[k] - e) <= 2), JSON.stringify(at))
         }
         function test_menu_runs() {  // a click runs the item, in a submenu too; Enter the one ↓ picked
             const w = open({ startState: "Main" })
