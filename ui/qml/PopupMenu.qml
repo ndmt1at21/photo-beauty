@@ -15,8 +15,9 @@ import QtQuick.Controls.Basic
 //       command name): either way the menu, closing, emits activated(item), a submenu's items too.
 //   { t: "sep" }    a separator
 // Rows are 28 px; ↑ ↓ (past separators and greyed rows) → ← Enter Esc come with Controls' Menu. The 1 px edge lies
-// outside the menu (.pop's box-shadow) and the rows scroll under its 6 px above and below. `plain`: Start's .mi, no tick
-// column, 12 px each side, the keys on the right.
+// outside the menu (.pop's box-shadow) and the rows scroll under its 6 px above and below. A submenu's first row is level
+// with its row (.pop's top:-6px), its left edge 4 px inside the menu's right one. `plain`: Start's .mi, no tick column,
+// 12 px each side, the keys on the right.
 Menu {
     id: menu
     property var items: []  // a submenu builds itself from these
@@ -33,8 +34,8 @@ Menu {
 
     popupType: Popup.Item
     width: 236
-    topPadding: 0  // the list's own margins: rows scroll under them
-    bottomPadding: 0
+    topPadding: 6  // Qt sets a submenu topPadding above its row: its first row level with the row
+    bottomPadding: 6
     leftPadding: 0
     rightPadding: 0
     topInset: -1  // the edge outside, as .pop's box-shadow
@@ -88,15 +89,21 @@ Menu {
         width = w
     }
 
-    contentItem: ListView {
-        implicitHeight: contentHeight + topMargin + bottomMargin
-        topMargin: 6
-        bottomMargin: 6
-        model: menu.contentModel
-        interactive: Window.window ? implicitHeight > menu.height : false
-        clip: true
-        currentIndex: menu.currentIndex
-        ScrollIndicator.vertical: ScrollIndicator {}
+    contentItem: Item {
+        implicitHeight: view.contentHeight
+        ListView {  // over the padding, its margins: rows scroll under the 6 px, a clipped menu shows the next row's edge
+            id: view
+            y: -menu.topPadding
+            width: parent.width
+            height: parent.height + menu.topPadding + menu.bottomPadding
+            topMargin: menu.topPadding
+            bottomMargin: menu.bottomPadding
+            model: menu.contentModel
+            interactive: Window.window ? height < contentHeight + topMargin + bottomMargin : false
+            clip: true
+            currentIndex: menu.currentIndex
+            ScrollIndicator.vertical: ScrollIndicator {}
+        }
     }
     background: Rectangle {
         implicitWidth: 236

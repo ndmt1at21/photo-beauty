@@ -338,9 +338,9 @@ Workspace {
         }
         ColumnLayout {
             spacing: 6  // the artboard's gap
-            CheckRow { text: qsTr("Show Edge (J)"); checked: sm.get("edge", false); onClicked: sm.put({ edge: !checked }) }
-            CheckRow { text: qsTr("Show Original (P)"); checked: sm.original; onClicked: sm.put({ orig: !checked }) }
-            CheckRow { text: qsTr("High Quality Preview"); checked: sm.get("hq", true); onClicked: sm.put({ hq: !checked }) }
+            CheckRow { spacing: 8; text: qsTr("Show Edge (J)"); checked: sm.get("edge", false); onClicked: sm.put({ edge: !checked }) }
+            CheckRow { spacing: 8; text: qsTr("Show Original (P)"); checked: sm.original; onClicked: sm.put({ orig: !checked }) }
+            CheckRow { spacing: 8; text: qsTr("High Quality Preview"); checked: sm.get("hq", true); onClicked: sm.put({ hq: !checked }) }
         }
         RowLayout {
             spacing: 10
@@ -395,7 +395,7 @@ Workspace {
             value: sm.get("radius", 6)
             onMoved: x => sm.put({ radius: x })
         }
-        CheckRow { text: qsTr("Smart Radius"); checked: sm.get("smart", true); onClicked: sm.put({ smart: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Smart Radius"); checked: sm.get("smart", true); onClicked: sm.put({ smart: !checked }) }
     }
     Grp {
         title: qsTr("Global Refinements")

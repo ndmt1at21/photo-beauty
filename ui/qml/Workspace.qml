@@ -246,6 +246,7 @@ Rectangle {
                             spacing: 8
                             CheckRow {
                                 Layout.fillWidth: true
+                                spacing: 8  // the artboards' label gap
                                 text: ws.checkText
                                 checked: ws.checked
                                 onClicked: ws.checkToggled()

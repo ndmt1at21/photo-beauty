@@ -633,6 +633,9 @@ Item {
             verify(Qt.colorEqual(path.strokeColor, Theme.checkTick))
             verify(path.strokeWidth >= 1.8, "Chrome's 2 px tick")
             const label = root.find(c, o => o instanceof Text)
+            compare(label.mapToItem(box, 0, 0).x, 13 + 6, "the label 6 past the box")
+            c.spacing = 8  // SelectMask, Liquify's View Options
+            tryVerify(() => label.mapToItem(box, 0, 0).x === 13 + 8, 1000, "the label 8 past the box")
             c.enabled = false
             compare(c.opacity, 0.4, "off: the whole row faded")
             verify(Qt.colorEqual(box.color, Theme.accent) && Qt.colorEqual(label.color, Theme.t2), "its colours kept")
@@ -738,6 +741,9 @@ Item {
             tryCompare(sub, "opened", true)
             compare(sub.width, 300)
             waitForRendering(sub.contentItem)
+            const at = o => o.mapToItem(root, 0, 0)
+            fuzzyCompare(at(sub.itemAt(0)).y, at(m.itemAt(4)).y, 1, "its first row level with its row, as .pop's top:-6px")
+            compare(at(sub.contentItem).x, at(m.contentItem).x + m.width - 4, "its left edge 4 px inside the menu's right one")
             mouseClick(sub.contentItem, 100, 14)
             compare(inner, 1)
             compare(acts, ["Hoàn tác", "Lật ngang"], "a submenu's items reach the menu's owner")
@@ -775,7 +781,9 @@ Item {
             waitForRendering(m.contentItem)
             const bg = m.background
             compare([bg.x, bg.y, bg.width, bg.height], [-1, -1, m.width + 2, m.height + 2], "the edge outside")
-            compare([m.contentItem.y, m.contentItem.height, m.height], [0, m.height, 3 * 28 + 11 + 2 * 6], "the list under the 6 px")
+            const listOf = x => root.find(x.contentItem, o => o instanceof ListView)
+            const l0 = listOf(m)
+            compare([l0.mapToItem(bg, 0, 0).y, l0.height, m.height], [1, m.height, 3 * 28 + 11 + 2 * 6], "the list under the 6 px")
             const row = m.itemAt(0)
             const text = r => root.find(r, o => o instanceof Text && o.text === r.text)
             compare(text(row).mapToItem(row, 0, 0).x, 6 + 16 + 6, "Main's .mi: the tick column")
@@ -804,7 +812,7 @@ Item {
             m.show(long, root, 100, 10)
             tryCompare(m, "opened", true)
             waitForRendering(m.contentItem)
-            const list = m.contentItem
+            const list = listOf(m)
             verify(list.interactive && m.height < 40 * 28, "it scrolls")
             compare(list.height, m.height, "a row shows in the bottom 6 px: there is more")
             m.close()

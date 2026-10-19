@@ -9,6 +9,7 @@ AbstractButton {
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: 16
     padding: 0
+    spacing: 6  // the label's gap: 8 in SelectMask, Liquify's View Options, the spaces' foot
     opacity: enabled ? 1 : 0.4
     hoverEnabled: true
     font.pointSize: Theme.pt(12)
@@ -17,7 +18,7 @@ AbstractButton {
     Accessible.checked: checked
 
     contentItem: Row {
-        spacing: 6
+        spacing: c.spacing
         Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 13

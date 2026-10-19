@@ -54,6 +54,7 @@ Item {
         function over(s, type) { return s.overlay.find(o => o instanceof type) }
         function control(s, type, text) { return find(s, o => o instanceof type && o.visible && (text === undefined || o.text === text || o.label === text)) }
         function json(x) { return JSON.stringify(x) }
+        function labelGap(c) { return find(c, o => o instanceof Text).mapToItem(c, 0, 0).x - 13 }  // past CheckRow's 13 px box
         // Properties scrolled to an item of it, then a click on it.
         function click(item) {
             let f = item.parent
@@ -210,7 +211,7 @@ Item {
             tryVerify(() => red(at(w, s, outside)) && !red(at(w, s, { x: d.w * 0.15, y: d.h * 0.8 })), 5000, "the shoulders selected")
         }
         // Properties as the artboard's (U23): a group's caps title a line box of 14, 9 above its first row; Show Edge, Show
-        // Original, High Quality Preview 6 apart.
+        // Original, High Quality Preview 6 apart; check boxes' labels 8 past the box, 6 in the options bar.
         function test_properties_rows() {
             const w = open()
             const s = enter(w, "SelectMask")
@@ -218,12 +219,14 @@ Item {
             const cap = control(s, Text, "Edge Detection"), radius = control(s, SliderField, "Radius")
             const c = ["Show Edge (J)", "Show Original (P)", "High Quality Preview"].map(t => control(s, CheckRow, t))
             compare([cap.height, y(radius) - y(cap), y(c[1]) - y(c[0]) - c[0].height, y(c[2]) - y(c[1]) - c[1].height], [14, 23, 6, 6])
+            compare(c.concat(["Smart Radius", "Remember Settings"].map(t => control(s, CheckRow, t))).map(labelGap), [8, 8, 8, 8, 8])
+            compare(find(s, o => o instanceof CheckRow && o.text === "Sample All Layers").spacing, 6)
             // The slider rows: the label, 7, the 3 px .sl (a column of gap 7); 9 apart in their group.
             const sl = [control(s, SliderField, "Opacity"), radius].concat(["Smooth", "Feather", "Contrast", "Shift Edge"].map(t => control(s, SliderField, t)))
             compare(sl.map(x => x.gap).concat([y(sl[3]) - y(sl[2]) - sl[2].height]), [7, 7, 7, 7, 7, 7, 9])
         }
-        // Liquify's Properties as the artboard's (U23): View Options' check rows 8 apart; Brush Tool Options' sliders the
-        // label, 7, the 3 px .sl.
+        // Liquify's Properties as the artboard's (U23): View Options' check rows 8 apart, their labels and Preview's 8 past
+        // the box, Brush Tool Options' 6; its sliders the label, 7, the 3 px .sl.
         function test_liquify_rows() {
             const w = open()
             const l = enter(w, "Liquify")
@@ -231,6 +234,8 @@ Item {
             const c = ["Show Guides", "Show Face Overlay", "Show Image"].map(t => control(l, CheckRow, t))
             const b = ["Size", "Density", "Pressure", "Rate"].map(t => control(l, SliderField, t))
             compare([y(c[1]) - y(c[0]) - c[0].height, y(c[2]) - y(c[1]) - c[1].height].concat(b.map(x => x.gap)), [8, 8, 7, 7, 7, 7])
+            const g = ["Show Guides", "Show Face Overlay", "Show Image", "Show Mesh", "Show Mask", "Show Backdrop", "Preview", "Stylus Pressure", "Pin Edges"]
+            compare(g.map(t => labelGap(control(l, CheckRow, t))), [8, 8, 8, 8, 8, 8, 8, 6, 6])
         }
         // Alt and the right button dragged across the canvas from its middle: the size the brush asks for.
         function altDrag(s, dx) {

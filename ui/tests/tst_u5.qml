@@ -843,8 +843,8 @@ Item {
             tryVerify(() => !mode.popup.visible)
             compare(c.tools.length, 0)
         }
-        // The brush picker: Size, Hardness, Spacing, a tip (with its hardness), a preset (size, hardness), of the painting
-        // tool's bar; a press outside closes it and stops there.
+        // The brush picker: Size, Hardness (Spacing is Brush Settings', U23), a tip (with its hardness), a preset (size,
+        // hardness), of the painting tool's bar; a press outside closes it and stops there.
         function test_brush_picker() {
             const w = open()
             const bp = cell(w, 2), pk = bp.picker
@@ -853,12 +853,12 @@ Item {
             tryVerify(() => pk.opened)
             waitForRendering(w.contentItem)
             const sliders = root.findAll(pk.contentItem, o => o instanceof SliderField)
-            compare(sliders.map(s => [s.label, s.min, s.max, s.valueText]), [["Size", 1, 5000, "400 px"], ["Hardness", 0, 100, "0%"], ["Spacing", 1, 1000, "25%"]])
-            sliders[2].forceActiveFocus()
-            keyClick(Qt.Key_Right)
-            compare(Tools.value("brush:spacing"), 26)
+            compare(sliders.map(s => [s.label, s.min, s.max, s.valueText]), [["Size", 1, 5000, "400 px"], ["Hardness", 0, 100, "0%"]])
             const tips = root.findAll(pk.contentItem, o => o instanceof AbstractButton && o.height === 40)
             compare(tips.length, 6)
+            compare(tips[0].mapToItem(pk.contentItem, 0, 0).y, sliders[1].y + sliders[1].height + 10, "the tips under Hardness")
+            const bg = pk.background
+            compare([bg.x, bg.y, bg.width - pk.width, bg.height - pk.height], [-1, -1, 2, 2], "the edge outside, as .pop's")
             mouseClick(tips[3])
             compare([Tools.value("brush:tip"), Tools.value("brush:hard")], [3, 100])
             const presets = root.findAll(pk.contentItem, o => o instanceof AbstractButton && o.height === 32)

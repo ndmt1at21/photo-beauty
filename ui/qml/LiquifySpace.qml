@@ -315,10 +315,10 @@ Workspace {
         Layout.topMargin: 4
         Layout.bottomMargin: 12
         spacing: 8
-        CheckRow { text: qsTr("Show Guides"); checked: lq.get("vGuides", true); onClicked: lq.put({ vGuides: !checked }) }
-        CheckRow { text: qsTr("Show Face Overlay"); checked: lq.get("vFace", true); onClicked: lq.put({ vFace: !checked }) }
-        CheckRow { text: qsTr("Show Image"); checked: lq.get("vImage", true); onClicked: lq.put({ vImage: !checked }) }
-        CheckRow { text: qsTr("Show Mesh"); checked: lq.get("vMesh", false); onClicked: lq.put({ vMesh: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Guides"); checked: lq.get("vGuides", true); onClicked: lq.put({ vGuides: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Face Overlay"); checked: lq.get("vFace", true); onClicked: lq.put({ vFace: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Image"); checked: lq.get("vImage", true); onClicked: lq.put({ vImage: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Mesh"); checked: lq.get("vMesh", false); onClicked: lq.put({ vMesh: !checked }) }
         ViewRow {
             text: qsTr("Mesh Size")
             Pick { Layout.fillWidth: true; key: "meshSize"; list: [["Small", qsTr("Small"), "", false], ["Medium", qsTr("Medium"), "", false], ["Large", qsTr("Large"), "", false]]; value: lq.get(key, "Medium") }
@@ -327,12 +327,12 @@ Workspace {
             text: qsTr("Mesh Color")
             Pick { Layout.fillWidth: true; key: "meshColor"; list: lq.colorList; value: lq.get(key, "Gray") }
         }
-        CheckRow { text: qsTr("Show Mask"); checked: lq.get("vMask", true); onClicked: lq.put({ vMask: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Mask"); checked: lq.get("vMask", true); onClicked: lq.put({ vMask: !checked }) }
         ViewRow {
             text: qsTr("Mask Color")
             Pick { Layout.fillWidth: true; key: "maskColor"; list: lq.colorList; value: lq.get(key, "Red") }
         }
-        CheckRow { text: qsTr("Show Backdrop"); checked: lq.get("vBack", false); onClicked: lq.put({ vBack: !checked }) }
+        CheckRow { spacing: 8; text: qsTr("Show Backdrop"); checked: lq.get("vBack", false); onClicked: lq.put({ vBack: !checked }) }
         ViewRow {
             text: qsTr("Use")
             Pick {  // the document's other pixel layers

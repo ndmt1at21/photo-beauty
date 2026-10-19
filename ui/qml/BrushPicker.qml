@@ -8,17 +8,16 @@ import "Presets.js" as Presets
 import "Fmt.js" as Fmt
 
 // The brush of a painting bar (docs/ui-tasks.md, U5; BP of the options bar and bp of Main.dc.html): a cell with the tip,
-// the size and a chevron, which opens the brush picker under it: Size 1–5.000 px, Hardness, Spacing 1–1.000 %, the six
-// tips of Presets.TIPS (a tip brings its hardness), the first six of Brushes' presets (size and hardness). Values go to Tools
-// by "<bar>:size", ":hard", ":spacing", ":tip". The picker closes at a press outside, which stops there and does not
-// reach the canvas. Tip draws a tip as the prototype's CSS does.
+// the size and a chevron, which opens the brush picker under it: Size 1–5.000 px, Hardness, the six tips of Presets.TIPS
+// (a tip brings its hardness), the first six of Brushes' presets (size and hardness); Spacing is Brush Settings'. Values go
+// to Tools by "<bar>:size", ":hard", ":tip". The picker closes at a press outside, which stops there and does not reach
+// the canvas. Tip draws a tip as the prototype's CSS does.
 AbstractButton {
     id: bp
     property string bar: "brush"  // ToolSpec.brushBar()
     readonly property var start: ToolSpec.brush(bar)
     readonly property real size: Tools.value(bar + ":size", start.size)
     readonly property real hard: Tools.value(bar + ":hard", start.hard)
-    readonly property real spacingPct: Tools.value(bar + ":spacing", start.spacing)
     readonly property int tip: Tools.value(bar + ":tip", start.tip)
     readonly property var presets: Tools.value("brushes:groups", Presets.BR_GROUPS).reduce((o, g) => o.concat(g[1]), []).slice(0, 6)  // Brushes' (U13)
     readonly property alias picker: pop
@@ -63,6 +62,10 @@ AbstractButton {
         dim: false
         width: Math.round(300 * Theme.fontScale)  // Lớn: the presets' names whole
         padding: 12
+        topInset: -1  // the edge outside, as .pop's box-shadow
+        bottomInset: -1
+        leftInset: -1
+        rightInset: -1
         background: Rectangle {
             radius: 8
             color: Theme.p2
@@ -93,15 +96,6 @@ AbstractButton {
                 unit: "%"
                 value: bp.hard
                 onMoved: v => Tools.setValue(bp.bar + ":hard", v)
-            }
-            SliderField {
-                width: parent.width
-                label: qsTr("Spacing")
-                min: 1
-                max: 1000
-                unit: "%"
-                value: bp.spacingPct
-                onMoved: v => Tools.setValue(bp.bar + ":spacing", v)
             }
             Grid {
                 columns: 6
