@@ -1,6 +1,6 @@
 # photo-beauty P2: task cho agent
 
-Lập 20/10/2026 từ nháp của agent p2 (19/10) theo mục P2 của Lộ trình, cổng G3 và Chỉ tiêu hiệu năng của [plan.md](../plan.md). P2 · Chuyên nghiệp (tháng 9–15): CMYK và 32 bit trên toàn bộ compositor, bộ lọc, adjustment, cùng in và soft proof; smart filter, smart object liên kết, Stack Mode, Camera Raw Filter, RAW thành smart object; đủ 10 layer style; Pen, path, mặt nạ vector, Custom Shape, artboard; Actions, Batch, Image Processor, Auto-Align, Auto-Blend, Photomerge, Merge to HDR Pro; các họ bộ lọc cột P2, Lens Correction; chữ nâng cao; PSD có chữ sửa được, mọi layer style, smart filter; workspace kéo thả, sửa phím tắt, tìm lệnh, Contextual Task Bar; retouch cột P2, chỉnh trong photo-beauty từ snapone; backend Metal, FP16, async compute. Xong khi qua cổng G3 (E75). Bắt đầu sau cổng G2 (E37 của [p1-tasks.md](p1-tasks.md)): mọi mã 30–69 dưới đây là task P1 đã xong. Task soạn sớm, cố ý ngắn: lead soạn kỹ lại khi tới G2 (đối chiếu với P1 đã làm thật, số đo của G2, prototype P2 nếu có). 144 task (81 Vừa, 62 Nhỏ, cộng beta E74 là việc của bạn; bạn cùng làm E71, E73, E75), xếp thành 20 lô, sau mỗi lô một đợt tích hợp (Q70–Q89). Mỗi task cho một agent, cỡ một hay hai phiên, xong khi đạt dòng "Xong khi"; task ghi "(bạn)" là việc của bạn. Task giao diện (U, N) làm theo mục Cách làm của [ui-tasks.md](ui-tasks.md).
+Lập 20/10/2026 từ nháp của agent p2 (19/10) theo mục P2 của Lộ trình, cổng G3 và Chỉ tiêu hiệu năng của [plan.md](../plan.md). P2 · Chuyên nghiệp (tháng 9–15): CMYK và 32 bit trên toàn bộ compositor, bộ lọc, adjustment, cùng in và soft proof; smart filter, smart object liên kết, Stack Mode, Camera Raw Filter, RAW thành smart object; đủ 10 layer style; Pen, path, mặt nạ vector, Custom Shape, artboard; Actions, Batch, Image Processor, Auto-Align, Auto-Blend, Photomerge, Merge to HDR Pro; các họ bộ lọc cột P2, Lens Correction; chữ nâng cao; PSD có chữ sửa được, mọi layer style, smart filter; workspace kéo thả, sửa phím tắt, tìm lệnh, Contextual Task Bar; retouch cột P2, chỉnh trong photo-beauty từ snapone; backend Metal, FP16, async compute. Xong khi qua cổng G3 (E75). Bắt đầu sau cổng G2 (E37 của [p1-tasks.md](p1-tasks.md)): mọi mã 30–69 dưới đây là task P1 đã xong. Task soạn sớm, cố ý ngắn: lead soạn kỹ lại khi tới G2 (đối chiếu với P1 đã làm thật, số đo của G2, prototype P2 nếu có). 149 task (82 Vừa, 66 Nhỏ, cộng beta E74 là việc của bạn; bạn cùng làm E71, E73, E75), xếp thành 20 lô, sau mỗi lô một đợt tích hợp (Q70–Q89). Mỗi task cho một agent, cỡ một hay hai phiên, xong khi đạt dòng "Xong khi"; task ghi "(bạn)" là việc của bạn. Task giao diện (U, N) làm theo mục Cách làm của [ui-tasks.md](ui-tasks.md).
 
 ## Cần bạn chốt
 
@@ -23,19 +23,19 @@ Lập 20/10/2026 từ nháp của agent p2 (19/10) theo mục P2 của Lộ trì
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A70, A71, A72 | Lõi (lô 1–3, nối tiếp) | Chưa làm |
 | B · Ghép | B70–B73 | Lõi (CPU, GPU) | Chưa làm |
-| D · Điều chỉnh | D70–D75 | Lõi (CPU, GPU) | Chưa làm |
+| D · Điều chỉnh | D70–D76 | Lõi (CPU, GPU) | Chưa làm |
 | L · Layer style, smart object | L70–L77 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Path, hình, vector | Y70, Y71, Y73–Y75 | Lõi | Chưa làm |
-| F · Bộ lọc | F70–F80 | Lõi (CPU, GPU) | Chưa làm |
+| F · Bộ lọc | F70–F80, F80b | Lõi (CPU, GPU) | Chưa làm |
 | C · Cọ, vẽ, tô | C70–C77 | Lõi (CPU, GPU) | Chưa làm |
 | S · Vùng chọn | S70–S72 | Lõi (CPU, GPU) | Chưa làm |
 | H · Retouch | H70–H74 | Lõi | Chưa làm |
 | X · Biến đổi, ghép nhiều ảnh | X70–X73 | Lõi | Chưa làm |
-| J · Mode màu, in, soft proof | J70–J78 | Lõi (CPU, GPU) | Chưa làm |
+| J · Mode màu, in, soft proof | J70–J78, J76b | Lõi (CPU, GPU) | Chưa làm |
 | T · Tài liệu, lịch sử, lệnh | T70–T72 | Lõi | Chưa làm |
 | V · View | V70 | Lõi | Chưa làm |
 | K · Hiệu năng lõi, backend | K70–K73 | Lõi, GPU (Metal trên máy Mac) | Chưa làm |
-| M · File | M70–M82 | Lõi | Chưa làm |
+| M · File | M70–M83 | Lõi | Chưa làm |
 | W · Tự động hóa | W70, W71 | Lõi | Chưa làm |
 | U · Giao diện | U70–U93 | Giao diện | Chưa làm |
 | N · Nối lõi | N70–N91 | Giao diện | Chưa làm |
@@ -51,15 +51,15 @@ Như mục Cách phối hợp của [p1-tasks.md](p1-tasks.md): lead và agent, 
 - **Hợp đồng:** A70 → A71 → A72 nối tiếp ở lô 1–3 (cùng `core/doc.h`, `core/render.h`, `docs/architecture.md`), lead duyệt header trước khi merge. A70 sửa mọi chỗ gọi cho định dạng mới, nên task lô 1 có file A70 có thể chạm (T70 `core/clipboard.cpp`; R70 `core/openfile.*`, `core/export.*`) rebase sau khi A70 merge. Sau A72 như P1: thêm hàm, thêm trường thì cứ thêm; đổi chữ ký hay ý nghĩa thì dừng, báo lead.
 - **Chỗ tự đăng ký** (task sau chỉ thêm file): bộ lọc `FILTER` (F30); phép nét theo chấm (A70); loại nguồn smart object (A71); hiệu ứng layer style (L70); khối PSD (M73); định dạng mở, lưu, xuất (R70). Bảng mode `docs/modes.md` do J75 (bộ lọc P1, P2) và J74 (adjustment P1, P2) viết một lần; task F, D sau chỉ đọc. `CMakeLists.txt`, `vcpkg.json` chỉ R70 (codec), K70 (Metal, `.mm`), R71 (fuzz) sửa; `ui/CMakeLists.txt` chỉ N88.
 - **File nhiều task chạm**, mỗi lúc một task giữ, theo thứ tự lô:
-  - hợp đồng: `core/tile.h`, `core/doc.h`, `core/doc.cpp`, `core/render.h`, `tests/test_doc.cpp`, `docs/architecture.md` A70 → A71 → A72; `core/stroke.h` A70 → C71; `core/pbd.cpp` A70 → M78; `core/smart.*` A71 → L74 (L75–L77 file riêng);
+  - hợp đồng: `core/tile.h`, `core/doc.h`, `core/doc.cpp`, `core/render.h`, `tests/test_doc.cpp`, `docs/architecture.md` A70 → A71 → A72; `core/stroke.h` A70 → C71; `core/pbd.cpp` A70 → M78; `core/smart.*` A71 → L74 (L75–L77 file riêng); `core/smart_stack.*` L76 → X72;
   - ghép: `core/composite.*`, `core/blend.h`, `core/gpu_composite.*`, `shaders/composite*.slang`, `tests/test_composite.cpp`, `tests/test_gpu_composite.cpp` J70 → J71 → L70 → B70 → B71 → B73 → K71 → K72; `core/fx.*` L70 (L71–L73 file riêng);
   - màu: `core/color.*` J73 → J72; `core/present.*`, `shaders/present.slang` J72 → J77; `core/convert.*` J73 → D71;
-  - nét cọ: `core/stroke.cpp`, `core/dab.*` A70 → J76 → C71 → C72 → I70 (C73–C77 file phép nét riêng); `core/fill.cpp`, `core/bucket.cpp` C70 → J76; `core/op_clone.cpp`, `core/op_heal.cpp` J76 → H71;
-  - adjustment, bộ lọc: `docs/modes.md` J75 → J74; `core/adj_curves.cpp`, `tests/test_adj_curves.cpp` J74 → D75; file bộ lọc P1 J75; `core/filter_blurgallery.*`, `tests/test_blurgallery.cpp` F71 → F72;
+  - nét cọ: `core/stroke.cpp`, `core/dab.*` A70 → J76 → C71 → C72 → I70 (C73–C77 file phép nét riêng); `core/fill.cpp`, `core/bucket.cpp` C70 → J76; `core/gradient.*` D76 → J76; `core/op_clone.cpp`, `core/op_heal.cpp` J76b → H71;
+  - adjustment, bộ lọc: `docs/modes.md` J75 → J74; `core/adj_curves.cpp`, `tests/test_adj_curves.cpp` J74 → D75; file bộ lọc P1 J75; `core/filter_blurgallery.*`, `tests/test_blurgallery.cpp` F71 → F72; `core/camraw_filter.*` F80 → F80b;
   - file, build: `core/openfile.*`, `core/export.*` R70 (M70–M72 file riêng); `core/psd.h`, `core/psd_internal.h`, `core/psd_read.cpp`, `core/psd_write.cpp` M73 → M76; `core/psd_text.cpp` M73 → M77; `core/pano.*` X70 → X71; `vcpkg.json`, `CMakeLists.txt` R70 → K70 → R71; `core/gpu_metal.mm` K70 → K71 → K73; `.github/workflows/ci.yml` E72 → R72;
   - giao diện: `ui/qml/Tools.qml` U70 → U76 → U77 → N83; `ui/qml/MenuSpec.js` U70 → U73; `ui/qml/TopBar.qml` U71 → U73; `ui/qml/PropertiesPanel.qml` và trang của U35 U87 → U91; `ui/qml/OptionsBar.qml` U75 → U76 → U77; `ui/qml/Main.qml` U72 → U74; `ui/qml/FilterDialog.qml` U84 → N81; `ui/qml/Overlays.qml` U78 → N87; `ui/qml/SelectMaskSpace.qml` U92 → N84; `ui/qml/RetouchPanel.qml` U90 → N85; `ui/qml/CameraRawSpace.qml` U86 → N74; `ui/qml/Presets.js` U75 → N89; `ui/docmodel.*` N70 → N72 → N73 → N75 → N76 → N82 → N84 → N87 (`ui/qml/Doc.qml` U70, rồi N70 → N72 → N73 → N75 → N76); `ui/session.*` N70 → N71 → N73 → N79 → N86 → N85; `ui/qml/Docs.qml` U70 → N79 → N86; `ui/canvas.*` N70 → N71 → N90 → N83 → N88; `ui/type.*` N77 → N78; `ui/shape.*` N75 → N91; `ui/qml/SaveOptionsDialog.qml` U93 → N86.
 - **Ảnh mẫu Photoshop:** E71 làm cho P2 việc của B30, B33 ở P1: agent viết script ở lô 1, bạn chạy một lần khi tiện; mỗi task so phần của nó, thiếu ảnh thì bỏ qua như B4.
-- **Đợt Q:** như Q30 của P1, thêm Metal trên máy Mac (từ K70), bench `g3` (từ E72) và tỉ lệ D1 CMYK so RGB (từ J71), fuzz bộ đọc mới 1 triệu vòng (R71; P1 chạy 10 phút); bạn duyệt ảnh bộ lọc nghệ thuật, ngẫu nhiên và giao diện mới (P2 chưa có prototype).
+- **Đợt Q:** như Q30 của P1, thêm Metal trên máy Mac (từ K70), bench `g3` (từ E72) và tỉ lệ D1 CMYK so RGB (từ J71), fuzz 10 phút bộ đọc mới của lô (task có bộ đọc mới, M70–M77, M82, W70, thêm harness `fuzz/<tên>.cpp` của mình theo khung M51, file mới), 1 triệu vòng ở job đêm của R71; bạn duyệt ảnh bộ lọc nghệ thuật, ngẫu nhiên và giao diện mới (P2 chưa có prototype).
 - **Máy Mac** (Cần bạn chốt 4): K70, K71, N88, R72 build, chạy trên máy Mac của bạn (agent đưa lệnh, bạn chạy, gửi log) hay job macos-14 khi R72 có; chưa có máy thì bốn task đó lùi, không chặn task khác.
 - **snapone** (chỉ đọc, chép sang `core/`, `ui/`, ghi commit nguồn ở đầu file): `proof.*` (J77), `sift.cpp`, `pano.*` (X70, X71), `merge.*` (X73), `xmp.*` (M81, phần `meta.*` của M33 chưa có), phần JPEG XL của `jxl.cpp` (M70), MakerLens, OpcodeList3 của `raw.*` (F75), phần Engine mà M38 để lại (F80), panel QML chỉnh ảnh (U86). Phía snapone của "chỉnh trong photo-beauty từ snapone" (lệnh Edit In, xuất file, nhận file trả về) là task trong plan của snapone, bạn giao; N85 theo giao thức ở Cần bạn chốt 8. Backend Metal "chung snapone": K70 viết ở đây, snapone chép khi cần.
 - **Việc của bạn:** chạy script ảnh mẫu của E71 trong Photoshop; bộ PSD của E73; beta E74; cổng E75; máy Mac cho K70, K71, N88, R72; prototype P2 (Cần bạn chốt 2).
@@ -70,22 +70,22 @@ Như P1: mỗi lô cần các lô trước đã merge (không cần Q của chú
 
 ```text
 Lô 1   A70   R70   W70   E71 (agent viết; bạn chạy Photoshop khi tiện)   M81   T70   U70                 → Q70
-Lô 2   A71 (A70)   J70 (A70)   J73 (A70)   C70 (A70)   M70, M71 (R70, A70)   U71 (U70)                   → Q71
+Lô 2   A71 (A70)   J70 (A70)   J73 (A70)   C70 (A70)   D76 (A70)   M70, M71 (R70, A70)   U71 (U70)                   → Q71
 Lô 3   A72 (A71)   J71 (J70)   J75 (A70)   K70 (R70; máy Mac)   M72 (R70)   W71 (W70)   U72, U73 (U71)   U75   → Q72
 Lô 4   J72 (J71)   J74 (J71)   J76 (J73)   L70 (A71, J71)   Y70 (A72)   M73 (A71)   U76 (U75)   U79       → Q73
-Lô 5   L71, L72, L73 (L70, C70)   B70 (L70)   J77 (J72, J73)   M76 (J70, A72)   U77 (U76)   U80           → Q74
+Lô 5   L71, L72, L73 (L70, C70)   B70 (L70)   J77 (J72, J73)   J76b (J73)   M76 (J70, A72)   U77 (U76)   U80           → Q74
 Lô 6   C71 (C70, J76)   B71 (A72, B70)   L74 (A71, J75)   Y71 (A72)   Y73 (Y70)   V70 (A72)   U78 (U77)   U87   → Q75
 Lô 7   L75, L76, L77 (A71)   Y74 (A72, B71)   J78 (J77)   T71 (M81)   U81 (U87)   U82                  → Q76
 Lô 8   F70, F71, F73, F74, F76 (J75)   Y75 (B71)   U83   U84                                               → Q77
 Lô 9   F72 (F71)   F75, F77, F78, F79 (J75)   D70 (J75)   U85   U86                                       → Q78
 Lô 10  F80 (L74)   B73 (B71, C70)   D71 (J73)   D72, D73 (J75)   M74 (A71)   U88   U89                    → Q79
-Lô 11  D74, D75 (J74)   H70   H71 (C70)   S70   T72 (A72, J73)   U90   U91                                → Q80
+Lô 11  F80b (F80)   D74, D75 (J74)   H70   H71 (C70)   S70   T72 (A72, J73)   U90   U91                                → Q80
 Lô 12  S71   S72   H72   H73   C72 (C71)   C73   U92   U93                                                → Q81
 Lô 13  C74, C75, C76, C77 (C70)   X70   M75 (L74–L77)   N70 (J70–J76, U88)   N74 (F80, L77, U86)          → Q82
 Lô 14  I70 (C72)   X71 (X70)   X73 (D71)   M77 (Y70, Y73, Y74, B73)   M78   M80   N71 (J78, U89)   N72 (L71–L73, B70, U82)   → Q83
 Lô 15  X72 (X71, L76)   M79 (B71, Y74)   M82 (M74)   B72   H74 (W71, H72, H73)   K71 (K70, B73)   N73 (L74–L77, U91)   N77 (U83)   → Q84
 Lô 16  K72 (K71)   K73   R71 (M70–M77, M82, W70)   E70 (L71–L74, Y74)   U74   N75 (Y71, Y73, U79)   N79 (W71, U80)   N90 (U72)   → Q85
-Lô 17  E72 (E70)   E73 (M73–M77; bạn)   N76 (M79, Y75)   N78 (N75, N77)   N80 (X72, X73)   N81 (F79, N75, U85)   → Q86
+Lô 17  M83 (J70, J73)   E72 (E70)   E73 (M73–M77; bạn)   N76 (M79, Y75)   N78 (N75, N77)   N80 (X72, X73)   N81 (F79, N75, U85)   N91 (N75, U77)   → Q86
 Lô 18  N82 (D75, U87)   N83 (I70, C77, H71)   N86 (M80, U93)   N89 (M82, B73)   R72 (K70)              → Q87
 Lô 19  N84 (S72, B72, U92)   N85 (H74, phần SnapOne)   N88 (K71, máy Mac)                              → Q88
 Lô 20  N87 (T72, V70)   E74 (bạn)                                                                     → Q89
@@ -121,15 +121,14 @@ Lô 1–3, nối tiếp A70 → A71 → A72: cùng `core/doc.h`, `core/render.h`
   - Smart object: nguồn thêm liên kết (đường dẫn tương đối và tuyệt đối, cỡ, giờ sửa, băm), RAW (nhúng hay liên kết, thiết lập snapone JSON), chồng (tài liệu con nhiều layer, `stackMode`); chỗ rẽ theo loại nguồn gọi hàm ở file riêng (chưa cài thì lỗi rõ) để L75–L77 chạy song song. `smartFilters` [{bộ lọc, tham số JSON, mode, opacity, ẩn hiện}], một mặt nạ smart filter (lưới, bật, liên kết); khóa cache render gồm băm danh sách đó.
   - Layer style: mỗi loại một mảng (nhiều Drop Shadow, Inner Shadow, Stroke, Color Overlay, Gradient Overlay như Photoshop), 6 hiệu ứng mới, contour; `DocState::globalLight` {góc 120°, độ cao 30°}; Knockout (None, Shallow, Deep), Blend Interior Effects as Group, Blend Clipped Layers as Group (bật), Transparency Shapes Layer (bật), Layer Mask Hides Effects, Vector Mask Hides Effects, kênh tham gia ghép.
   - Khóa JSON của chữ P2 (chữ dọc, OpenType, Character và Paragraph Styles, Warp Text, chữ theo path, Type Mask) ghi ở architecture.md: lõi không đọc, M73 và U83, N77 cùng theo.
-
   **Xong khi:** JSON đọc rồi ghi trùng từng byte (tài liệu P1 cũ đọc được, khóa lạ giữ); lệnh đặt từng trường là một bước; lead duyệt.
 - [ ] **A72 · Hợp đồng path, mặt nạ vector, artboard, frame, chú thích** (lõi; Nhỏ; cần A71; file `core/doc.h`, `core/doc.cpp`, `core/render.h`, `tests/test_doc.cpp`, `docs/architecture.md`): `Path` = các subpath {đóng, phép (Combine, Subtract Front, Intersect, Exclude), điểm neo {x, y, tay vào, tay ra, trơn hay góc}} theo điểm ảnh tài liệu kiểu double; `DocState::paths` (path đã lưu, Work Path, clipping path); layer có mặt nạ vector {path, bật, Density, Feather} kèm lưới đã rasterize (giao diện rasterize như chữ, hình của P1: Y30, Y32); layer hình mang path tùy ý. Artboard: nhóm cấp gốc có khung, nền; Frame: layer khung chứa smart object; chú thích: Note {vị trí, tác giả, màu, chữ}, Color Sampler (tối đa 10 điểm, cỡ mẫu).
   **Xong khi:** JSON trùng từng byte; phạm bất biến (artboard lồng nhau, path hỏng) báo lỗi, trạng thái không hỏng; lead duyệt.
 
 ### B · Ghép
 
-- [ ] **B70 · Knockout, Advanced Blending** (lõi, GPU; Vừa; cần A71, L70 (thứ tự file), B34 (Blend If, mặt nạ trong ghép), L34 (ghép layer style); file `core/composite.*`, `core/blend.h`, `core/gpu_composite.cpp`, `shaders/composite*.slang`, `tests/test_composite.cpp`, `tests/test_gpu_composite.cpp`): Knockout Shallow (đục tới đáy nhóm chứa) và Deep (tới Background hay trong suốt) theo Fill opacity; Blend Interior Effects as Group (Inner Glow, Satin, các Overlay ghép cùng điểm ảnh trước Fill); Blend Clipped Layers as Group; Transparency Shapes Layer; Layer Mask, Vector Mask Hides Effects; tắt kênh R, G, B (C, M, Y, K) khi ghép.
-  **Xong khi:** mỗi tùy chọn so tham chiếu CPU viết thẳng theo định nghĩa trên ca nhỏ; GPU khớp CPU; ảnh mẫu E71 ≤ 1 mức 8 bit khi có.
+- [ ] **B70 · Knockout, Advanced Blending** (lõi, GPU; Vừa; cần A71, L70 (thứ tự file), B34 (Blend If, mặt nạ trong ghép), L34 (ghép layer style); file `core/composite.*`, `core/blend.h`, `core/gpu_composite.cpp`, `shaders/composite*.slang`, `tests/test_composite.cpp`, `tests/test_gpu_composite.cpp`): Knockout Shallow (đục tới đáy nhóm chứa) và Deep (tới Background hay trong suốt) theo Fill opacity; Blend Interior Effects as Group (Inner Glow, Satin, các Overlay ghép cùng điểm ảnh trước Fill); Blend Clipped Layers as Group; Transparency Shapes Layer; Layer Mask, Vector Mask Hides Effects; tắt kênh R, G, B (C, M, Y, K) khi ghép; style trên nhóm (P1 để lại: hiệu ứng tính trên ảnh ghép của nhóm; nhóm Pass Through có style theo ảnh mẫu E71).
+  **Xong khi:** mỗi tùy chọn so tham chiếu CPU viết thẳng theo định nghĩa trên ca nhỏ; nhóm có style ghép như layer phẳng của nhóm mang cùng style; GPU khớp CPU; ảnh mẫu E71 ≤ 1 mức 8 bit khi có.
 - [ ] **B71 · Mặt nạ vector, artboard trong ghép** (lõi, GPU; Nhỏ; cần A72, B70; file `core/composite.*`, `core/gpu_composite.cpp`, `shaders/composite*.slang`, `tests/test_composite.cpp`, `tests/test_gpu_composite.cpp`): lưới mặt nạ vector nhân với mặt nạ điểm ảnh, Density, Feather như mặt nạ P1 (B34, B36); artboard: con cắt theo khung, nền artboard dưới con, ngoài artboard trong suốt; ghép riêng một artboard (cho M79).
   **Xong khi:** mặt nạ vector toàn trắng như không có; artboard cắt đúng biên ở mọi mức mip; GPU khớp CPU.
 - [ ] **B72 · Apply Image, Calculations** (lõi; Nhỏ; cần A40, S37 (kênh alpha), B32 (mặt nạ), B31, C39 (blend lên điểm ảnh như Fill); file `core/applyimage.*`, `tests/test_applyimage.cpp`): Image › Apply Image: nguồn (tài liệu cùng cỡ, layer hay Merged, kênh, Invert), Blending (mode của hộp thoại, cả Add, Subtract có Scale 1–2 và Offset −255…255: (đích ± nguồn) / Scale + Offset), Opacity, Preserve Transparency, Mask (nguồn, kênh, Invert), một bước; Image › Calculations: hai nguồn (kênh, cả Gray, Selection, Transparency), blend, mask, ra kênh mới, tài liệu mới hay vùng chọn.
@@ -153,13 +152,15 @@ Bảng mode của adjustment P2 do J74 ghi sẵn ở `docs/modes.md`; task D ch�
   **Xong khi:** file mẫu tự dựng theo đặc tả đọc ra đúng tham số; lưu rồi nạp trùng JSON.
 - [ ] **D75 · Curves vẽ tay** (lõi; Nhỏ; cần J74, D33 (Curves); file `core/adj_curves.cpp` (mã Curves của D33), `tests/test_adj_curves.cpp`): chế độ bút chì: đường cong là 256 giá trị (16 bit nội suy giữa chúng), Smooth làm mượt; về chế độ điểm thì khớp điểm neo theo đường đã vẽ như Photoshop; JSON lưu cả hai dạng.
   **Xong khi:** vẽ đường chéo ra identity; Smooth lặp hội tụ; vẽ tay → điểm → vẽ tay lệch ≤ 1 mức 8 bit.
+- [ ] **D76 · Gradient Noise** (lõi, GPU; Nhỏ; cần A70, D30 (gradient lõi); file `core/gradient.h`, `core/gradient.cpp`, `shaders/lib/gradient.slang`, `tests/test_gradient.cpp`): Gradient Type Noise của Gradient Editor (P1 để lại): Roughness 0–100% (mặc định 50), Color Model RGB, HSB, LAB với khoảng mỗi kênh, Restrict Colors, Add Transparency, Randomize; dải màu sinh từ seed bằng băm của D30 (CPU, GPU như nhau), lưu trong JSON gradient; dùng được ở mọi chỗ có gradient của P1 (công cụ Gradient, fill layer, Gradient Overlay, Stroke, Gradient Map).
+  **Xong khi:** cùng seed ra cùng dải trên CPU và GPU (từng bit); Roughness 0 ra dải trơn giữa các điểm dừng; Restrict Colors giữ mọi mẫu trong gamut in; ảnh mẫu E71 so bằng thống kê (RNG riêng của Adobe) khi có.
 
 ### L · Layer style, smart object
 
 Hiệu ứng mới tự đăng ký ở chỗ của L70; loại nguồn smart object mới ở chỗ rẽ của A71.
 
-- [ ] **L70 · Layer style: khung P2** (lõi, GPU; Vừa; cần A71, J71 (thứ tự file), L30–L32, L34 (layer style P1); file mã layer style của P1 (`core/fx.h`, `core/fx.cpp`, `core/fx_stroke.cpp`, `core/fx_shadow.cpp`), `core/composite.*`, `core/gpu_composite.cpp`, `shaders/composite*.slang`, `tests/test_fx.cpp`): nhiều hiệu ứng cùng loại (thứ tự như Photoshop); Global Light (đổi góc, độ cao đổi mọi hiệu ứng dùng nó); contour dùng chung (đường cong 0–1, preset Linear, Cone, Gaussian, Ring…, Anti-aliased); Layer › Layer Style › Scale Effects, Copy, Paste, Clear Layer Style, Create Layers (mỗi hiệu ứng thành layer điểm ảnh clipping, blend như Photoshop); chỗ đăng ký 6 hiệu ứng mới ở file riêng (L71–L73).
-  **Xong khi:** hai Drop Shadow ra như hai lớp bóng chồng; Scale 200% bằng nhân đôi tham số; Create Layers rồi ghép trùng ảnh có style (≤ 1 mức); GPU = CPU.
+- [ ] **L70 · Layer style: khung P2** (lõi, GPU; Vừa; cần A71, J71 (thứ tự file), L30–L32, L34 (layer style P1), C70 (pattern), D30 (gradient); file mã layer style của P1 (`core/fx.h`, `core/fx.cpp`, `core/fx_stroke.cpp`, `core/fx_shadow.cpp`), `core/composite.*`, `core/gpu_composite.cpp`, `shaders/composite*.slang`, `tests/test_fx.cpp`): nhiều hiệu ứng cùng loại (thứ tự như Photoshop); Global Light (đổi góc, độ cao đổi mọi hiệu ứng dùng nó); contour dùng chung (đường cong 0–1, preset Linear, Cone, Gaussian, Ring…, Anti-aliased); Layer › Layer Style › Scale Effects, Copy, Paste, Clear Layer Style, Create Layers (mỗi hiệu ứng thành layer điểm ảnh clipping, blend như Photoshop); chỗ đăng ký 6 hiệu ứng mới ở file riêng (L71–L73); phần P1 để lại: Fill Type Gradient (D30), Pattern (C70) của Stroke, Noise của Drop Shadow.
+  **Xong khi:** hai Drop Shadow ra như hai lớp bóng chồng; Scale 200% bằng nhân đôi tham số; Create Layers rồi ghép trùng ảnh có style (≤ 1 mức); Stroke Fill Type Gradient, Pattern trùng Gradient, Pattern Overlay cắt theo vành; GPU = CPU.
 - [ ] **L71 · Bevel & Emboss** (lõi, GPU; Vừa; cần L70, C70; file `core/fx_bevel.cpp`, `shaders/fx_bevel.slang`, `tests/test_fx_bevel.cpp`): Style (Outer Bevel, Inner Bevel, Emboss, Pillow Emboss, Stroke Emboss), Technique (Smooth, Chisel Hard, Chisel Soft), Depth 1–1000% (100), Direction Up, Down, Size (5 px), Soften, Angle, Altitude (Global Light), Gloss Contour, Anti-aliased, Highlight Mode (Screen, trắng, 75%), Shadow Mode (Multiply, đen, 75%), Contour, Texture (pattern, Scale, Depth, Invert, Link with Layer); mặt cao từ khoảng cách Euclid tới cạnh alpha (Chisel) hay alpha làm mờ (Smooth), chiếu sáng theo góc, độ cao.
   **Xong khi:** CPU = GPU; Depth 0 hay Size 0 không đổi ảnh; ảnh mẫu E71 mỗi Style × Technique lệch trung bình ≤ 2 mức 8 bit (in tối đa).
 - [ ] **L72 · Inner Shadow, Inner Glow, Outer Glow** (lõi, GPU; Vừa; cần L70; file `core/fx_glow.cpp`, `shaders/fx_glow.slang`, `tests/test_fx_glow.cpp`): Inner Shadow (Distance, Choke, Size, Contour, Noise); Outer Glow, Inner Glow (màu (mặc định #FFFFBE) hay gradient, Technique Softer theo Gauss, Precise theo khoảng cách Euclid, Spread hay Choke, Size, Source Center hay Edge, Range, Jitter, Noise); ô hiệu ứng tính từ alpha, cache theo phiên bản alpha như P1.
@@ -177,7 +178,7 @@ Hiệu ứng mới tự đăng ký ở chỗ của L70; loại nguồn smart obj
 
 ### Y · Path, hình, vector
 
-Mã Y72 (kiểu Warp của nháp) bỏ trống: X32 của P1 đã có 15 Warp Style (mục Ghi chú ghép).
+Mã Y72 (kiểu Warp của nháp) bỏ trống: X32 của P1 đã có 15 Warp Style.
 
 - [ ] **Y70 · Path: lệnh, phép path, Combine Shapes** (lõi; Vừa; cần A72; file `core/path.*`, `tests/test_path.cpp`): lệnh thêm, xóa, đổi tên, nhân bản path; Work Path thành path đã lưu; thêm, xóa, đổi điểm neo (Add, Delete, Convert Anchor Point); biến đổi path (ma trận); phép từng subpath (Combine, Subtract Front, Intersect, Exclude Overlap); Layer › Combine Shapes gộp layer hình thành một layer giữ phép; biên chính xác (cực trị Bezier); căn, phân bố path.
   **Xong khi:** lệnh ngẫu nhiên đi qua JSON, undo khớp tham chiếu; biên Bezier khớp lấy mẫu dày ±1e−6; Combine Shapes rồi tách trả lại path cũ.
@@ -214,8 +215,10 @@ Mỗi bộ lọc tự đăng ký (`FILTER` của F30) ở file riêng; bảng mo
   **Xong khi:** Oil Paint CPU = GPU, ảnh phẳng không đổi; Extrude cùng hạt giống cùng băm; ảnh cạnh Photoshop cho bạn duyệt ở Q.
 - [ ] **F79 · Render: Clouds, Difference Clouds, Fibers, Lens Flare; Other › HSB/HSL** (lõi, GPU; Nhỏ; cần J75; file `core/filter_render.cpp`, `shaders/filter_render.slang`, `tests/test_filter_render.cpp`): Clouds, Difference Clouds (nhiễu fractal giữa màu trước, sau; Alt gắt hơn; Difference blend lên ảnh), Fibers (Variance 16, Strength 4, Randomize), Lens Flare (Brightness 10–300% (100), 4 loại ống kính, tâm; chỉ RGB), HSB/HSL (Input Mode, Row Order: đổi kênh RGB ↔ HSB ↔ HSL); hạt giống nằm trong tham số để smart filter, Actions chạy lại ra cùng ảnh.
   **Xong khi:** CPU = GPU; HSB/HSL đi rồi về trùng ảnh (≤ 1 mức); cùng hạt giống cùng băm.
-- [ ] **F80 · Camera Raw Filter** (lõi; Vừa; cần L74, M38 (pipeline RAW chép từ snapone); file `core/camraw_filter.*`, phần Engine mà M38 để lại cho P2 (GPU, mặt nạ AI, heal: `core/pipeline.*` và file phụ khi cần), `tests/test_camraw_filter.cpp`): Filter › Camera Raw Filter (Shift Ctrl A): điểm ảnh layer (mã hóa tài liệu) → tuyến tính theo hồ sơ → pipeline snapone ở chế độ ảnh đã render (F2 của formats-plan snapone) → mã hóa tài liệu; tham số là JSON thiết lập snapone (Cơ bản, Đường cong, HSL, Phân màu, Chi tiết, Ống kính, Hiệu ứng, Mặt nạ); xem trước ở mức đang xem, áp full size theo dải có lề như snapone; smart filter được.
+- [ ] **F80 · Camera Raw Filter** (lõi; Vừa; cần L74, M38 (pipeline RAW chép từ snapone); file `core/camraw_filter.*`, `tests/test_camraw_filter.cpp`): Filter › Camera Raw Filter (Shift Ctrl A): điểm ảnh layer (mã hóa tài liệu) → tuyến tính theo hồ sơ → pipeline snapone ở chế độ ảnh đã render (F2 của formats-plan snapone) → mã hóa tài liệu; tham số là JSON thiết lập snapone (Cơ bản, Đường cong, HSL, Phân màu, Chi tiết, Ống kính, Hiệu ứng; Mặt nạ, xóa vết, GPU ở F80b); xem trước ở mức đang xem, áp full size theo dải có lề như snapone; smart filter được.
   **Xong khi:** thiết lập mặc định trả lại điểm ảnh (≤ 1 mức 16 bit); khớp `pipeline` đã chép chạy thẳng cùng thiết lập (≤ 1 mức).
+- [ ] **F80b · Camera Raw Filter: GPU, mặt nạ AI, xóa vết** (lõi, GPU; Vừa; cần F80, O30 (ONNX Runtime, tải model), H31 (màng Laplace); file phần Engine mà M38 để lại cho P2 (`core/pipeline.*` và file phụ chép theo khi cần), `core/camraw_filter.*`, `tests/test_camraw_engine.cpp`): chép từ snapone phần Engine mà M38 để lại (ghi ở đầu file của M38): đường GPU của pipeline, mặt nạ AI (Subject, Sky, Background, người; model tải khi dùng như O30, giấy phép theo Cần bạn chốt 4 của P1), xóa vết của Camera Raw; F80 bật tab Mặt nạ, công cụ xóa vết khi task này vào; RAW smart object (L77) dùng chung.
+  **Xong khi:** GPU khớp CPU của F80 (≤ 1 mức 16 bit); mặt nạ Subject trên ảnh mẫu trùng snapone chạy thẳng cùng model; một vết xóa trùng snapone (≤ 1 mức).
 
 ### C · Cọ, vẽ, tô
 
@@ -225,7 +228,7 @@ Công cụ theo chấm mới (C73–C77) là phép nét tự đăng ký của A7
   **Xong khi:** lấy mẫu CPU = GPU; Scale 100% ra đúng pattern lặp; Define rồi Fill trả lại đúng điểm ảnh.
 - [ ] **C71 · Brush Settings P2: Scattering, Texture, Color Dynamics, Brush Pose** (lõi; Vừa; cần C70, J76 (thứ tự file), A41, C30, C31, C35 (engine cọ); file `core/dab.*`, `core/dynamics.*`, `core/stroke.h` (thêm trường của `BrushParams`), `core/stroke.cpp`, `tests/test_dab.cpp`, `tests/test_stroke.cpp`): Scattering (Scatter 0–1000%, Both Axes, Count 1–16, Count Jitter, điều khiển theo lực nhấn, nghiêng); Texture (pattern, Invert, Scale, Brightness, Contrast, Texture Each Tip, Mode, Depth, Minimum Depth, Depth Jitter); Color Dynamics (Apply Per Tip, Foreground/Background Jitter, Hue, Saturation, Brightness Jitter, Purity); Brush Pose (ghi đè Tilt X, Y, Rotation, Pressure). Ngẫu nhiên có hạt giống theo nét để chạy lại ra cùng điểm ảnh (C4).
   **Xong khi:** Scatter 0, Count 1, jitter 0 trùng nét P1 từng bit; cùng hạt giống cùng băm với 1 và 12 luồng; Texture Depth 0 không đổi gì.
-- [ ] **C72 · Symmetry** (lõi; Nhỏ; cần C71 (thứ tự file); file `core/symmetry.*`, `core/stroke.cpp`, `tests/test_symmetry.cpp`): 10 kiểu của Photoshop (Vertical, Horizontal, Dual Axis, Diagonal, Wavy, Circle, Spiral, Parallel Lines, Radial và Mandala 2–12 đoạn) cho Brush, Pencil, Eraser: mỗi chấm sinh các chấm đối xứng qua path đối xứng (dời, xoay, đổi cỡ được) trong cùng stroke buffer.
+- [ ] **C72 · Symmetry** (lõi; Nhỏ; cần C71 (thứ tự file), A72, Y70 (path); file `core/symmetry.*`, `core/stroke.cpp`, `core/doc.h` (chỉ thêm loại path), `tests/test_symmetry.cpp`): path đối xứng là path loại Symmetry của A72 như Photoshop (panel Paths, lưu trong PSD); 10 kiểu của Photoshop (Vertical, Horizontal, Dual Axis, Diagonal, Wavy, Circle, Spiral, Parallel Lines, Radial và Mandala 2–12 đoạn) cho Brush, Pencil, Eraser: mỗi chấm sinh các chấm đối xứng qua path đối xứng (dời, xoay, đổi cỡ được) trong cùng stroke buffer.
   **Xong khi:** Vertical ra ảnh đối xứng gương từng điểm ảnh; Radial n đoạn bất biến khi xoay 360°/n.
 - [ ] **C73 · History Brush, Erase to History** (lõi; Nhỏ; cần T2, A41, C30–C35 (engine cọ), C39 (nguồn History của Fill); file `core/tool_history.cpp`, `tests/test_tool_history.cpp`): nguồn là một bước hay snapshot (mặc định trạng thái lúc mở như Photoshop); nét vẽ lại điểm ảnh của layer cùng `id` ở nguồn (Mode, Opacity, Flow); nguồn không có layer đó hay khác cỡ, mode thì báo như Photoshop; Eraser bật Erase to History đi cùng đường.
   **Xong khi:** History Brush 100% khắp layer trả lại đúng điểm ảnh của bước nguồn; undo trả `id` ô cũ.
@@ -266,8 +269,8 @@ Công cụ theo chấm mới (C73–C77) là phép nét tự đăng ký của A7
   **Xong khi:** các mảnh cắt từ một ảnh rồi dời, xoay, phối cảnh đã biết căn về sai số ≤ 0,5 px; Reposition chỉ dời.
 - [ ] **X71 · Auto-Blend Layers** (lõi; Vừa; cần X70, B32, B34 (mặt nạ); file `core/autoblend.*`, `core/pano.*`, `tests/test_autoblend.cpp`): Edit › Auto-Blend Layers. Panorama: đường nối theo chỗ khác biệt ít nhất (cắt đồ thị trên vùng chồng), Seamless Tones and Colors (bù độ sáng, trộn nhiều tầng như pano của snapone), ra mặt nạ layer và điểm ảnh đã chỉnh. Stack Images: chồng lấy nét (độ nét cục bộ, chọn layer nét nhất, làm mượt) ra mặt nạ. Content Aware Fill Transparent Areas ở P3.
   **Xong khi:** hai nửa ảnh chồng 30%, lệch độ sáng: không còn mép (chênh qua đường nối dưới ngưỡng ghi rõ); chồng 3 ảnh mỗi ảnh nét một vùng ra ảnh nét khắp nơi (đo độ nét).
-- [ ] **X72 · Photomerge** (lõi; Nhỏ; cần X70, X71, L76 (nạp file thành layer); file `core/photomerge.*`, `tests/test_photomerge.cpp`): File › Automate › Photomerge: nạp file, Layout (Auto, Perspective, Cylindrical, Spherical, Collage, Reposition), Blend Images Together, Vignette Removal, Geometric Distortion Correction; ra tài liệu mới các layer có mặt nạ; chạy nền có tiến độ, hủy.
-  **Xong khi:** 3 ảnh cắt từ một ảnh toàn cảnh (méo trụ đã biết) ghép lại lệch ảnh gốc PSNR trên ngưỡng ghi rõ.
+- [ ] **X72 · Photomerge** (lõi; Nhỏ; cần X70, X71, L76 (nạp file thành layer); file `core/photomerge.*`, `core/smart_stack.*` (tùy chọn căn của L76), `tests/test_photomerge.cpp`): nối Attempt to Automatically Align Source Images của Load Files into Stack (L76) vào X70; File › Automate › Photomerge: nạp file, Layout (Auto, Perspective, Cylindrical, Spherical, Collage, Reposition), Blend Images Together, Vignette Removal, Geometric Distortion Correction; ra tài liệu mới các layer có mặt nạ; chạy nền có tiến độ, hủy.
+  **Xong khi:** 3 ảnh cắt từ một ảnh toàn cảnh (méo trụ đã biết) ghép lại lệch ảnh gốc PSNR trên ngưỡng ghi rõ; Load Files into Stack có căn ra layer lệch ≤ 1 px so Auto-Align (X70) trên cùng ảnh.
 - [ ] **X73 · Merge to HDR Pro** (lõi; Vừa; cần A70, D71, M37, M38 (mở RAW); file `core/hdrmerge.*`, `core/merge.*` (chép từ snapone), `tests/test_hdrmerge.cpp`): File › Automate › Merge to HDR Pro: ảnh đã render dựng đường đáp ứng (Debevec–Malik) rồi trộn radiance có trọng số; RAW theo đường tuyến tính của `merge.cpp` snapone; căn ảnh (MTB như snapone); Remove Ghosts (ảnh gốc chọn được); phơi sáng từ EXIF; ra 32 bit, hay 16, 8 bit qua HDR Toning (D71).
   **Xong khi:** ba ảnh tổng hợp từ radiance đã biết qua đường gamma ở −2, 0, +2 EV: radiance dựng lại lệch ≤ 2% sau chuẩn hóa; vật di chuyển ở một ảnh không còn bóng ma khi bật Remove Ghosts.
 
@@ -285,8 +288,10 @@ Công cụ theo chấm mới (C73–C77) là phép nét tự đăng ký của A7
   **Xong khi:** CPU = GPU cho mọi adjustment ở mọi định dạng bật; Levels, Curves identity không đổi; ảnh mẫu E71 ≤ 1 mức 8 bit khi có.
 - [ ] **J75 · Khung bộ lọc, bộ lọc P1 trên CMYK, 32 bit** (lõi, GPU; Vừa; cần A70, F30 (khung bộ lọc), F32–F38 (bộ lọc P1); file khung và kernel bộ lọc của P1 (`core/filter.*`, `shaders/lib/filter.slang`, `core/filter_*.cpp`, `shaders/filter_*.slang` của F32–F38), test của chúng, `docs/modes.md`): khung đưa ô theo số kênh, F32 (lề, xem trước, áp full size, Fade); mỗi bộ lọc P1 chạy hay tắt theo bảng mode của Photoshop (Filter effects reference), bảng ghi ở `docs/modes.md` (file mới; ghi luôn dòng của bộ lọc P2 F70–F80 theo cùng bảng, để task bộ lọc sau chỉ đọc); ngưỡng, bán kính trên 32 bit theo giá trị tuyến tính như Photoshop.
   **Xong khi:** mọi bộ lọc P1 bật ở CMYK, 32 bit có test CPU = GPU; Gaussian Blur trên CMYK bằng chạy từng kênh riêng.
-- [ ] **J76 · Vẽ, tô, chọn, retouch trên CMYK, 32 bit** (lõi; Vừa; cần J73, A41, C30–C35 (engine cọ), C39 (Fill), C36 (Gradient), C38 (Paint Bucket), S33 (Magic Wand), S34 (Color Range), H31, H32 (Healing), H30 (Clone); file mã P1 tương ứng (`core/stroke.cpp`, `core/dab.*`, `core/op_paint.cpp`, `shaders/lib/paint.slang`, `core/fill.cpp`, `core/gradient.cpp`, `core/gradient_tool.cpp`, `core/bucket.cpp`, `core/flood.cpp`, `core/colorrange.cpp`, `core/heal.cpp`, `core/op_heal.cpp`, `core/op_clone.cpp`), test của chúng): màu trước, sau đổi sang mode tài liệu (J73); nhả bút, Fill, Gradient (Method), Paint Bucket, Magic Wand, Color Range (Tolerance trên kênh mực), Healing (màng Laplace trên 4 kênh mực), Clone trên 5 kênh và F32.
-  **Xong khi:** nét, Fill, Gradient trên CMYK khớp tham chiếu CPU từng giá trị; Magic Wand trên ảnh hai màu CMYK chọn cùng vùng như bản RGB; heal ở 32 bit giữ giá trị > 1.
+- [ ] **J76 · Vẽ, tô trên CMYK, 32 bit** (lõi; Vừa; cần J73, A41, C30–C35 (engine cọ), C39 (Fill), C36 (Gradient), C38 (Paint Bucket); file mã P1 tương ứng (`core/stroke.cpp`, `core/dab.*`, `core/op_paint.cpp`, `shaders/lib/paint.slang`, `core/fill.cpp`, `core/gradient.cpp`, `core/gradient_tool.cpp`, `core/bucket.cpp`), test của chúng): màu trước, sau đổi sang mode tài liệu (J73); nhả bút, Fill, Gradient (Method), Paint Bucket trên 5 kênh và F32. Chọn, retouch: J76b.
+  **Xong khi:** nét, Fill, Gradient, Paint Bucket trên CMYK khớp tham chiếu CPU từng giá trị; nét ở 32 bit giữ giá trị > 1.
+- [ ] **J76b · Chọn, retouch trên CMYK, 32 bit** (lõi; Nhỏ; cần J73, S33 (Magic Wand), S34 (Color Range), H30 (Clone), H31, H32 (Healing); file mã P1 tương ứng (`core/flood.cpp`, `core/colorrange.cpp`, `core/heal.cpp`, `core/op_heal.cpp`, `core/op_clone.cpp`), test của chúng): Magic Wand, Color Range (Tolerance trên kênh mực), Healing (màng Laplace trên 4 kênh mực), Clone trên 5 kênh và F32.
+  **Xong khi:** Magic Wand trên ảnh hai màu CMYK chọn cùng vùng như bản RGB; Clone trên CMYK trùng từng giá trị; heal ở 32 bit giữ giá trị > 1.
 - [ ] **J77 · Soft proof: Proof Setup, Proof Colors, Gamut Warning** (lõi, GPU; Nhỏ; cần J72, J73; file `core/proof.*` (chép `proof.*` của snapone), `core/present.*`, `shaders/present.slang`, `tests/test_proof.cpp`): View › Proof Setup (Working CMYK, từng bản mực, Working CMY Plates, Internet Standard RGB, Monitor RGB, Protanopia, Deuteranopia, Custom: thiết bị, Preserve Numbers, intent, BPC, Simulate Paper Color, Simulate Black Ink); Proof Colors (Ctrl Y), Gamut Warning (Shift Ctrl Y, xám 100%, đổi trong Thiết lập) trong kernel trình bày bằng bảng như snapone, trục là giá trị mã hóa của tài liệu.
   **Xong khi:** proof lệch lcms trực tiếp ΔE2000 ≤ 1 trong bảng; cờ ngoài gam khớp kiểm gam của lcms trên 10.000 màu (in tỉ lệ khác); GPU = CPU.
 - [ ] **J78 · In: ảnh cho máy in** (lõi; Nhỏ; cần J77; file `core/print.*`, `tests/test_print.cpp`): ảnh phẳng của tài liệu hay vùng chọn ở cỡ in (vị trí, Scale, Scale to Fit Media, độ phân giải); app quản lý màu: đổi sang hồ sơ máy in (intent, BPC); máy in quản lý: giữ nguyên; bản xem trước có cảnh báo ngoài gam. Gửi máy in ở N71.
@@ -321,8 +326,8 @@ Công cụ theo chấm mới (C73–C77) là phép nét tự đăng ký của A7
 
 Định dạng mới tự đăng ký ở chỗ của R70; khối PSD mới ở chỗ của M73.
 
-- [ ] **M70 · AVIF, JPEG XL: mở, xuất** (lõi; Vừa; cần R70, A70, M48 (Export As); file `core/avif.cpp`, `core/jxl.cpp` (chép phần JPEG XL của snapone), `tests/test_avif_jxl.cpp`): mở 8, 10, 12 bit ra 8, 16 bit (PQ, HLG ra 32 bit tuyến tính), alpha, ICC, EXIF; xuất trong Export As và Quick Export (chất lượng 1–100, lossless, 8, 10, 12 bit, nhúng hồ sơ, metadata).
-  **Xong khi:** lossless lưu rồi mở trùng từng giá trị (8, 16 bit, alpha); ICC trùng byte; file cụt, hỏng báo lỗi, không crash.
+- [ ] **M70 · AVIF, JPEG XL: mở, xuất; DNG nén JPEG XL** (lõi; Vừa; cần R70, A70, M48 (Export As), M37 (RAW); file `core/avif.cpp`, `core/jxl.cpp` (chép phần JPEG XL của snapone), `core/raw.cpp` (DNG nén JPEG XL), `tests/test_avif_jxl.cpp`): DNG 1.7 nén JPEG XL (P1 để lại) giải qua libjxl khi LibRaw của vcpkg chưa đọc; AVIF, JPEG XL mở 8, 10, 12 bit ra 8, 16 bit (PQ, HLG ra 32 bit tuyến tính), alpha, ICC, EXIF; xuất trong Export As và Quick Export (chất lượng 1–100, lossless, 8, 10, 12 bit, nhúng hồ sơ, metadata).
+  **Xong khi:** lossless lưu rồi mở trùng từng giá trị (8, 16 bit, alpha); ICC trùng byte; file cụt, hỏng báo lỗi, không crash; DNG nén JPEG XL mẫu mở ra cùng điểm ảnh như bản DNG không nén của nó.
 - [ ] **M71 · OpenEXR: mở, xuất** (lõi; Nhỏ; cần R70, A70; file `core/exr.cpp`, `tests/test_exr.cpp`): mở half, float (RGB, RGBA, Y) thành tài liệu 32 bit một layer, alpha là trong suốt; xuất tài liệu 32 bit ra half hay float, nén ZIP, PIZ.
   **Xong khi:** float đi rồi về trùng từng bit, half trùng half; file cụt báo lỗi.
 - [ ] **M72 · GIF: mở, xuất** (lõi; Nhỏ; cần R70, M48 (Export As); file `core/gif.cpp`, `core/quantize.*`, `tests/test_gif.cpp`): giflib mở khung đầu (hoạt họa ở P3) thành RGB 8 bit có trong suốt; xuất trong Export As: lượng tử hóa median cut và Floyd–Steinberg (Cần bạn chốt 5; P3 thêm k-means, pattern cho Indexed Color), 2–256 màu, dither, trong suốt.
@@ -347,10 +352,12 @@ Công cụ theo chấm mới (C73–C77) là phép nét tự đăng ký của A7
   **Xong khi:** XMP đi rồi về trùng (khóa lạ giữ như snapone); JPEG xuất đọc lại đủ trường.
 - [ ] **M82 · Preset của Photoshop: .aco, .ase, .grd, .pat, .asl** (lõi; Nhỏ; cần C70, M74 (cho `.asl`), M39 (descriptor), Cần bạn chốt 6; file `core/psdpresets.*`, `tests/test_psdpresets.cpp`): đọc `.aco` (v1, v2), `.ase` (RGB, CMYK, Lab, Gray; nhóm), `.grd` (v5, descriptor), `.pat`, `.asl`; ghi `.aco`, `.ase`.
   **Xong khi:** file mẫu tự dựng theo đặc tả đọc ra đúng màu, gradient, pattern, style; `.aco`, `.ase` ghi rồi đọc trùng.
+- [ ] **M83 · JPEG, TIFF CMYK và TIFF 32 bit giữ mode** (lõi; Nhỏ; cần J70, J73 (CMYK, 32 bit trong ghép, chuyển màu), M34 (ghi JPEG, TIFF), M47 (mở bằng cách chuyển); file `core/open.cpp`, `core/save.cpp`, `core/convert_open.cpp`, `tests/test_cmyk_files.cpp`): M47 của P1 chuyển các file này sang RGB 16 bit; nay mở JPEG CMYK (Adobe APP14, giá trị đảo), TIFF CMYK 8, 16 bit, TIFF 32 bit float (RGB, xám) thành tài liệu đúng mode (M47 còn chuyển Lab, Indexed tới P3); lưu TIFF CMYK, TIFF 32 bit (ZIP, LZW, không nén), JPEG CMYK như Photoshop; giữ ICC, metadata. In CMYK (E74) dùng.
+  **Xong khi:** TIFF CMYK, 32 bit lưu rồi mở trùng từng giá trị; JPEG CMYK giải lại khớp libjpeg tham chiếu; file CMYK của Photoshop (E73) ghép lệch ΔE2000 < 1 khi có; file hỏng báo lỗi.
 
 ### W · Tự động hóa
 
-- [ ] **W70 · Actions** (lõi; Vừa; cần T2, A40 (JSON thao tác trên mỗi bước), N1 (`command_from_json()` cho mọi lệnh); file `core/actions.*`, `tests/test_actions.cpp`): action là dãy bước {lệnh JSON, bật, bật hộp thoại}; bộ action; ghi: mọi lệnh qua `Document` và lệnh phiên (mở, lưu, xuất, đóng, đổi tài liệu) nối vào action đang ghi; chạy trên `Document` hay tài liệu không giao diện (Batch); dừng ở bước bật hộp thoại (gọi lại giao diện); Insert Stop (lời nhắn, Allow Continue), Insert Menu Item, Playback Options (Accelerated, Step by Step, Pause For); file JSON của app (nhập `.atn` ở P3).
+- [ ] **W70 · Actions** (lõi; Vừa; cần T2, A30 (`command_from_json()` cho mọi lệnh không mang lưới), A40 (JSON thao tác trên mỗi bước); file `core/actions.*`, `core/actions_ops.cpp`, `tests/test_actions.cpp`): action là dãy bước {lệnh JSON, bật, bật hộp thoại}; bộ action; ghi: mọi lệnh qua `Document` và lệnh phiên (mở, lưu, xuất, đóng, đổi tài liệu) nối vào action đang ghi; bước mang lưới (bộ lọc, Image Size, Free Transform, Fill, Stroke…) chạy lại từ JSON thao tác qua bảng tên thao tác → hàm công khai của module (`core/actions_ops.cpp`, không sửa file của module); chạy trên `Document` hay tài liệu không giao diện (Batch); dừng ở bước bật hộp thoại (gọi lại giao diện); Insert Stop (lời nhắn, Allow Continue), Insert Menu Item, Playback Options (Accelerated, Step by Step, Pause For); file JSON của app (nhập `.atn` ở P3).
   **Xong khi:** ghi 20 lệnh ngẫu nhiên rồi chạy trên tài liệu khác ra cùng lệnh và điểm ảnh như làm tay; Stop dừng đúng bước; file đi rồi về trùng byte.
 - [ ] **W71 · Batch, Image Processor** (lõi; Vừa; cần W70, M50 (mở, lưu theo định dạng), M48 (xuất); file `core/batch.*`, `tests/test_batch.cpp`): File › Automate › Batch ở job Background: Source (thư mục, có thư mục con, tài liệu đang mở), Override Action "Open" Commands, Suppress File Open Options Dialogs, Suppress Color Profile Warnings; Destination (None, Save and Close, Folder; Override Action "Save As" Commands), File Naming (6 ô: tên tài liệu ba kiểu chữ, số thứ tự 1–4 chữ số, chữ cái, ngày, đuôi), Errors (Stop for Errors, Log Errors to File); File › Scripts › Image Processor: JPEG (Quality 0–12, Convert to sRGB), PSD (Maximize Compatibility), TIFF (LZW), Resize to Fit, Run Action, Copyright Info, Include ICC Profile; tiến độ, hủy.
   **Xong khi:** thư mục 10 ảnh (1 hỏng) ra 9 file đúng tên mẫu, nhật ký có file hỏng; hủy giữa chừng không để file dở; Image Processor ra đủ ba định dạng đúng cỡ.
@@ -454,7 +461,7 @@ Thay dữ liệu giả của U bằng lõi P2, như bước N của `docs/ui-tas
   **Xong khi:** `tst_n89`: Define Pattern rồi Fill bằng nó trên tài liệu thật; nhập `.aco` mẫu ra đúng swatch.
 - [ ] **N90 · Canvas GPU ở mọi cửa sổ** (giao diện, GPU; Nhỏ; cần U72, V1 (canvas GPU); file `ui/canvas.*`, `ui/tests/tst_n90.qml`): V1 chỉ gắn GPU cho cửa sổ Qt Quick đầu tiên; mỗi cửa sổ tài liệu (nổi, cửa sổ thứ hai) dùng chung `gpu::Device` của app, texture xuất riêng từng cửa sổ; hai view một tài liệu dùng chung cache ghép. Cách làm: docs/ui-tasks.md.
   **Xong khi:** `tst_n90`: hai cửa sổ cùng tài liệu hiện đúng frame trên lavapipe; Iris Xe đi đường GPU ở cả hai (log `pb.gpu`, ở đợt Q).
-- [ ] **N91 · Công cụ Shape P2: Path, Pixels, mũi tên, nét đứt** (giao diện, C++; Nhỏ; cần Y34, Y70, N75 (cùng `ui/shape.*`), U77; file `ui/shape.*`, `ui/shapetool.*`, `ui/tests/tst_n91.qml`): phần hình P1 để lại (nghi vấn 2 của p1-tasks.md): chế độ Path tạo Work Path bằng lệnh path của Y70; Pixels tô hình thẳng vào layer điểm ảnh, một bước; mũi tên đầu, cuối của Line (rộng, dài, lõm %); nét đứt của Stroke (dash, gap, preset); nhấp không kéo mở hộp cỡ (W, H, From Center). Cách làm: docs/ui-tasks.md.
+- [ ] **N91 · Công cụ Shape P2: Path, Pixels, mũi tên, nét đứt** (giao diện, C++; Nhỏ; cần Y34, Y70, N75 (cùng `ui/shape.*`), U77; file `ui/shape.*`, `ui/shapetool.*`, `ui/tests/tst_n91.qml`): phần hình P1 để lại (mục Để sau của p1-tasks.md): chế độ Path tạo Work Path bằng lệnh path của Y70; Pixels tô hình thẳng vào layer điểm ảnh, một bước; mũi tên đầu, cuối của Line (rộng, dài, lõm %); nét đứt của Stroke (dash, gap, preset); nhấp không kéo mở hộp cỡ (W, H, From Center). Cách làm: docs/ui-tasks.md.
   **Xong khi:** `tst_n91`: Path ra Work Path đúng điểm neo; Pixels đổi điểm ảnh của layer, không tạo layer hình; mũi tên, nét đứt phủ đúng diện tích theo công thức ±0,5 %; nhấp không kéo mở hộp cỡ, OK tạo đúng cỡ.
 
 ### I · Bút
@@ -466,7 +473,7 @@ Thay dữ liệu giả của U bằng lõi P2, như bước N của `docs/ui-tas
 
 - [ ] **R70 · Codec P2 vào build** (build, lõi; Nhỏ; cần E37 (P1 xong); file `vcpkg.json`, `CMakeLists.txt`, `CMakePresets.json` khi cần, `core/openfile.*`, `core/export.*`, `tests/test_smoke.cpp`, `tests/test_openfile.cpp`): libavif (dav1d giải mã, libaom mã hóa), libjxl, openexr, giflib cho các preset default, asan, tsan, mingw, ui, ui-mingw (bảng Công nghệ có sẵn bốn thư viện này ở P2); ghi cỡ bộ cài tăng thêm (chỉ tiêu ≤ 150 MB); `open_file()`, `save_file()` (M50) và `export_image()` (M48) nhận bộ đọc, ghi tự đăng ký (như `FILTER` của F30; định dạng P1 giữ nguyên) để M70–M72 chỉ thêm file.
   **Xong khi:** build qua mọi preset; test khói gọi được từng thư viện; định dạng thử đăng ký trong test mở, lưu qua `open_file()`, `save_file()`; cỡ bộ cài in ra.
-- [ ] **R71 · Fuzz bộ đọc P2** (build, test; Nhỏ; cần M70–M77, M82, W70, M51 (khung fuzz); file `fuzz/*.cpp`, `CMakeLists.txt` (đích fuzz)): đích libFuzzer (khung `PB_FUZZ`, `tools/fuzz.sh` của M51) cho AVIF, JPEG XL, EXR, GIF, phần P2 của PSD (chữ và `EngineData`, style, smart, vector, CMYK), preset Photoshop, file action JSON; vòng 1 triệu chạy ở đợt Q.
+- [ ] **R71 · Fuzz bộ đọc P2** (build, test; Nhỏ; cần M70–M77, M82, W70, M51 (khung fuzz); file `fuzz/*.cpp`, `CMakeLists.txt` (đích fuzz)): đích libFuzzer còn thiếu (task bộ đọc đã thêm harness của mình, mục Cách phối hợp; khung `PB_FUZZ`, `tools/fuzz.sh` của M51) cho AVIF, JPEG XL, EXR, GIF, phần P2 của PSD (chữ và `EngineData`, style, smart, vector, CMYK), preset Photoshop, file action JSON; vòng 1 triệu chạy ở đợt Q.
   **Xong khi:** mỗi đích chạy 10.000 vòng trong ctest không crash; lệnh chạy dài ghi trong dòng task.
 - [ ] **R72 · macOS: CI và gói với Metal** (build; Nhỏ; cần K70, R2 (CI), R35 (DMG), R36 (workflow phát hành); file `.github/workflows/ci.yml`, `pack/mac.sh`): job macos-14 build backend Metal, chạy test GPU trên Metal; DMG gói bản Metal (không cần MoltenVK); ký, notarize như snapone.
   **Xong khi:** CI xanh trên macos-14 với Metal; (bạn) mở DMG chạy được trên máy Mac.
@@ -491,7 +498,6 @@ Thay dữ liệu giả của U bằng lõi P2, như bước N của `docs/ui-tas
   | Tài liệu CMYK so RGB (E72) | chậm hơn ≤ 1,5 lần | | | |
   | PSD thật có chữ, style, smart filter (E73) | ΔE2000 trung bình < 1 | | | |
   | Beta (E74) | mỗi nhóm làm trọn việc thật | | | |
-
   **Xong khi:** bảng đạt hết hay mỗi dòng trượt có task sửa; bạn chốt qua G3, rồi chia task P3.
 
 ### Q · Đợt tích hợp
@@ -510,72 +516,3 @@ Cố ý không có trong task P2 (P3 theo plan, hay chỉ làm khi số đo, ng�
 - **Lens Correction:** dữ liệu Lensfun (chờ quyết định chung với snapone, Cần bạn chốt 9).
 - **Chữ:** ngắt từ ngoài en-US (khi người dùng cần; tiếng Việt không ngắt).
 - **Hiệu năng, nền tảng:** FP16 chỉ giữ khi đo thấy lợi (K72); không có hàng đợi compute riêng thì chạy như cũ (K73); không có máy Mac thì Metal sang P3 (Cần bạn chốt 4).
-
-## Ghi chú ghép
-
-Cho lead; xóa mục này khi chép thành `docs/p2-tasks.md`.
-
-- **Nguồn:** nháp `p2.md` của agent p2 (19/10): 145 task cộng Q70–Q89, 20 lô. Sau ghép 144 task (bỏ Y72), Q70 và một dòng Q71–Q89; vẫn 20 lô, sau lô 20 là E75.
-- **Bỏ Y72** (Kiểu Warp, Nhỏ): X32 của P1 đã làm Warp Style 15 kiểu (Bend −100…100%, H, V Distortion, ngang, dọc, ra lưới Bezier), T38 đã có ảnh mẫu Warp 15 kiểu ở Bend ±50%. N78 cần X32 thay Y72 (Warp Text dùng lưới đó trên đường viền glyph); E71 bỏ "warp 15 kiểu trên lưới caro"; Bend mặc định 50% của Warp Text ghi sang U83; mã Y72 bỏ trống.
-- **Giữ I70** (đường cong lực nhấn), dù lời giao lấy làm ví dụ: P1 không làm (Cần bạn chốt 23 và mục Để sau của p1-tasks.md để nó sang P2; I30 chỉ đưa lực nhấn, nghiêng tới `PenEvent`). Bỏ câu "bỏ nếu P1 đã làm" của nháp.
-- **Bớt phần P1 đã làm:** M74: Global Light (1037, 1049) M44 đã đọc, ghi. M77: `vogk`, `vstk`, `SoCo`, `GdFl` của layer hình đã có ở M46; M77 thêm path tùy ý, `PtFl`, và file `core/psd_text.cpp` vì phần hình của M46 nằm ở đó. M81: `core/meta.*` của M33 đã đọc, ghi XMP (pugixml), IPTC, tài nguyên 1060 của PSD (M40), nên `xmp.*` của snapone chỉ chép phần thiếu. J73: RGB ↔ Grayscale, 8 ↔ 16 bit đã có ở T35. V70: bắt dính vào layer, canvas, guide đã có ở V31 (V70 thêm hình, artboard, khoảng cách đều).
-- **Thêm (chưa ai nhận), để không hai task cùng lô chung file:**
-  - A70: `StrokeOp` thêm phép tự đăng ký. Nháp ghi "công cụ theo chấm mới là file riêng tự đăng ký" nhưng A41 của P1 chỉ có Paint, Clone, Heal, Tone cố định; không có chỗ đăng ký thì C74–C77 (lô 13) cùng sửa `core/stroke.h`, `core/stroke.cpp`. A70 thêm `core/stroke.cpp`, `tests/test_stroke.cpp` và một kiểm trong Xong khi.
-  - R70 (thành "build, lõi"): bộ đọc, ghi, xuất tự đăng ký trong `core/openfile.*` (M50), `core/export.*` (M48); không có thì M70, M71 (lô 2) cùng sửa `core/openfile.cpp`.
-  - J75, J74 viết một lần cả dòng của bộ lọc, adjustment P2 vào `docs/modes.md`; nháp để mỗi task bộ lọc thêm dòng của mình, thì năm task F của lô 8 cùng sửa một file.
-  - D71 nối Image › Mode 32 → 16, 8 bit vào `core/convert.cpp` của J73 (J73 ở lô 2 đổi thẳng, kẹp 0–1 tới khi D71 vào).
-  - F80 nhận phần Engine mà M38 để lại cho P2 (GPU, mặt nạ AI, heal; `core/pipeline.*` khi cần).
-  - File thiếu trong nháp: C70 `core/fill.cpp`, `core/bucket.cpp` (Fill, Paint Bucket nhận Pattern); C71 `core/dynamics.*`, `core/stroke.h` (Scattering, Color Dynamics là động lực như C31; thêm trường `BrushParams`); L70 `core/gpu_composite.cpp` (Xong khi có GPU = CPU); I70 `core/strokelog.cpp` (đường cong lưu trong log nét); N75 `ui/shape.*` (Y32: layer hình mang path); N88 `ui/CMakeLists.txt` (glob không lấy `.mm`, I32 của P1 đã gặp); U71 `ui/qml/TopBar.qml` (ô chọn workspace); U73 `ui/qml/MenuSpec.js` (Last Filter sang Alt Ctrl F); U87 trang adjustment của Properties (preset); U78 `ui/qml/CloneSource.qml` (lớp phủ nguồn có sẵn từ U7).
-  - E74 thêm phần ngoặc theo dạng dòng task; E75 thêm bảng G3 như E37 của P1; Q71–Q89 thành dòng task như Q31–Q51 của P1.
-- **Đổi file:** C70 `shaders/lib/pattern.slang` thành `shaders/lib/pattern_fill.slang`: trùng tên với kernel thẻ thử `shaders/pattern.slang` của V1, `import pattern` có thể lấy nhầm. K70 `tests/test_gpu_*.cpp` (khi cần) thành `tests/test_gpu_metal.cpp`: J71 cùng lô 3 giữ `tests/test_gpu_composite.cpp`. R71 `tests/fuzz/*` thành `fuzz/*.cpp` theo khung của M51. D75 `tests/test_curves.cpp` thành `tests/test_adj_curves.cpp` (D33). "Mã P1" trong file của J74, J75, J76, L70, L74, H71, T70, M73, M76, N77, N78, U91 ghi thành tên file thật của p1-tasks.md; N81 bỏ "mã bộ lọc C++ giao diện của P1" (N42 chỉ có `FilterDialog.qml`).
-- **Đổi lô:** R72 từ lô 17 sang lô 18: cùng `.github/workflows/ci.yml` với E72 ở lô 17. U73 từ lô 2 sang lô 3: U71 làm "ô chọn workspace ở thanh trên" nên giữ `ui/qml/TopBar.qml`, mà U73 (ô tìm lệnh) cũng sửa file đó; lô 3 thành 9 task (K70 chờ máy Mac).
-- **Phụ thuộc đổi từ tên sang mã** (tên của nháp → mã p1-tasks.md):
-  - P1 xong, mọi đổi hợp đồng P1, giao diện P1 xong → E37 (A70, R70), A30, A31, A40, A41 (A70), U30–U35, N30–N39, N42–N53 (U70);
-  - khung bộ lọc → F30; Gaussian Blur, Unsharp Mask → F32; bộ lọc P1 → F32–F38; áp bộ lọc full size → F30;
-  - 16 adjustment → D31, D33–D40 (J74), D33–D39 (D74), D31, D33–D38 (M80); Curves → D33; Hue/Saturation → D35; Color Lookup → D39; fill layer → D40;
-  - layer style P1 → L30–L32, L34; ô hiệu ứng trên GPU (K73) → L34 (P1 tính ô hiệu ứng trên CPU, ghép trên GPU) cộng L71–L73 (kernel hiệu ứng GPU của P2); smart object nhúng → L33, L35 (chỗ rẽ của A71: A31, L33, L35);
-  - Blend If, mặt nạ trong ghép → B34; mặt nạ → B32 (B34, B36 khi là ghép); blend mode → B31; kênh alpha → A40, S37;
-  - engine cọ đủ → A41, C30–C35 (C71: A41, C30, C31, C35); Fill → C39; Paint Bucket → C38; Gradient → C36; Eyedropper → C40;
-  - vùng chọn → S31; guided filter → S38; Magic Wand → S33; Color Range → S34; Select and Mask → S35;
-  - Clone Stamp → H30; Healing Brush → H32 (màng: H31); Spot Healing → H33; mặt nạ da → H37; retouch chân dung → H36–H39; "công cụ retouch theo vùng" (H70) → H33, S33;
-  - tìm mặt → O32; Free Transform → X31; Warp → X32; lấy mẫu ngược → X30;
-  - clipboard → T36; Color Settings, Image › Mode → T35; guide, snap → V31;
-  - mở RAW, pipeline snapone → M37, M38; descriptor → M39; đọc, ghi PSD giữ khối lạ → M40, M41; style, smart object, chữ và hình của PSD → M44, M45, M46; PSD CMYK mở bằng cách chuyển → M47; Export As → M48; mở, lưu theo định dạng → M50; nén gọn `.pbd` → M31; metadata → M33; khung fuzz → M51;
-  - chữ, hình → Y30, Y32 (N77: Y30, Y33); bút → I30; CI, bộ cài → R2, R35, R36; bản đủ của D4 → E30; khung g2 → E31; khung ảnh mẫu → B30;
-  - `command_from_json()` → N1 của ui-tasks.md (JSON thao tác trên mỗi bước: A40); `PresetGrid` (nháp ghi P1) → U2 của ui-tasks.md.
-- **Số Cần chốt** (nháp → mới): 8 → 1, 1 → 2, 2 → 3, 3 → 4, 5 → 5, 6 → 6, 9 → 7, 7 → 8, 4 → 9, 10 → 10; tham chiếu trong D74, E71, F75, J73, K70, M72, M73, M82, N85 và đoạn đầu nhóm U đổi theo.
-- **Mục của nháp không chép thành mục riêng:** Phụ thuộc sang phần khác (P1 thành mã trong dòng task; snapone, việc của bạn sang Cách phối hợp); P3 cần từ P2, cho lúc ghép p3: định dạng action JSON (W70) cho nhập `.atn`; lượng tử hóa (M72) cho Indexed Color, GIF động; hợp đồng nhiều mode (A70) cho Lab, Multichannel, Duotone, Bitmap; path (A72, Y70) cho xuất SVG, Puppet Warp; smart object, style (A71) cho Layer Comps; Blur Gallery (F71) cho Lens Blur theo độ sâu; Clone Source (H71); engine chữ (N77, N78) cho Match Font; Rủi ro (bảng cuối mục này).
-- **Kiểm** (script, 20/10): mã không trùng trong P2 và với P0, giao diện, P1; mọi mã trong "cần" có thật; task P2 cần nằm ở lô trước (trừ L76 → X70, tùy chọn "khi đã có", nghi vấn 3); không hai task cùng lô chung file (so cả glob, file "mã P1" đã ghi tên thật); mỗi chuỗi giữ file ở mục Cách phối hợp đi theo lô tăng dần.
-- **Nghi vấn:**
-  1. W70 cần `command_from_json()` cho mọi lệnh: N1 của ui-tasks.md chỉ thêm "khi cần", P1 không có task bảo đảm (quy ước P1 chỉ ghi JSON thao tác trên mỗi bước). Thiếu thì W70 phải sửa `core/doc.*` theo luật hợp đồng, mà A70 cùng lô 1 đang giữ: W70 chờ A70 merge, hay A70 thêm luôn.
-  2. A70 sửa mọi chỗ gọi cho định dạng mới: có thể chạm `core/clipboard.cpp` (T70), `core/openfile.*`, `core/export.*` (R70) cùng lô 1; như lô 0 của P1, A70 merge trước, hai task kia rebase. Hay tách A70 thành lô riêng như lô 0 của P1.
-  3. L76 (lô 7) gọi X70 (lô 13) cho "Attempt to Automatically Align Source Images": L76 làm không căn, X72 (lô 15, cần X70, L76) nối tùy chọn đó; hay dời L76 sau X70.
-  4. Mở, lưu JPEG, TIFF CMYK và TIFF 32 bit giữ nguyên mode chưa có task: M47 của P1 chuyển sang RGB 16 bit; M76 chỉ PSD, M71 chỉ EXR. In CMYK (beta E74, bộ 50 tác vụ) thường cần TIFF CMYK: thêm M83 hay gộp vào M76.
-  5. P1 để lại cho P2 mà nháp chưa nhận: style trên nhóm (Cần bạn chốt 8 của P1); Fill Type Gradient, Pattern của Stroke (L31 của P1); Noise của Drop Shadow; Noise gradient; mũi tên của Line, nét đứt, hộp cỡ khi nhấp không kéo, chế độ Pixels của Shape (Để sau của P1); DNG nén JPEG XL (libjxl có từ R70). Thêm vào L70, L73, Y73 hay task mới khi soạn lại ở G2.
-  6. F80 (Camera Raw Filter, Vừa) nhận cả mặt nạ AI, GPU của Engine mà M38 để lại: có thể phải tách F80b.
-  7. J76 (Vừa) chạm khoảng 13 file P1 của nhóm C, S, H: có thể tách J76b (Healing, Clone trên CMYK, 32 bit).
-  8. H70: "công cụ retouch theo vùng (P1)" không trỏ đúng task nào; ghi H33 (khuôn công cụ nhấp một bước), S33 (tìm vùng liền).
-  9. C72 (Symmetry): path đối xứng của Photoshop là một loại path trong panel Paths; nháp không cần A72, Y70 (đều ở lô trước C72, thêm được khi soạn lại).
-  10. M73 làm chỗ tự đăng ký khối PSD: P1 chia khối theo năm file ánh xạ của M40 (`psd_mask`, `psd_adjust`, `psd_fx`, `psd_smart`, `psd_text`), chưa phải chỗ đăng ký; nên M73 giữ `core/psd_read.cpp`, `core/psd_write.cpp`, `core/psd_internal.h` ở lô 4.
-  11. K70 viết ở đây rồi snapone chép ("chung snapone"): khi snapone làm Metal trước thì ngược lại, chép sang `core/`; không ghi gì vào `~/snapone`.
-  12. Lô 17–20 chỉ 6, 5, 3, 2 task (đuôi N và việc của bạn); nếu N1 chạy mọi lệnh qua `run()`, gộp được như ghi ở mục Thứ tự.
-- **Rủi ro của nháp** (giữ cho lead soạn lại ở G2):
-
-  | Rủi ro | Cách giảm |
-  | --- | --- |
-  | CMYK, 32 bit chạm mọi module của P1; bỏ sót lộ ra muộn | A70 cho chỗ chưa hỗ trợ ném lỗi rõ; J74–J76 quét theo bảng mode; đợt Q chạy ma trận mỗi bộ lọc, adjustment, công cụ × 5 định dạng |
-  | Compositor và đường GPU bị 8 task lần lượt sửa | Thứ tự file cố định ở mục Cách phối hợp; mỗi task giữ test so khớp CPU, GPU của B3; lô nhỏ nên bisect rẻ |
-  | Layer style, Smart Sharpen, HDR Toning, Oil Paint, Blur Gallery không có công thức công khai | Ảnh mẫu E71, dung sai từng hiệu ứng; bộ lọc nghệ thuật bạn duyệt; plan.md đã chấp nhận khác nhỏ ở bộ lọc nghệ thuật |
-  | PSD: `EngineData` ghi lại làm Photoshop dàn chữ khác hay từ chối file | Chữ không sửa giữ khối gốc từng byte (M73); bộ E73 mở lại trong Photoshop ở đợt Q có PSD (bạn) |
-  | G3 cần ΔE2000 < 1 với PSD thật có chữ, style, smart filter | Cần bạn chốt 7; style đi theo ảnh mẫu từng hiệu ứng; smart filter chưa có ánh xạ hiện ảnh đã lưu (M75) |
-  | Không có máy Mac cho Metal | Cần bạn chốt 4; MoltenVK, CPU tạm như snapone |
-  | Actions cần mọi lệnh ghi, chạy lại được bằng JSON | W70 ghi rồi chạy lại mọi lệnh trong test; lệnh P1 thiếu JSON thành task sửa (nghi vấn 1) |
-  | Giao diện P2 chưa có prototype | Cần bạn chốt 2; duyệt ảnh chụp ở đợt Q |
-  | `ui/docmodel.*`, `ui/session.*` thành nút cổ chai của N | Lệnh mới qua `run()` JSON chung của N1; phần mới ở file riêng |
-  | QTextLayout không có dàn chữ dọc | N77 tự dàn theo glyph; thử chữ Nhật, Trung trên ba hệ điều hành; tiếng Việt, Latin ưu tiên |
-  | QPrinter cần Qt Print Support (hộp thoại máy in kéo Qt Widgets) | Chỉ dùng QPrinter, hộp thoại tự làm (U89); R70 và Q đo cỡ bộ cài |
-  | Bằng sáng chế ở công cụ của Adobe (Quick Selection, Focus Area, Auto-Blend…) | Thuật toán theo bài báo công khai (Boykov–Kolmogorov, Reinhard, Debevec–Malik, blur-fusion, Schneider, Liang); luật sư xem danh sách công cụ P2 cùng đợt điểm 5 của plan.md |
-  | Tài liệu 32 bit tốn bộ nhớ (F32 gấp đôi U16; D1 32 bit khoảng 3 GB điểm ảnh) | Ngân sách chung của K1; E70 dựng D1 F32; RSS đo ở đợt Q |
-  | libavif, libjxl, openexr làm bộ cài vượt 150 MB | R70 đo; chỉ build phần cần (dav1d giải mã, libaom chỉ mã hóa), tắt công cụ đi kèm của thư viện |
-
-- **Còn thiếu:** không còn phần kiểm hay đổi phụ thuộc nào sót: bốn phép kiểm ở dòng Kiểm đã chạy trên bản cuối, sạch (chỉ còn L76 → X70, nghi vấn 3). Các việc mở là nghi vấn 1–12 ở trên, để lead quyết. Script dựng và kiểm nằm ở `/tmp/claude-1000/-home-ndmt1at21-photo-beauty/fa0f04d2-26f0-4784-b140-0017710eca8f/scratchpad/gen.py`, `check.py` (thư mục tạm của phiên, có thể đã bị dọn); `check.py` chạy lại được nếu lead đổi lô hay file.
