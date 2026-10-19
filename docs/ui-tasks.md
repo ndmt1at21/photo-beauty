@@ -205,6 +205,13 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 - [ ] **U24 · CI của giao diện** (build; Nhỏ; cần R2, U4; file `.github/workflows/ci.yml`): job `ui` trên ubuntu-24.04 (Qt 6.11.3 qua install-qt-action): build, `all_qmllint`, ctest `ui`, chụp `--state` của mọi artboard làm artifact `ui-screenshots`; job `ui-mingw` build được.
 
   **Xong khi:** CI xanh với job `ui`, ảnh chụp tải lên được.
+- [ ] **U25 · Hộp thoại bổ sung** (đang làm, 19/10; giao diện; Vừa; cần U23; thiết kế mới trên canvas Claude Design https://claude.ai/artifact/N6E4UZXQunk1bVn4KqY3Gm, cùng style prototype, bản chép `build/design2/project/*.dc.html`; file: `ui/qml/<Tên>Dialog.qml` mới, mục của mình trong `ui/qml/MenuSpec.js`, `ui/qml/AdjustRows.qml` (bánh răng Tùy chọn Auto), `ui/qml/LiquifySpace.qml` (ba nút Mask), `ui/tests/tst_u25*.qml`): các mục bấm được mà chưa làm gì vì prototype không vẽ hộp thoại.
+  - Phần a, Select: Color Range… (cả nút Color Range… ở trang mask của Properties), Modify › Border, Smooth, Expand, Contract, Feather.
+  - Phần b, Edit và Image: Fade…, Define Brush Preset…, Xoay ảnh › Tùy ý…, Trim…; thêm ba nút None, Mask All, Invert All của Liquify (hiệu ứng giả).
+  - Phần c: Tùy chọn Auto của Levels; Help › Về photo-beauty, Thông tin hệ thống…, Gửi báo lỗi…, Kiểm tra cập nhật….
+  - Mục chỉ có nghĩa trên điểm ảnh thật (Cắt, Sao chép, Xóa, Grow, Similar, Rasterize…) để cho N.
+
+  **Xong khi:** mỗi mục trên mở hộp thoại như artboard của canvas (đo so artboard); OK ghi một bước History giả như các hộp thoại khác; mỗi hộp thoại có test.
 
 ### N · Nối lõi
 
