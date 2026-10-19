@@ -283,7 +283,7 @@ var MENUS = [
         SEP,
         { l: qsTr("Mọi layer"), k: "Ctrl Alt A", act: "@noop" },
         SEP,
-        { l: qsTr("Color Range…"), act: "@noop" },
+        { l: qsTr("Color Range…"), dialog: "ColorRange", req: "doc" },
         { l: qsTr("Subject"), act: "@ants:subject" },
         { l: qsTr("Chân dung"), w: 196, sub: [
             { l: qsTr("Da"), act: "@ants:skin", req: "faces" },
@@ -296,11 +296,11 @@ var MENUS = [
         SEP,
         { l: qsTr("Select and Mask…"), k: "Ctrl Alt R", space: "SelectMask", req: "doc" },
         { l: qsTr("Modify"), req: "sel", w: 200, sub: [
-            { l: qsTr("Border…"), act: "@noop", req: "sel" },
-            { l: qsTr("Smooth…"), act: "@noop", req: "sel" },
-            { l: qsTr("Expand…"), act: "@noop", req: "sel" },
-            { l: qsTr("Contract…"), act: "@noop", req: "sel" },
-            { l: qsTr("Feather…"), k: "⇧ F6", act: "@noop", req: "sel" }
+            { l: qsTr("Border…"), dialog: "ModifySelection", params: { kind: "border" }, req: "sel" },
+            { l: qsTr("Smooth…"), dialog: "ModifySelection", params: { kind: "smooth" }, req: "sel" },
+            { l: qsTr("Expand…"), dialog: "ModifySelection", params: { kind: "expand" }, req: "sel" },
+            { l: qsTr("Contract…"), dialog: "ModifySelection", params: { kind: "contract" }, req: "sel" },
+            { l: qsTr("Feather…"), k: "⇧ F6", dialog: "ModifySelection", params: { kind: "feather" }, req: "sel" }
         ] },
         { l: qsTr("Grow"), act: "@noop", req: "sel" },
         { l: qsTr("Similar"), act: "@noop", req: "sel" },

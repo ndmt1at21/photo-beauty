@@ -378,7 +378,7 @@ Item {
             compare(d.history.length, n + 2)
             const btn = t => find(p, o => o instanceof Btn && o.text === t)
             verify(btn("Select and Mask…").enabled, "opens Select and Mask once U15 has it")
-            verify(!btn("Color Range…").enabled, "no such dialog yet")
+            verify(!btn("Color Range…").enabled, "outside Main, nowhere to open it (tst_u25a opens it from Main)")
             const mask = d.active.props.mask
             mouseClick(btn("Invert"))
             verify(d.active.props.mask !== mask)
