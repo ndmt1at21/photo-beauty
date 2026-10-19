@@ -21,6 +21,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Panel | U8–U14 | dock và 16 panel | Xong (18/10) |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Xong (18/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10); U23: các phần sửa đã vào, trang soát v3 chờ bạn duyệt (19/10) |
+| Bổ sung | U25, U26 | hộp thoại prototype không vẽ; Độ trễ thấp (G1) | Đang làm (20/10): U25b đã vào |
 | Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
 
 ## Cách làm
@@ -48,6 +49,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 Đợt 6  U7 (U6)   U9   U10   U11   U12   U13 (U8)   U16   U17   U18   U19   U21   U22 (U4)   U20 (U5)
 Đợt 7  U14 (U7, U8)   U15 (U6, U7)
 Đợt 8  U23 (U4–U22)                                          U24 (R2, U4)
+Đợt 9  U25 (U23)   U26 (U21, C3c)
 Nối    V1 gắn vào Viewport.qml (U6) → V2 → C3 → N3 (U5, C3)
        N1 (U9, U12, T2, M1, K2) → N2 (N1, M2, M3, K1)
 
@@ -215,6 +217,8 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 
 ### N · Nối lõi
 
+- [ ] **U26 · Độ trễ thấp trong Thiết lập › Hiệu năng** (đang làm, 20/10; giao diện; Nhỏ; cần U21, C3c (p0-tasks.md); file `ui/main.cpp`, `ui/qml/Prefs.qml` (khóa `lowLatency` trong `perf`), `ui/qml/SettingsDialog.qml` (hàng ở trang Hiệu năng), `ui/tests/tst_u26.qml`): G1 bạn chốt 20/10: vsync FIFO mặc định, lựa chọn "Độ trễ thấp (có thể xé hình)" tắt sẵn, có hiệu lực từ lần mở app sau (ghi chú như dòng Ngôn ngữ). Bật thì `ui/main.cpp` đặt `QSG_NO_VSYNC=1` trước khi tạo cửa sổ (bản B của `build/orch/api/c3c-vsync.md`: đọc `prefs/json` của QSettings; biến môi trường đã đặt thì thắng): Vulkan lấy MAILBOX khi driver có, không thì IMMEDIATE (Iris Xe), D3D11 trình bày với interval 0.
+  **Xong khi:** `tst_u26`: hàng có ở trang Hiệu năng, mặc định tắt, bật thì lưu `lowLatency` và giữ qua `Prefs.restore()`; một lần: `pb-ui` chạy với `lowLatency` bật trong QSettings có `QSG_NO_VSYNC=1` trong `/proc/<pid>/environ`, tắt thì không, biến đặt sẵn thì giữ nguyên; đợt tích hợp: trên Iris Xe, bật thì hoạt cảnh không còn khóa ở 60 fps.
 - [ ] **N1 · Mở ảnh thật, Layers và lịch sử trên lõi** (giao diện, lõi; Vừa; cần U9, U12, T2, M1, K2; file `ui/session.h`, `ui/session.cpp`, `ui/docmodel.h`, `ui/docmodel.cpp`, `ui/qml/Docs.qml`, `ui/qml/Doc.qml`, `ui/qml/Main.qml` (mở file theo đường dẫn đủ, bản giả chỉ lấy tên), `ui/qml/Overlays.qml` (thanh báo), `ui/CMakeLists.txt`, `ui/tests/main.cpp`, `ui/tests/tst_n1.qml`; cần đọc lệnh từ JSON thì thêm `command_from_json()` vào `core/doc.h`, `core/doc.cpp`, theo luật hợp đồng): `pb-ui` link `pb_core`. `Session` (C++): mở JPEG, PNG, TIFF bằng `open_image()` (M1) ở job Background, từ dòng lệnh, File › Mở (hộp thoại của hệ điều hành), kéo thả, danh sách gần đây. `DocModel` (C++) có cùng API với `Doc` giả cho phần lõi có: cây layer (model ảo hóa của cây đã trải), thuộc tính, lệnh qua `run()` (T1) vào `Document` (T2: undo, redo, nhảy bước, gộp cử chỉ, tên bước), thumbnail layer từ `mip()` (K2) qua image provider. Hai việc T1 để giao diện quyết (HANDOFF) làm như prototype, gộp trong một bước: xóa layer thì chọn layer kề, bản nhân bản thêm " bản sao" vào tên. Trên tài liệu thật, lệnh và control lõi chưa có thì mờ, khóa (quyết định 4, qua `can()`); canvas thật (V1, V2, C3b) vẽ `Document` của tài liệu đang mở (mục "Cho N1" của `build/orch/api/c3b.md`). Cho task N của P1 ([p1-tasks.md](p1-tasks.md)): `CanvasBar` trong `Overlays.qml` đọc `notice`, `task`, `progress` của tài liệu; hành động menu không có case trong `Docs.exec` chạy `run({ op: tên, arg })`, nên N sau chỉ đổi mục của mình trong `MenuSpec.js`.
 
   **Xong khi:** test: mở PNG → Layers có Background → thêm, xóa, đổi tên, blend, opacity, ẩn hiện, nhóm đổi `DocState`, undo trả lại đúng `id` ô (T2), History nhảy bước; panel Layers với 1.000 layer (dáng D4) cuộn ≥ 60 fps; lệnh P1 mờ trên tài liệu thật; mọi test U vẫn qua trên tài liệu giả.
