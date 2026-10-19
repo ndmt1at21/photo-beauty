@@ -16,6 +16,7 @@
 #include "composite.h"
 #include "composite.spv.h"
 #include "composite_copy.spv.h"
+#include "jobs.h"
 #include "profile.h"
 
 namespace pb {
@@ -87,6 +88,8 @@ class Slots {
       stamp_.push_back(0), keys_.emplace_back(), held_.push_back(false);
     }
   }
+  bool has(const Key& key) const { return index_.count(key) != 0; }
+  int held() const { return int(index_.size()); }  // slots holding a key
   int find(const Key& key, uint64_t stamp) {  // the slot holding key, used now; -1 if none
     const auto it = index_.find(key);
     if (it == index_.end()) return -1;
@@ -257,6 +260,15 @@ struct GpuComposite::Impl {
     }
   }
 
+  // The layer tiles composite() would upload for t: those it reads that the atlas lacks.
+  int uploads(const Todo& t) const {
+    int n = 0;
+    for (size_t i = t.load.empty() ? 0 : t.at; i < t.plan.steps.size(); i++)
+      for (const Tile* tile : {t.plan.steps[i].tile.get(), t.plan.steps[i].cover.get()})
+        n += tile && !tile->is_solid() && !atlas.slots.has(tile->id());
+    return n;
+  }
+
   // The atlas slot holding t (`bytes` of it), uploaded if it was not there; -1 when the batch uses every slot.
   int resident(const Tile& t, size_t bytes) {
     int s = atlas.slots.find(t.id(), batch);
@@ -353,7 +365,8 @@ int GpuComposite::output_tiles() const { return impl_->out.slots.size(); }
 size_t GpuComposite::bytes() const { return impl_->bytes(); }
 GpuComposite::Stats GpuComposite::stats() const { return impl_->stats; }
 
-std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const std::vector<TileXY>& tiles) {
+std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const std::vector<TileXY>& tiles,
+                                         size_t optional, int most) {
   PROFILE_ZONE("gpu_composite");
   Impl& m = *impl_;
   if (!in.doc) throw std::invalid_argument("pb: GpuComposite: no document");
@@ -366,7 +379,14 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   // Each tile's plan, and the keys of what the caches have; what the stores lack for the rest.
   std::vector<int> slots(tiles.size(), -1);
   std::vector<Todo> todo;
+  int waiting = 0;                 // optional tiles past `most`
+  const bool budgeted = most > 0;  // once spent, the rest wait unplanned: plans cost too
+  bool spent = false;              // some tile took of `most`: a tile of more layers than it still comes in turn
   for (size_t i = 0; i < tiles.size(); i++) {
+    if (i >= optional && budgeted && most <= 0) {
+      slots[i] = -2, waiting++;
+      continue;
+    }
     Todo t{i, composite_plan(in, level, tiles[i].x, tiles[i].y)};  // the tiles composite_tile() reads
     if (t.plan.steps.empty()) continue;
     t.key = m.key(t.plan, 0, t.plan.steps.size());
@@ -375,18 +395,38 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
       continue;
     }
     if (t.plan.depth <= kMaxDepth) m.split(t);
+    if (i >= optional) {  // in order while they fit `most`; the first that does not ends it, but for the first of all
+      const int n = m.uploads(t);
+      if (n > 0 && (most <= 0 || (n > most && spent))) {
+        slots[i] = -2, waiting++, most = 0;
+        continue;
+      }
+      most -= n, spent = spent || n > 0;
+    }
     todo.push_back(std::move(t));
   }
   int levels = 0;                      // accumulators the cache below the stroke's layer gives or takes
   std::unordered_set<uint64_t> reads;  // the atlas's tiles the GPU reads
+  std::vector<const Tile*> cold;       // of them, those it lacks
   for (const Todo& t : todo) {
     if (t.plan.depth > kMaxDepth) continue;
     levels += t.levels;
     for (size_t i = t.load.empty() ? 0 : t.at; i < t.plan.steps.size(); i++)
       for (const Tile* tile : {t.plan.steps[i].tile.get(), t.plan.steps[i].cover.get()})
-        if (tile && !tile->is_solid()) reads.insert(tile->id());
+        if (tile && !tile->is_solid() && reads.insert(tile->id()).second && !m.atlas.slots.has(tile->id()))
+          cold.push_back(tile);
   }
-  m.fit(m.out, m.stats.cached + int(todo.size()));
+  {  // their pixels back in RAM on the pool's threads first (zstd, scratch), not one by one as they go up below
+    PROFILE_ZONE("gpu_composite_warm");
+    parallel_for(int(cold.size()), [&](int begin, int end) {
+      for (int i = begin; i < end; i++) cold[size_t(i)]->pin();
+    });
+  }
+  // Room for those waiting too, as they come; and in a call where some wait (a view change, V2c) for what it holds:
+  // it grows to its cap before any tile goes, so that the levels a frame stands in from and the views it comes back
+  // to stay, as the CPU's cache does.
+  const int held = waiting ? m.out.slots.held() : 0;
+  m.fit(m.out, std::max(m.stats.cached + int(todo.size()) + waiting, held + int(todo.size())));
   m.fit(m.atlas, int(reads.size()));
   m.fit(m.below, levels);
   if (int(reads.size()) <= m.atlas.slots.size())  // one batch: those there stay while the others go up

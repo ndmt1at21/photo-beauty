@@ -82,10 +82,11 @@ Image shoot(Presenter& p, gpu::Device* dev, const RenderInput& in, const View& v
   return im;
 }
 
-// Frames until one is not pending: the sharp one.
+// Frames until one is not pending: the sharp one, within 200.
 Image settle(Presenter& p, Ready& r, gpu::Device* dev, const RenderInput& in, const View& v, const Look& look = {},
              Presenter::Frame* out = nullptr) {
-  for (;;) {
+  for (int i = 0;; i++) {
+    CHECK(i < 200);
     const int n = r.count();
     Presenter::Frame f;
     Image im = shoot(p, dev, in, v, look, &f);
@@ -97,11 +98,12 @@ Image settle(Presenter& p, Ready& r, gpu::Device* dev, const RenderInput& in, co
   }
 }
 
-int max_diff(const Image& a, const Image& b) {
+// Over pixels [x0, x1) x [y0, y1), all of them by default.
+int max_diff(const Image& a, const Image& b, int x0 = 0, int y0 = 0, int x1 = 1 << 30, int y1 = 1 << 30) {
   CHECK(a.w == b.w && a.h == b.h);
   int m = 0;
-  for (int y = 0; y < a.h; y++)
-    for (int x = 0; x < a.w; x++)
+  for (int y = y0; y < std::min(y1, a.h); y++)
+    for (int x = x0; x < std::min(x1, a.w); x++)
       for (int c = 0; c < 4; c++) m = std::max(m, std::abs(int(a.at(x, y)[c]) - int(b.at(x, y)[c])));
   return m;
 }
@@ -492,6 +494,82 @@ void check_edits(gpu::Device* dev) {
   }
 }
 
+// v zoomed to z about canvas point (qx, qy), as the pointer zooms: the document point under it stays there.
+View zoom_about(const View& v, double qx, double qy, double z) {
+  View w = v;
+  w.zoom = z;
+  const std::array<double, 2> a = v.to_doc(qx, qy), b = w.to_doc(qx, qy);
+  w.x += a[0] - b[0], w.y += a[1] - b[1];
+  return w;
+}
+
+// A view change composites the tiles it newly shows within the upload budget, from the pointer's tile out (a tile a
+// frame here: the test document's tiles each read a layer tile at least); meanwhile the others show from the level
+// below where it has them composited (a zoom out), else from a coarser one, the top's at last; then sharp, as a new
+// presenter's frame. Tiles composited before show at once, as does what changes under the view (the stroke, an edit)
+// with no budget at all. The first frames of the zoom out and the pan into `first`, for the CPU's against the GPU's.
+void check_wait(gpu::Device* dev, std::vector<Image>* first) {
+  const RenderInput in{sample({Depth::U16, 4})};  // 1500 x 1100: levels 0 to 3, the top
+  clear_mips();
+  Ready r, r2;
+  Presenter p(dev, r.fn());
+  p.set_upload_budget(1);
+  const auto fresh = [&](const RenderInput& i, const View& v) {  // a new presenter's frame, sharp
+    Presenter q(dev, r2.fn());
+    return settle(q, r2, dev, i, v);
+  };
+  Presenter::Frame f;
+  settle(p, r, dev, in, view(750, 550, 0.1, 0, 640, 480), {}, &f);  // the top, once: it stands in for any
+  CHECK(!f.pending && f.tiles == 1);
+
+  // In to level 0 about the centre: the central tile comes first, then one a frame; the top's meanwhile.
+  const View va = view(750, 550, 0.55, 0, 640, 480);  // level 0's tiles 0..5 x 0..3
+  Image im = shoot(p, dev, in, va, {}, &f);
+  CHECK(f.pending && f.tiles == 24 && f.coarser == 23 && f.finer == 0 && f.missing == 0);
+  const Image a = settle(p, r, dev, in, va, {}, &f);
+  CHECK(f.coarser == 0 && f.missing == 0 && max_diff(a, fresh(in, va)) == 0);
+  CHECK(max_diff(im, a, 300, 225, 325, 260) == 0 && max_diff(im, a) > 20);  // within tile (2, 2)
+
+  // Out to level 1 about the top left: its tile first; those above level 0's composited tiles (rows 0 to 3) show from
+  // them, the bottom row from the top.
+  const View vb = zoom_about(va, 40, 40, 0.45);
+  im = shoot(p, dev, in, vb, {}, &f);
+  CHECK(f.pending && f.tiles == 9 && f.finer == 5 && f.coarser == 3 && f.missing == 0);
+  const Image b = settle(p, r, dev, in, vb, {}, &f);
+  CHECK(f.finer == 0 && f.coarser == 0 && max_diff(b, fresh(in, vb)) == 0);
+  CHECK(max_diff(im, b, 30, 30, 50, 50) == 0 && max_diff(im, b, 300, 220, 340, 260) > 0);
+  first->push_back(im);
+
+  // Back to level 0's composited tiles: at once. Then a pan down to row 4: its central tile first, the other from
+  // level 1.
+  const View vc = view(700, 300, 1, 0, 320, 240), vd = view(700, 1000, 1, 0, 320, 240);
+  shoot(p, dev, in, vc, {}, &f);
+  CHECK(!f.pending && f.tiles == 4 && f.coarser == 0);
+  im = shoot(p, dev, in, vd, {}, &f);
+  CHECK(f.pending && f.tiles == 4 && f.coarser == 1 && f.finer == 0 && f.missing == 0);
+  const Image d = settle(p, r, dev, in, vd, {}, &f);
+  CHECK(f.coarser == 0 && max_diff(d, fresh(in, vd)) == 0 && max_diff(im, d) > 0);
+  first->push_back(im);
+
+  // No budget: the stroke over the tiles shown, then an edit with a pan, at once.
+  p.set_upload_budget(0);
+  RenderInput stroke = in;
+  stroke.stroke = StrokeOverlay{1,
+                                layer(
+                                    0, {Depth::U16, 1}, 1500, 1100, [](int tx, int ty) { return tx == 2 && ty >= 3; },
+                                    [](int x, int y) { return std::array<double, 4>{(x + y) % 97 / 96., 0, 0, 0}; })
+                                    ->pixels,
+                                {0.1f, 0.2f, 0.9f}, 1, false};
+  const Image painted = shoot(p, dev, stroke, vd, {}, &f);
+  CHECK(!f.pending && f.coarser == 0 && max_diff(painted, d) > 50 && max_diff(painted, fresh(stroke, vd)) == 0);
+  LayerProps props = find_layer(*in.doc, 2)->props;  // the blobs: over two of vc's tiles
+  props.opacity = 0.4f;
+  const RenderInput edited{run(*in.doc, SetProps{2, props})};
+  const Image e = shoot(p, dev, edited, vc, {}, &f);
+  CHECK(!f.pending && f.coarser == 0 && max_diff(e, fresh(edited, vc)) == 0);
+  clear_mips();
+}
+
 void check_throws(gpu::Device* dev) {
   Presenter p(dev);
   std::vector<uint32_t> px(64 * 64);
@@ -528,6 +606,8 @@ TEST(test_present) {
   Image cpu_coarse;
   check_levels(nullptr, &cpu_coarse);
   check_edits(nullptr);
+  std::vector<Image> cpu_first, gpu_first;
+  check_wait(nullptr, &cpu_first);
   const auto dev = test::gpu_device();
   if (!dev) return;
   std::printf("present: %s\n", dev->name().c_str());
@@ -538,6 +618,8 @@ TEST(test_present) {
   check_levels(dev.get(), &gpu_coarse);
   CHECK(max_diff(cpu_coarse, gpu_coarse) <= 1);  // the coarser level's frame alike too
   check_edits(dev.get());
+  check_wait(dev.get(), &gpu_first);
+  for (size_t i = 0; i < cpu_first.size(); i++) CHECK(max_diff(cpu_first[i], gpu_first[i]) <= 1);  // tiles waiting alike
   check_gpu_cpu(*dev);
   clear_mips();
 }

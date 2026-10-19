@@ -210,6 +210,8 @@ BENCH(pan) {
   report((n + "_fit_rebuilt").c_str(), double(mips_built() - built), "mips");
   double worst = 0;
   const auto walk = [&](const std::function<View(double)>& view, double seconds, const char* name) {
+    // From the path's first view sharp: the jump there from where the last one ended is no pan or zoom.
+    report((n + name + "_start").c_str(), fr.sharp(view(0), Clock::now()), "ms");
     worst = std::max(worst, path(fr, view, seconds, n + name, false));
   };
   walk([&](double t) { return at(cx, cy, std::pow(fit, 1 - std::min(t, 1.))); }, 1.5, "_zoom_in");

@@ -11,6 +11,13 @@
 // layer just shown, the tiles a stroke changed) the frame averages up to kFrameMips mip tiles itself, else shows the
 // checkerboard there until the job is done. ponytail: hidden layers' mips wait for them to show; a Background job if
 // showing one at a level never shown stalls.
+//
+// A view change composites the tiles it newly shows within a budget (kFrameUploads layer tiles into the GPU's atlas;
+// on the CPU those composite_tile() reads), from the pointer's tile out as it zooms or turns (the centre's as it
+// pans); the others show meanwhile from the level below where it has them composited (the level a zoom out comes
+// from), else the finest above that has, the top's (the canvas in one tile) at last, and the next frames go on
+// (on_ready(), once a job brought their layer tiles back into RAM). A GPU frame with budget left and nothing waiting
+// reads ahead of the motion. What changed under the view (an edit, the stroke) always composites in the frame.
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -42,6 +49,14 @@ struct Target {
 // test_mip's D1 grid), the few above a stroke at pen-up in a few ms.
 inline constexpr int kFrameMips = 256;
 
+// Layer tiles a frame uploads (a GPU presenter) or reads (a CPU one) for the tiles a view change newly shows (the first
+// such tile even past it): on the Iris Xe some 0.2 ms of CPU each (back from zstd on the pool, into staging) and 0.2
+// to 0.3 ms of GPU (into the atlas, the composite), beside the frame's 2 to 6 ms (V2c: pb-bench pan). ponytail: a
+// fixed count: a zoom out on the Iris Xe (D1) still shows tiles coarse for 150-160 ms, idle or loaded, the next level's
+// rows coming faster than the 2 or 3 tiles a frame this composites; a budget from the frame's time left (GPU
+// timestamps in the HAL) if E4 wants that lower.
+inline constexpr int kFrameUploads = 20;
+
 class Presenter {
  public:
   // On device's GPU when there is one (the device outlives the presenter), else on the CPU. on_ready() runs on a pool
@@ -57,6 +72,7 @@ class Presenter {
     uint64_t submission = 0;  // a GPU frame's (Device::submit()): wait for it before reading the target
     int tiles = 0;            // of the view's level it shows: in view, and those beside them that bilinear reads
     int coarser = 0;          // of them, shown from a coarser level
+    int finer = 0;            // of them, shown from the level below, composited already, while theirs come
     int missing = 0;          // of them, shown as the checkerboard: no level had them
     int built = 0;            // mip tiles it averaged itself, about
   };
@@ -66,6 +82,10 @@ class Presenter {
   // a CPU one's without pixels. One thread at a time: the canvas's frame job (Latest, Interactive: V2b, C3), on the
   // device's thread.
   Frame frame(const RenderInput& in, const View& view, const Target& target, const Look& look = {});
+
+  // The layer tiles a frame may spend on the tiles a view change newly shows: kFrameUploads until set. For tests and
+  // benches; the frame's thread.
+  void set_upload_budget(int tiles);
 
  private:
   struct Impl;

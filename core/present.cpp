@@ -10,6 +10,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -241,6 +242,17 @@ struct Presenter::Impl {
   std::shared_ptr<Shared> shared = std::make_shared<Shared>();
   Latest job{Priority::Visible};
 
+  // The last frame: its document, its level and the tiles it showed at that level (sorted), so that a frame of a view
+  // change tells the tiles it shows newly.
+  int budget = kFrameUploads;
+  std::weak_ptr<const DocState> last_doc;
+  int last_level = -1;
+  std::vector<TileXY> last;
+  View::Pixels last_px;  // its view, whatever it showed
+  // Tiles (level, x, y) composited for its document since it came: shown, standing in or read ahead, in the cache
+  // unless it let them go since; what stands in for tiles waiting, or need not be read ahead.
+  std::set<std::array<int, 3>> done;
+
   int missing(int level, int tx, int ty, int most) {
     const std::array<int, 3> at{level, tx, ty};
     if (const auto it = known.find(at); it != known.end()) {
@@ -253,10 +265,18 @@ struct Presenter::Impl {
     return n;
   }
 
-  // Has the job make the mips of `tiles` at `level`, most urgent first.
-  void request(int level, std::vector<TileXY> tiles) {
-    job.submit([sh = shared, gs = grids, level, tiles = std::move(tiles)](const CancelToken& token) {
+  // Has the job make the mips of `tiles` at `level`, most urgent first, calling on_ready() after each chunk; then the
+  // top level's (`top`, -1: none), the canvas in one tile, which may stand in for any; then bring back into RAM (zstd,
+  // scratch) the layer tiles of `waiting`, tiles of `in` at `level` that wait to composite, about two frames' budget
+  // of them, and call on_ready() for the next frame to go on.
+  void request(int level, std::vector<TileXY> tiles, int top, const RenderInput& in, std::vector<TileXY> waiting) {
+    job.submit([sh = shared, gs = grids, level, tiles = std::move(tiles), top, in, waiting = std::move(waiting),
+                most = 2 * budget](const CancelToken& token) {
       PROFILE_ZONE("present_mips");
+      const auto ready = [&] {
+        const std::lock_guard l(sh->m);
+        if (sh->on_ready) sh->on_ready();
+      };
       for (size_t at = 0; at < tiles.size();) {
         if (cancelled(token)) return;
         const size_t n = std::min(kChunk, tiles.size() - at);
@@ -268,9 +288,25 @@ struct Presenter::Impl {
         });
         at += n;
         sh->made++;
-        const std::lock_guard l(sh->m);
-        if (sh->on_ready) sh->on_ready();
+        ready();
       }
+      if (top >= 0 && !cancelled(token)) {
+        parallel_for(int(gs.size()), [&](int begin, int end) {
+          for (int i = begin; i < end; i++) mip(*gs[size_t(i)], top, 0, 0);
+        });
+        sh->made++;
+      }
+      if (waiting.empty() || cancelled(token)) return;
+      PROFILE_ZONE("present_warm");
+      std::vector<TilePtr> cold;
+      for (size_t i = 0; i < waiting.size() && int(cold.size()) < most; i++)
+        for (const CompositeStep& s : composite_plan(in, level, waiting[i].x, waiting[i].y).steps)
+          for (const TilePtr& t : {s.tile, s.cover})
+            if (t && !t->is_solid()) cold.push_back(t);
+      parallel_for(int(cold.size()), [&](int begin, int end) {
+        for (int i = begin; i < end; i++) cold[size_t(i)]->pin();
+      });
+      ready();
     });
   }
 
@@ -326,6 +362,8 @@ Presenter::~Presenter() {
   impl_->job.submit([](const CancelToken&) {});  // the running job stops at its next chunk
 }
 
+void Presenter::set_upload_budget(int tiles) { impl_->budget = tiles; }
+
 Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const Target& target, const Look& look) {
   PROFILE_ZONE("present");
   Impl& m = *impl_;
@@ -375,15 +413,23 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     return s1 >= -0.5 && s0 <= W - 0.5 && t1 >= -0.5 && t0 <= H - 0.5;
   };
 
-  // The frame's level's tiles it reads, from its centre out.
+  // The frame's level's tiles it reads, from its anchor out: the pixel a zoom or turn since the last frame keeps in
+  // place (the pointer's, as Photoshop zooms), else its centre.
+  const View::Pixels before = m.last_px;
   const TileRect w0 = window(L);
   std::vector<TileXY> want;
   for (int ty = w0.y0; ty < w0.y1; ty++)
     for (int tx = w0.x0; tx < w0.x1; tx++)
       if (seen(L, tx, ty)) want.push_back({tx, ty});
   {
+    double s = (W - 1) / 2., t = (H - 1) / 2.;
+    const View::Pixels& q = before;  // o + i ax + j ay = q.origin + i q.across + j q.down there
+    const double a = ax[0] - q.across[0], b = ay[0] - q.down[0], c = ax[1] - q.across[1], e = ay[1] - q.down[1];
+    const double turn = a * e - b * c, rx = q.origin[0] - o[0], ry = q.origin[1] - o[1];
+    if (q.width && std::abs(turn) > 1e-6 * std::abs(det))
+      s = std::clamp((rx * e - b * ry) / turn, 0., W - 1.), t = std::clamp((a * ry - rx * c) / turn, 0., H - 1.);
+    m.last_px = px;
     const double k = std::ldexp(1.0, -L) / S;
-    const double s = (W - 1) / 2., t = (H - 1) / 2.;
     const double cx = (o[0] + s * ax[0] + t * ay[0]) * k - 0.5, cy = (o[1] + s * ax[1] + t * ay[1]) * k - 0.5;
     const auto far = [&](TileXY t) {
       return std::make_tuple((t.x - cx) * (t.x - cx) + (t.y - cy) * (t.y - cy), t.y, t.x);
@@ -427,7 +473,18 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     });
     for (const TileXY t : build) m.known[{L, t.x, t.y}] = {0, 0, m.made};
   }
-  if ((f.pending = !ask.empty())) m.request(L, std::move(ask));
+  // Which of the frame's level's tiles may wait (V2c): while the view moves over the document the last frame showed,
+  // those that frame did not show at this level (newly in view, a zoom past a level), once the top level can stand in
+  // for any. They composite within the budget, those composited before first (free), the others show meanwhile from
+  // the level below where it has them composited (the level a zoom out comes from), else the finest above that has,
+  // the top's at last. What changed under the view (an edit, the stroke) composites in this frame, as does all of a
+  // frame of another document.
+  const bool top_ready = L < top && m.missing(top, 0, 0, 0) == 0;
+  const bool same = m.last_doc.lock() == in.doc, moving = top_ready && same;
+  if (!same || m.done.size() > (size_t(1) << 14)) m.done.clear();
+  const auto fresh = [&](TileXY t) {
+    return !(m.last_level == L && std::binary_search(m.last.begin(), m.last.end(), t));
+  };
 
   // A pass a level shown: its tiles, its window of them (the first's is the frame's level's, the tiles' choices).
   struct Pass {
@@ -437,26 +494,38 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
   };
   std::vector<Pass> passes{{L, w0, {}}};
   std::vector<uint32_t> table(size_t(w0.x1 - w0.x0) * size_t(w0.y1 - w0.y0), kNoChoice);  // then each pass's slots
+  const auto pick = [&](TileXY t) -> uint32_t& {
+    return table[size_t(t.y - w0.y0) * size_t(w0.x1 - w0.x0) + size_t(t.x - w0.x0)];
+  };
+  std::vector<TileXY> later;  // the frame's level's that may wait, after those that may not
   for (size_t i = 0; i < want.size(); i++) {
     if (choice[i] < 0) continue;
+    if (choice[i] == 0) {
+      (moving && fresh(want[i]) ? later : passes[0].tiles).push_back(want[i]);
+      pick(want[i]) = 0;
+      continue;
+    }
     const int level = L + choice[i];
-    size_t p = 0;
+    size_t p = 1;
     while (p < passes.size() && passes[p].level != level) p++;
     if (p == passes.size()) passes.push_back({level, window(level), {}});
     const TileXY t{want[i].x >> choice[i], want[i].y >> choice[i]};
     if (std::find(passes[p].tiles.begin(), passes[p].tiles.end(), t) == passes[p].tiles.end())
       passes[p].tiles.push_back(t);
-    table[size_t(want[i].y - w0.y0) * size_t(w0.x1 - w0.x0) + size_t(want[i].x - w0.x0)] = uint32_t(p);
+    pick(want[i]) = uint32_t(p);
   }
+  const size_t optional = passes[0].tiles.size();
+  std::stable_partition(later.begin(), later.end(), [&](TileXY t) { return m.done.count({L, t.x, t.y}) != 0; });  // free
+  passes[0].tiles.insert(passes[0].tiles.end(), later.begin(), later.end());
 
-  // Their constants: the document point relative to the first pass's window's corner, so that floats keep fractions
-  // of a pixel at any zoom; the checkerboard from where the document's top left is on screen.
+  // Each pass's constants: the document point relative to the first pass's window's corner, so that floats keep
+  // fractions of a pixel at any zoom; the checkerboard from where the document's top left is on screen.
   const double R[2] = {std::ldexp(double(w0.x0) * S, L), std::ldexp(double(w0.y0) * S, L)};
   const int cell = std::max(look.cell, 1);
   const std::array<double, 2> corner = index(0, 0);
   const auto phase = [&](double v) { return float(v - std::floor(v / (2 * cell)) * 2 * cell); };
   std::vector<Consts> consts;
-  for (size_t p = 0; p < passes.size(); p++) {
+  const auto constants = [&](size_t p) {  // pass p's, its slots in the table after the others'
     const Pass& ps = passes[p];
     Consts c{};
     c.ox = float(o[0] - R[0]), c.oy = float(o[1] - R[1]);
@@ -478,74 +547,211 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     c.width = uint32_t(W), c.height = uint32_t(H);
     consts.push_back(c);
     table.resize(table.size() + size_t(c.tw) * c.th, kNone);
-  }
+  };
+  for (size_t p = 0; p < passes.size(); p++) constants(p);
   const auto at = [&](size_t p, TileXY t) {
     const Consts& c = consts[p];
     return c.table + size_t(t.y - passes[p].win.y0) * c.tw + size_t(t.x - passes[p].win.x0);
   };
 
-  if (m.dev) {  // each pass's tiles composited, then its dispatch: their slots hold until the next composite()
-    gpu::Device& dev = *m.dev;
-    const auto reserve = [&](gpu::BufferPtr& b, size_t& cap, size_t bytes) {
-      if (b && cap >= bytes) return;
-      cap = std::max(bytes, 2 * cap);
-      b = dev.buffer(cap);
-    };
-    reserve(m.tables, m.tables_bytes, table.size() * 4);
-    if (!m.uploaded) dev.upload(*m.colors, m.color.data(), m.color.size() * 4), m.uploaded = true;
-    dev.upload(*m.tables, table.data(), consts[0].table * 4);
-    for (size_t p = 0; p < passes.size(); p++) {
-      if (!passes[p].tiles.empty()) {
-        const std::vector<int> slots = m.gc->composite(in, passes[p].level, passes[p].tiles);
-        for (size_t i = 0; i < slots.size(); i++)
-          table[at(p, passes[p].tiles[i])] = slots[i] < 0 ? kEmpty : uint32_t(slots[i]);
-      }
-      const Consts& c = consts[p];
-      dev.upload(*m.tables, table.data() + c.table, size_t(c.tw) * c.th * 4, size_t(c.table) * 4);
-      dev.dispatch(*m.kernel, {&m.gc->output(), m.tables.get(), m.colors.get(), target.buffer}, &c, sizeof c,
-                   uint32_t(W + 7) / 8, uint32_t(H + 7) / 8);
-    }
-    f.submission = dev.submit();
-    return f;
-  }
-
-  // The CPU: each pass's composite tiles, from the cache or composite_tile(), pinned while the frame reads them.
+  // Pass p's tiles composited, from `optional` on only within `most` layer tiles, into its slots: -2 for those that
+  // wait, as GpuComposite's. On the CPU from the cache or composite_tile(), pinned while the frame reads them.
   std::vector<Src> srcs;
   std::vector<Pin> pins;
-  for (size_t p = 0; p < passes.size(); p++) {
+  const auto run = [&](size_t p, size_t optional, int most) {
     const Pass& ps = passes[p];
     const size_t n = ps.tiles.size();
-    std::vector<std::vector<uint64_t>> keys(n);
-    std::vector<TilePtr> got(n);
-    std::vector<size_t> todo;
-    for (size_t i = 0; i < n; i++) {
-      const CompositePlan plan = composite_plan(in, ps.level, ps.tiles[i].x, ps.tiles[i].y);
-      if (plan.steps.empty()) continue;  // transparent
-      keys[i] = key_of(plan, in);
-      if (m.cpu.find(keys[i]))
-        got[i] = m.cpu.get(keys[i]);
-      else
+    std::vector<int> r;
+    const bool budgeted = most > 0;  // once spent, the rest wait unplanned: plans cost too
+    bool spent = false;
+    if (m.dev) {
+      r = m.gc->composite(in, ps.level, ps.tiles, optional, most);
+    } else {
+      r.assign(n, -1);
+      std::vector<std::vector<uint64_t>> keys(n);
+      std::vector<TilePtr> got(n);
+      std::vector<size_t> todo;
+      for (size_t i = 0; i < n; i++) {
+        if (i >= optional && budgeted && most <= 0) {
+          r[i] = -2;
+          continue;
+        }
+        const CompositePlan plan = composite_plan(in, ps.level, ps.tiles[i].x, ps.tiles[i].y);
+        if (plan.steps.empty()) continue;  // transparent
+        keys[i] = key_of(plan, in);
+        r[i] = 0;
+        if (m.cpu.find(keys[i])) {
+          got[i] = m.cpu.get(keys[i]);
+          continue;
+        }
+        if (i >= optional) {  // the layer tiles it reads, as the GPU's uploads
+          int k = 0;
+          for (const CompositeStep& s : plan.steps) k += (s.tile && !s.tile->is_solid()) + (s.cover && !s.cover->is_solid());
+          if (k > 0 && (most <= 0 || (k > most && spent))) {  // as GpuComposite's
+            r[i] = -2, most = 0;
+            continue;
+          }
+          most -= k, spent = spent || k > 0;
+        }
         todo.push_back(i);
+      }
+      parallel_for(int(todo.size()), [&](int begin, int end) {
+        for (int j = begin; j < end; j++)
+          got[todo[size_t(j)]] = composite_tile(in, ps.level, ps.tiles[todo[size_t(j)]].x, ps.tiles[todo[size_t(j)]].y);
+      });
+      for (const size_t i : todo)
+        m.cpu.put(keys[i], got[i], got[i] && !got[i]->is_solid() ? size_t(S) * S * 8 : 64);
+      for (size_t i = 0; i < n; i++) {
+        if (r[i] != 0) continue;
+        if (!got[i]) {
+          r[i] = -1;
+          continue;
+        }
+        r[i] = int(srcs.size());
+        srcs.push_back({nullptr, got[i]->value()});
+        if (!got[i]->is_solid()) {
+          pins.push_back(got[i]->pin());
+          srcs.back().px = reinterpret_cast<const uint16_t*>(pins.back().data());
+        }
+      }
     }
-    parallel_for(int(todo.size()), [&](int begin, int end) {
-      for (int j = begin; j < end; j++)
-        got[todo[size_t(j)]] = composite_tile(in, ps.level, ps.tiles[todo[size_t(j)]].x, ps.tiles[todo[size_t(j)]].y);
-    });
-    for (const size_t i : todo)
-      m.cpu.put(keys[i], got[i], got[i] && !got[i]->is_solid() ? size_t(S) * S * 8 : 64);
     for (size_t i = 0; i < n; i++) {
-      uint32_t& e = table[at(p, ps.tiles[i])];
-      if (!got[i]) {
-        e = kEmpty;
-        continue;
-      }
-      e = uint32_t(srcs.size());
-      srcs.push_back({nullptr, got[i]->value()});
-      if (!got[i]->is_solid()) {
-        pins.push_back(got[i]->pin());
-        srcs.back().px = reinterpret_cast<const uint16_t*>(pins.back().data());
-      }
+      if (r[i] == -2) continue;
+      table[at(p, ps.tiles[i])] = r[i] < 0 ? kEmpty : uint32_t(r[i]);
+      m.done.insert({ps.level, ps.tiles[i].x, ps.tiles[i].y});
     }
+    return r;
+  };
+  // Pass p's dispatch on the GPU, the choices as they are by then: right after its composite(), whose slots hold until
+  // the next. A tile a later pass takes over shows the checkerboard from the first pass until that pass draws it.
+  const auto draw = [&](size_t p) {
+    if (!m.dev) return;
+    gpu::Device& dev = *m.dev;
+    if (!m.tables || m.tables_bytes < table.size() * 4) {
+      m.tables_bytes = std::max(table.size() * 4, 2 * m.tables_bytes);
+      m.tables = dev.buffer(m.tables_bytes);
+    }
+    if (!m.uploaded) dev.upload(*m.colors, m.color.data(), m.color.size() * 4), m.uploaded = true;
+    const Consts& c = consts[p];
+    dev.upload(*m.tables, table.data(), consts[0].table * 4);
+    dev.upload(*m.tables, table.data() + c.table, size_t(c.tw) * c.th * 4, size_t(c.table) * 4);
+    dev.dispatch(*m.kernel, {&m.gc->output(), m.tables.get(), m.colors.get(), target.buffer}, &c, sizeof c,
+                 uint32_t(W + 7) / 8, uint32_t(H + 7) / 8);
+  };
+
+  std::vector<TileXY> waiting, late;  // the frame's level's tiles that wait: those a pass below takes, all of them
+  int left = 0;                       // of the budget, what the frame's level did not take
+  {
+    const std::vector<int> r = run(0, optional, m.budget);
+    if (m.dev) left = m.budget - m.gc->stats().uploaded;
+    m.last.clear();
+    for (size_t i = 0; i < r.size(); i++)
+      if (r[i] == -2)
+        waiting.push_back(passes[0].tiles[i]), pick(passes[0].tiles[i]) = kNoChoice;
+      else
+        m.last.push_back(passes[0].tiles[i]);
+    std::sort(m.last.begin(), m.last.end());
+    m.last_doc = in.doc, m.last_level = L;
+  }
+  draw(0);
+  for (size_t p = 1; p < passes.size(); p++) run(p, SIZE_MAX, 0), draw(p);
+  const bool waited = !waiting.empty();
+  late = waiting;
+  // A pass of tiles at `level` standing in for those waiting: cover(t) puts in `ps` the tiles of the level t needs
+  // there, false where the level cannot show it (tiles not composited since the document came: `done`); it shows
+  // those whose tiles the cache still has (all of them).
+  const auto stand_in = [&](int level, const std::function<bool(TileXY, std::vector<TileXY>&)>& cover, int& count) {
+    Pass ps{level, window(level), {}};
+    std::vector<std::vector<TileXY>> need(waiting.size());
+    for (size_t i = 0; i < waiting.size(); i++)
+      if (!cover(waiting[i], need[i])) need[i].clear();
+    for (const std::vector<TileXY>& n : need)
+      for (const TileXY t : n)
+        if (std::find(ps.tiles.begin(), ps.tiles.end(), t) == ps.tiles.end()) ps.tiles.push_back(t);
+    if (ps.tiles.empty()) return;
+    passes.push_back(std::move(ps));
+    const size_t p = passes.size() - 1;
+    constants(p);
+    const std::vector<int> r = run(p, level == top ? SIZE_MAX : 0, 0);  // only the top composites, if it must
+    const auto has = [&](TileXY t) {
+      return r[size_t(std::find(passes[p].tiles.begin(), passes[p].tiles.end(), t) - passes[p].tiles.begin())] != -2;
+    };
+    std::vector<TileXY> still;
+    for (size_t i = 0; i < waiting.size(); i++)
+      if (!need[i].empty() && std::all_of(need[i].begin(), need[i].end(), has))
+        pick(waiting[i]) = uint32_t(p), count++;
+      else
+        still.push_back(waiting[i]);
+    if (still.size() < waiting.size()) draw(p);  // else a pass that shows nothing
+    waiting.swap(still);
+  };
+  if (L > 0 && waited) {
+    const TileRect wb = window(L - 1);
+    const int nx = (texels(L - 1, d.width) + S - 1) / S, ny = (texels(L - 1, d.height) + S - 1) / S;
+    stand_in(L - 1, [&](TileXY t, std::vector<TileXY>& out) {
+      for (int k = 0; k < 4; k++) {
+        const TileXY c{2 * t.x + (k & 1), 2 * t.y + (k >> 1)};
+        if (c.x >= nx || c.y >= ny || c.x < wb.x0 || c.y < wb.y0 || c.x >= wb.x1 || c.y >= wb.y1) continue;
+        if (!m.done.count({L - 1, c.x, c.y}) || m.missing(L - 1, c.x, c.y, 0)) return false;
+        out.push_back(c);
+      }
+      return !out.empty();
+    }, f.finer);
+  }
+  for (int l = L + 1; l <= top && !waiting.empty(); l++)
+    stand_in(l, [&](TileXY t, std::vector<TileXY>& out) {
+      const TileXY c{t.x >> (l - L), t.y >> (l - L)};
+      if ((l < top && !m.done.count({l, c.x, c.y})) || m.missing(l, c.x, c.y, 0)) return false;
+      out.push_back(c);
+      return true;
+    }, f.coarser);
+  f.missing += int(waiting.size());  // none: the top stands in for any
+
+  // Read ahead: with budget left and nothing waiting, the tiles of the view the motion since the last frame reaches
+  // kAhead frames on, at that view's level, not composited yet (the next column of a pan, the next ring of a zoom
+  // out), into the GPU's cache. ponytail: the motion
+  // extrapolated linearly, and the CPU (slow anyway) reads nothing ahead.
+  if (m.dev && moving && !waited && !in.stroke && left > 0 && before.width == W && before.height == H) {
+    constexpr double kAhead = 10;  // frames
+    std::array<double, 2> o2, ax2, ay2;
+    for (int c = 0; c < 2; c++)
+      o2[size_t(c)] = o[size_t(c)] + kAhead * (o[size_t(c)] - before.origin[size_t(c)]),
+      ax2[size_t(c)] = ax[size_t(c)] + kAhead * (ax[size_t(c)] - before.across[size_t(c)]),
+      ay2[size_t(c)] = ay[size_t(c)] + kAhead * (ay[size_t(c)] - before.down[size_t(c)]);
+    const double unit = std::hypot(ax2[0], ax2[1]);  // document pixels a device pixel there
+    if ((o2 != o || ax2 != ax || ay2 != ay) && unit > 0) {
+      int l = 0;
+      while (l < top && unit >= std::ldexp(1.0, l + 1)) l++;
+      double bx0 = std::numeric_limits<double>::max(), by0 = bx0, bx1 = -bx0, by1 = -bx0;
+      for (const double s : {-0.5, W - 0.5})
+        for (const double t : {-0.5, H - 0.5}) {
+          const double x = o2[0] + s * ax2[0] + t * ay2[0], y = o2[1] + s * ax2[1] + t * ay2[1];
+          bx0 = std::min(bx0, x), bx1 = std::max(bx1, x), by0 = std::min(by0, y), by1 = std::max(by1, y);
+        }
+      const double k = std::ldexp(1.0, -l) / S;
+      const int nx = (texels(l, d.width) + S - 1) / S, ny = (texels(l, d.height) + S - 1) / S;
+      const int tx0 = std::max(0, int(std::floor(bx0 * k))), ty0 = std::max(0, int(std::floor(by0 * k)));
+      const int tx1 = std::min(nx, int(std::floor(bx1 * k)) + 1), ty1 = std::min(ny, int(std::floor(by1 * k)) + 1);
+      std::vector<TileXY> ahead;
+      for (int ty = ty0; ty < ty1; ty++)
+        for (int tx = tx0; tx < tx1; tx++)
+          if (!m.done.count({l, tx, ty}) && !m.missing(l, tx, ty, 0)) ahead.push_back({tx, ty});
+      const double cx = (bx0 + bx1) / 2 * k - 0.5, cy = (by0 + by1) / 2 * k - 0.5;
+      std::sort(ahead.begin(), ahead.end(), [&](TileXY a, TileXY b) {
+        return std::hypot(a.x - cx, a.y - cy) < std::hypot(b.x - cx, b.y - cy);
+      });
+      const std::vector<int> r = m.gc->composite(in, l, ahead, 0, left);
+      for (size_t i = 0; i < r.size(); i++)
+        if (r[i] != -2) m.done.insert({l, ahead[i].x, ahead[i].y});
+    }
+  }
+
+  const bool need_top = L < top && !top_ready;
+  if ((f.pending = !ask.empty() || waited) || need_top) m.request(L, std::move(ask), need_top ? top : -1, in, std::move(late));
+
+  if (m.dev) {
+    f.submission = m.dev->submit();
+    return f;
   }
   const Bufs b{table.data(), m.color.data(), srcs.data()};
   PROFILE_ZONE("present_cpu");

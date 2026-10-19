@@ -33,10 +33,15 @@ class GpuComposite {
   // below k there goes into a cache keyed alike: the accumulator under k, and one more for each group around k (the
   // backdrop under the group, and under k in it); later frames start from it, compositing k with the stroke and the
   // steps above k only. The caller submits; what it records after reads the slots, which stay until the next call.
-  // Plans of groups nested deeper than 10 composite on the CPU (composite_tile(), uploaded). Throws
-  // std::invalid_argument as composite_plan() does, std::length_error for more tiles than the composite tiles' share
-  // of the budget holds. One thread at a time, the device's.
-  std::vector<int> composite(const RenderInput&, int level, const std::vector<TileXY>& tiles);
+  // Plans of groups nested deeper than 10 composite on the CPU (composite_tile(), uploaded). Tiles from `optional` on
+  // that the cache lacks composite only while the layer tiles they upload stay within `most`, in their order (the
+  // first even past it, so that a tile of more layers comes in turn): the others give -2 and record nothing, for a
+  // frame to show them from another level meanwhile (V2c); with `most` 0 only those the atlas has all the layer tiles
+  // of. The layer tiles a call uploads come back into RAM (zstd, scratch) on the pool's threads first. Throws
+  // std::invalid_argument as composite_plan() does, std::length_error for more tiles than the composite tiles' share of
+  // the budget holds. One thread at a time, the device's.
+  std::vector<int> composite(const RenderInput&, int level, const std::vector<TileXY>& tiles, size_t optional = SIZE_MAX,
+                             int most = 0);
 
   // The composite tiles: slot i from byte i * kTileSize * kTileSize * 8 on, RGBA U16 rows as composite_tile()'s.
   // Another buffer after a composite() that grew it.
