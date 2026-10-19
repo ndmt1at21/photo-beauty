@@ -115,7 +115,7 @@ Memory memory() {
 // the peaks.
 class Watch {
  public:
-  Watch() : t_([this] { run(); }) {}
+  explicit Watch(const gpu::Device* dev = nullptr) : dev_(dev), t_([this] { run(); }) {}
   ~Watch() {
     {
       const std::lock_guard<std::mutex> l(m_);
@@ -137,10 +137,11 @@ class Watch {
       const Memory now = memory();
       const TileStats t = tile_stats();
       peak_.anon = std::max(peak_.anon, now.anon), peak_.file = std::max(peak_.file, now.file);
+      const gpu::Device::Held g = dev_ ? dev_->held() : gpu::Device::Held{};
       std::printf("open-paint: %.1f s: anon %.0f MB, file %.0f MB, budget %.0f MB; tiles raw %.0f, compressed %.0f, "
-                  "charged %.0f, scratch %.0f MB\n",
+                  "charged %.0f, scratch %.0f MB; device %.0f, staging %.0f, kept %.0f MB\n",
                   i / 10., now.anon / kMB, now.file / kMB, tile_budget() / kMB, t.raw / kMB, t.compressed / kMB,
-                  t.charged / kMB, t.scratch / kMB);
+                  t.charged / kMB, t.scratch / kMB, g.device / kMB, g.staging / kMB, g.kept / kMB);
       std::fflush(stdout);
     }
   }
@@ -148,6 +149,7 @@ class Watch {
   std::condition_variable cv_;
   bool stop_ = false;
   Memory peak_;
+  const gpu::Device* dev_;
   std::thread t_;  // last: the rest is there before it starts
 };
 
@@ -265,13 +267,14 @@ BENCH(open_paint) {
   std::vector<StrokeRecord> strokes;
   for (const std::string& l : logs) strokes.push_back(read_stroke_log(l));
   const std::unique_ptr<gpu::Device> dev = cpu ? nullptr : gpu::Device::create(true);
-  std::printf("open-paint: %s: %s, tile budget %.0f MB\n", file.c_str(),
-              dev ? (dev->name() + ", " + dev->driver()).c_str() : "on the CPU", tile_budget() / kMB);
+  std::printf("open-paint: %s: %s, tile budget %.0f MB, device memory %.0f MB\n", file.c_str(),
+              dev ? (dev->name() + ", " + dev->driver()).c_str() : "on the CPU", tile_budget() / kMB,
+              dev ? dev->memory() / kMB : 0.);
   const std::string n = "open_paint_" + std::filesystem::path(file).stem().string();
   report((n + "_rss_anon_base").c_str(), memory().anon / kMB, "MB");  // before the document: code, the driver
   Memory peak;
   {
-    Watch watch;
+    Watch watch(dev.get());
     auto t0 = Clock::now();
     Document doc(open_pbd(file).doc, "Open");
     report((n + "_open").c_str(), ms_since(t0), "ms");
@@ -388,3 +391,4 @@ BENCH(g1) {
   std::puts("g1: 4/4, the composite on the CPU against the GPU's on D1: cpu_gpu_d1_*_diff8, at most 1 level");
   run("cpu_gpu", with({}));
 }
+

@@ -42,8 +42,8 @@ class GpuComposite {
   // Another buffer after a composite() that grew it.
   gpu::Buffer& output() const;
   int output_tiles() const;  // slots in output()
-  // Device memory held, which K1's tile budget counts (a BudgetUser): integrated GPUs (the Iris Xe) take it from RAM.
-  // ponytail: counted for discrete GPUs too; VK_EXT_memory_budget once the HAL (gpu_vulkan.cpp) has it.
+  // Device memory held, which the device counts in K1's tile budget where it is RAM (gpu.h): integrated GPUs (the Iris
+  // Xe) take it from there. What a store held before it grew is freed once the copy ran, not kept for reuse.
   size_t bytes() const;
 
   struct Stats {  // of the last composite()

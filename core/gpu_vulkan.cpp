@@ -12,9 +12,11 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <iterator>
 #include <list>
 #include <mutex>
@@ -24,6 +26,7 @@
 #include "gpu.h"
 #include "jobs.h"
 #include "profile.h"
+#include "tilecache.h"
 
 namespace pb::gpu {
 namespace {
@@ -99,6 +102,7 @@ Shared share(Texture& t) {
   return s;
 }
 
+struct Spare;
 struct Buffer : std::enable_shared_from_this<Buffer> {  // the submissions using it keep it
   VkDevice dev = VK_NULL_HANDLE;
   VkBuffer buf = VK_NULL_HANDLE;
@@ -106,40 +110,68 @@ struct Buffer : std::enable_shared_from_this<Buffer> {  // the submissions using
   void* mapped = nullptr;  // host-visible staging only
   size_t size = 0;
   uint64_t kind = 0;  // usage and memory properties, for reuse
+  bool keep = true;   // kept for reuse once released (Device::buffer())
   std::chrono::steady_clock::time_point released;
-  ~Buffer() {
-    vkDestroyBuffer(dev, buf, nullptr);
-    vkFreeMemory(dev, mem, nullptr);
-  }
+  Spare* counts = nullptr;  // where its memory counts, which outlives it: null until it has memory
+  ~Buffer();
 };
 
 // Released buffers, newest first, for the next request of the same size and kind: on an Intel Iris
 // Xe, allocating, first touching and freeing the ~2 GB a full-size 45 MP render goes through costs
 // ~0.7 s, more than its kernels. Past the budget, oldest first, or after 10 s unused, a pool job frees
 // them: freeing the few hundred MB of a 1:1 render cost the next render 70-90 ms on the Iris Xe.
-// ponytail: exact sizes and a fixed share of device memory; VK_EXT_memory_budget when caches multiply.
+// Up to 256 MB, a quarter of device memory where that is less: the tile budget counts them (K1c).
+// ponytail: exact sizes; VK_EXT_memory_budget when caches multiply.
 struct Spare : std::enable_shared_from_this<Spare> {
   using Clock = std::chrono::steady_clock;
+  // K1's tile budget counts the memory of the buffers alive, the ones below included (Device::held()): staging, and the
+  // rest where device memory is RAM (`ram`: integrated GPUs, as the Iris Xe; CPUs); and what they freed, for kLinger
+  // more, as drivers keep it a while to reuse: the Iris Xe's on Windows does below 256 MB, 6.2 s while it works, until
+  // the next allocation while idle (K1c). ponytail: a discrete GPU's VRAM counts nowhere but in its users' own caps
+  // (GpuComposite's), VK_EXT_memory_budget once VRAM runs short; textures (a canvas's few, the window's size) nowhere,
+  // until they are more. Before the lists: they go first.
+  static constexpr std::chrono::seconds kLinger{7};
+  std::atomic<size_t> device{0}, staging{0};
+  bool ram = true;
+  BudgetUser user;
   std::mutex m;
   std::condition_variable freed;
+  std::deque<std::pair<Clock::time_point, size_t>> gone;  // freed and still counted, oldest first; under m
+  size_t lingering = 0;                                   // their bytes
+  // b's memory coming (1) or going (-1, given back to the budget by expire() once it lingered). Any thread, without m.
+  void count(const Buffer& b, int sign) {
+    const bool host = b.kind & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+    (host ? staging : device).fetch_add(size_t(sign * ptrdiff_t(b.size)));
+    if (!host && !ram) return;
+    if (sign > 0) return user.charge(ptrdiff_t(b.size));
+    const std::lock_guard l(m);
+    gone.emplace_back(Clock::now(), b.size);
+    lingering += b.size;
+  }
   std::list<std::unique_ptr<Buffer>> list, expired;  // expired: for the pool job
   size_t bytes = 0, budget = 0;
   int freeing = 0;      // pool jobs freeing what they took
+  bool queued = false;  // a pool job is to free expired
   bool closed = false;  // the device is going away: free on release
 
-  // Under m: moves the buffers past the budget or unused for too long to the pool job.
+  // Under m: moves the buffers past the budget or unused for too long to the pool job; gives back what lingered.
   void expire() {
-    const bool queued = !expired.empty();
+    for (const auto now = Clock::now(); !gone.empty() && now - gone.front().first > kLinger; gone.pop_front()) {
+      lingering -= gone.front().second;
+      user.charge(-ptrdiff_t(gone.front().second));
+    }
     while (!list.empty() && (bytes > budget || Clock::now() - list.back()->released > std::chrono::seconds(10))) {
       bytes -= list.back()->size;
       expired.splice(expired.begin(), list, std::prev(list.end()));
     }
     if (queued || expired.empty()) return;
+    queued = true;
     submit(Priority::Background, [s = shared_from_this()] {
       std::list<std::unique_ptr<Buffer>> drop;
       {
         std::lock_guard l(s->m);
         drop.swap(s->expired);
+        s->queued = false;
         s->freeing++;
       }
       {
@@ -155,9 +187,13 @@ struct Spare : std::enable_shared_from_this<Spare> {
     std::unique_ptr<Buffer> own(b);  // freed after the lock once the device is going away
     std::lock_guard l(m);
     if (closed) return;
-    own->released = Clock::now();
-    bytes += own->size;
-    list.push_front(std::move(own));
+    if (own->keep) {
+      own->released = Clock::now();
+      bytes += own->size;
+      list.push_front(std::move(own));
+    } else {
+      expired.push_front(std::move(own));
+    }
     expire();
   }
   std::unique_ptr<Buffer> take(size_t size, uint64_t kind) {
@@ -183,6 +219,12 @@ struct Spare : std::enable_shared_from_this<Spare> {
     if (close) freed.wait(l, [&] { return freeing == 0; });
   }
 };
+
+Buffer::~Buffer() {
+  vkDestroyBuffer(dev, buf, nullptr);
+  vkFreeMemory(dev, mem, nullptr);
+  if (counts) counts->count(*this, -1);
+}
 
 struct Kernel {
   VkDevice dev = VK_NULL_HANDLE;
@@ -231,7 +273,14 @@ struct Device::Impl {
     uint64_t serial = 0;  // submitted and not waited for; else 0
     std::vector<BufferPtr> used;  // by its commands, staging included
     std::vector<Readback> readbacks;
+    Buffer* chunk = nullptr;        // the staging uploads fill, in used
+    size_t filled = 0, staged = 0;  // bytes of chunk taken; of staging held
   };
+  // Uploads copy through staging chunks of kChunk bytes that they fill in turn (a larger one through a buffer its
+  // size), which their batch holds until it is waited for: a ring of staging buffers (plan.md). Before a batch holds
+  // more than kStaging of them it is submitted, so that staging holds two batches' worth rather than a frame's
+  // uploads (some 175 MB at a time for a view of D2 at 100 %, as much again kept spare for 10 s: K1c).
+  static constexpr size_t kChunk = size_t(4) << 20, kStaging = size_t(32) << 20;
   std::array<Batch, 2> batches;
   Batch* batch = &batches[0];  // the one recording, or to record next
   VkCommandBuffer cmd = VK_NULL_HANDLE;  // batch's
@@ -272,7 +321,7 @@ struct Device::Impl {
 
   // ponytail: one allocation per buffer; buffers are few and large. VMA if that changes.
   BufferPtr make_buffer(size_t bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags need,
-                        VkMemoryPropertyFlags prefer = 0) {
+                        VkMemoryPropertyFlags prefer = 0, bool keep = true) {
     bytes = std::max<size_t>(bytes, 4);
     const uint64_t kind = uint64_t(usage) << 32 | need | prefer;
     std::unique_ptr<Buffer> b = spare->take(bytes, kind);
@@ -290,14 +339,18 @@ struct Device::Impl {
       VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
       ai.allocationSize = req.size;
       ai.memoryTypeIndex = memory_type(req.memoryTypeBits, need, prefer);
+      if (need & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT || spare->ram) make_room(bytes);  // the budget counts it
       if (vkAllocateMemory(dev, &ai, nullptr, &b->mem) != VK_SUCCESS) {
         spare->clear();  // what the spares hold may be what is missing
         check(vkAllocateMemory(dev, &ai, nullptr, &b->mem), "vkAllocateMemory");
       }
+      b->counts = spare.get();
+      spare->count(*b, 1);
       check(vkBindBufferMemory(dev, b->buf, b->mem, 0), "vkBindBufferMemory");
       if (need & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
         check(vkMapMemory(dev, b->mem, 0, VK_WHOLE_SIZE, 0, &b->mapped), "vkMapMemory");
     }
+    b->keep = keep;
     return BufferPtr(b.release(), [s = spare](Buffer* x) { s->put(x); });
   }
 
@@ -319,6 +372,7 @@ struct Device::Impl {
     }
     b.readbacks.clear();
     b.used.clear();
+    b.chunk = nullptr, b.filled = b.staged = 0;
     b.serial = 0;
   }
 
@@ -505,6 +559,7 @@ std::unique_ptr<Device> Device::create(bool allow_software) {
         d->phys = pd;
         d->name = p.deviceName;
         d->max_buffer = p.limits.maxStorageBufferRange;
+        d->spare->ram = rank != 4;  // a discrete GPU's memory is its own
         break;
       }
   }
@@ -513,7 +568,7 @@ std::unique_ptr<Device> Device::create(bool allow_software) {
   for (uint32_t i = 0; i < d->mem.memoryHeapCount; i++)
     if (d->mem.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
       d->memory = std::max<size_t>(d->memory, d->mem.memoryHeaps[i].size);
-  d->spare->budget = d->memory / 4;
+  d->spare->budget = std::min(d->memory / 4, size_t(256) << 20);  // which the tile budget counts
 
   const float priority = 1;
   VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -571,13 +626,19 @@ Device::~Device() = default;
 std::string Device::name() const { return impl_->name; }
 std::string Device::driver() const { return impl_->driver; }
 void Device::trim() { impl_->spare->clear(); }
+Device::Held Device::held() const {
+  Spare& s = *impl_->spare;
+  const std::lock_guard l(s.m);
+  const size_t device = s.device, staging = s.staging;
+  return {device, staging, s.bytes, (s.ram ? device + staging : staging) + s.lingering};
+}
 size_t Device::max_buffer() const { return impl_->max_buffer; }
 size_t Device::memory() const { return impl_->memory; }
 
-BufferPtr Device::buffer(size_t bytes) {
+BufferPtr Device::buffer(size_t bytes, bool keep) {
   return impl_->make_buffer(
       bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, keep);
 }
 
 KernelPtr Device::kernel(const char* name, const uint32_t* spirv, size_t spirv_bytes, int buffers,
@@ -619,13 +680,22 @@ KernelPtr Device::kernel(const char* name, const uint32_t* spirv, size_t spirv_b
 void Device::upload(Buffer& dst, const void* src, size_t bytes, size_t offset) {
   if (!bytes) return;
   Impl& d = *impl_;
+  const auto fits = [&] { return d.batch->chunk && d.batch->filled + bytes <= d.batch->chunk->size; };
+  if (d.recording && !fits() && d.batch->staged + bytes > Impl::kStaging) submit();  // the GPU starts on it
+  d.record({&dst});
+  Impl::Batch& b = *d.batch;
   // ponytail: always through staging, even on unified memory (zero-copy is a P2 item).
-  BufferPtr st = d.make_buffer(bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  std::memcpy(st->mapped, src, bytes);
-  d.record({st.get(), &dst});
-  const VkBufferCopy region{0, offset, bytes};
-  vkCmdCopyBuffer(d.cmd, st->buf, dst.buf, 1, &region);
+  if (!fits()) {
+    BufferPtr st = d.make_buffer(std::max(bytes, Impl::kChunk), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    b.chunk = st.get(), b.filled = 0, b.staged += st->size;
+    b.used.push_back(std::move(st));
+  }
+  const size_t at = b.filled;
+  b.filled += (bytes + 63) & ~size_t(63);  // cache lines apart
+  std::memcpy(static_cast<char*>(b.chunk->mapped) + at, src, bytes);
+  const VkBufferCopy region{at, offset, bytes};
+  vkCmdCopyBuffer(d.cmd, b.chunk->buf, dst.buf, 1, &region);
 }
 
 void Device::fill(Buffer& dst, uint32_t value) {

@@ -688,6 +688,13 @@ void trim_tiles() {
   }
 }
 
+void make_room(size_t bytes) {
+  TileStore& s = store();
+  std::unique_lock l(s.m);
+  while (s.held() + bytes > s.budget && s.evict_one(l, true)) {
+  }
+}
+
 BudgetUser::BudgetUser(std::function<size_t(size_t)> release) : release_(std::move(release)) {
   TileStore& s = store();
   const std::lock_guard l(s.users_m);

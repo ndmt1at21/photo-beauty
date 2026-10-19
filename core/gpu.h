@@ -44,14 +44,18 @@ class Device {
   std::string driver() const;  // the driver's name and version ("" when the device does not say)
   size_t max_buffer() const;   // largest buffer a kernel can bind
   size_t memory() const;       // largest device-local heap
-  BufferPtr buffer(size_t bytes);  // device-local
+  // Device-local. Once released it is kept for the next buffer of its size (trim()), unless `keep` is false: one whose
+  // size is not asked for again (a store that grows) is freed once its submissions are waited for.
+  BufferPtr buffer(size_t bytes, bool keep = true);
   // SPIR-V compute shader, entry "main", storage buffers at bindings 0..buffers-1. The name
   // labels its GPU zone in Tracy.
   KernelPtr kernel(const char* name, const uint32_t* spirv, size_t spirv_bytes, int buffers, size_t push_bytes);
 
   // Recorded in order, each after the previous one completes, across submissions too; nothing runs
-  // until submit(). A submission keeps the buffers its commands use until it is waited for.
-  void upload(Buffer& dst, const void* src, size_t bytes, size_t offset = 0);  // into dst from byte `offset`
+  // until submit(), or an upload that submits. A submission keeps the buffers its commands use until it is waited for.
+  // Into dst from byte `offset`, through staging; one that would take more than 32 MB of it since the last submit()
+  // submits what was recorded first, so that the GPU starts on it.
+  void upload(Buffer& dst, const void* src, size_t bytes, size_t offset = 0);
   void fill(Buffer& dst, uint32_t value);
   void dispatch(Kernel&, std::initializer_list<Buffer*> buffers, const void* push, size_t push_bytes,
                 uint32_t groups_x, uint32_t groups_y);
@@ -74,9 +78,17 @@ class Device {
   // Hands dst to other devices once its submission is waited for (see Shared).
   void release(Texture& dst);
   void download(Texture& src, void* dst);  // an imported texture, as packed rows, like download() above
-  // Released buffers are kept for the next buffer of the same size and kind, up to a quarter of
-  // memory() and for 10 s; trim() frees them now.
+  // Released buffers are kept for the next buffer of the same size and kind, up to 256 MB (a quarter
+  // of memory() where that is less) and for 10 s; trim() frees them now.
   void trim();
+  // Memory the buffers of this device take, bytes: device-local, and host-visible for staging, alive or kept for
+  // reuse; of those, `kept`: released, kept for reuse (trim()). `ram`: what K1's tile budget (tilecache.h) counts:
+  // staging, and device-local memory where it is RAM (integrated GPUs and CPUs: the Iris Xe, lavapipe); and what was
+  // freed of it, for 7 s more, as drivers keep it to reuse a while. Any thread.
+  struct Held {
+    size_t device = 0, staging = 0, kept = 0, ram = 0;
+  };
+  Held held() const;
 
  private:
   struct Impl;

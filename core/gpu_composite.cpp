@@ -17,7 +17,6 @@
 #include "composite.spv.h"
 #include "composite_copy.spv.h"
 #include "profile.h"
-#include "tilecache.h"
 
 namespace pb {
 namespace {
@@ -136,7 +135,7 @@ void reserve(gpu::Device& dev, gpu::BufferPtr& buf, size_t& cap, size_t bytes) {
   if (buf && cap >= bytes) return;
   cap = std::max<size_t>(cap, 4096);
   while (cap < bytes) cap *= 2;
-  buf = dev.buffer(cap);
+  buf = dev.buffer(cap, false);
 }
 
 // An output tile to composite: its plan, the output cache's key, and where the cache below the stroke's layer comes in.
@@ -174,19 +173,10 @@ struct GpuComposite::Impl {
   std::vector<std::pair<int, std::vector<uint64_t>>> keys, below_keys;
   uint64_t batch = 1, call = 0;  // stamps
   Stats stats;
-  // K1's tile budget counts bytes(). ponytail: no release(): it would run on the store's Background job while the
-  // device is the frame's thread's; shrink the stores at the next composite() on request if budgets run short.
-  BudgetUser user;
-  size_t charged = 0;
 
   explicit Impl(gpu::Device& d) : dev(d) {}
 
   size_t bytes() const { return out.bytes() + atlas.bytes() + below.bytes() + job_cap + entry_cap; }
-  void charge() {  // the store's lock: only on a change
-    const size_t now = bytes();
-    if (now != charged) user.charge(ptrdiff_t(now) - ptrdiff_t(charged));
-    charged = now;
-  }
 
   // Room in s for the `need` slots a call uses: as many, or twice what it had, up to its cap, what it held copied
   // over; otherwise its least recently used slots go. ponytail: each time a copy and an allocation the size of the
@@ -196,14 +186,13 @@ struct GpuComposite::Impl {
     const int n = std::min(s.cap, std::max(need, 2 * s.slots.size()));
     if (need <= s.slots.size() || n <= s.slots.size()) return;
     PROFILE_ZONE("gpu_composite_grow");
-    gpu::BufferPtr to = dev.buffer(size_t(n) * s.size);
+    gpu::BufferPtr to = dev.buffer(size_t(n) * s.size, false);  // the one before freed once copied
     if (s.buf) {
       const CopyConsts c{uint32_t(s.bytes() / 16), kCopyRow};
       dev.dispatch(*copy, {s.buf.get(), to.get()}, &c, sizeof c, kCopyRow / 64, (c.n + kCopyRow - 1) / kCopyRow);
     }
     s.buf = std::move(to);
     s.slots.grow(n);
-    charge();
   }
 
   // The atlas for tiles of f, the one of another format going (one document shows at a time).
@@ -214,7 +203,6 @@ struct GpuComposite::Impl {
     atlas.size = kPixels * size_t(f.bytes());  // a stroke buffer's tile, 2 bytes a pixel, fits any
     atlas.cap = int(std::max<size_t>(1, std::min(budget / 2, dev.max_buffer()) / atlas.size));
     format = f;
-    charge();
   }
 
   // The stroke's push constants, and what it adds to the key of a tile it paints.
@@ -334,7 +322,6 @@ struct GpuComposite::Impl {
     stats.dispatches++;
     jobs.clear(), entries.clear(), keys.clear(), below_keys.clear();
     batch++;
-    charge();
   }
 
   // composite_tile()'s tile into slot o of the output.
@@ -357,7 +344,7 @@ GpuComposite::GpuComposite(gpu::Device& dev, size_t bytes) : impl_(std::make_uni
   m.below.size = kBelowBytes, m.below.cap = int(quarter / kBelowBytes);
   m.kernel = dev.kernel("composite", composite_spv, composite_spv_sizeInBytes, 5, sizeof(Consts));
   m.copy = dev.kernel("composite_copy", composite_copy_spv, composite_copy_spv_sizeInBytes, 2, sizeof(CopyConsts));
-  m.none = dev.buffer(16);
+  m.none = dev.buffer(16, false);
 }
 GpuComposite::~GpuComposite() = default;
 

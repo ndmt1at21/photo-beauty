@@ -33,6 +33,12 @@ void set_scratch_dir(const std::filesystem::path&);
 // budget would (after waiting for what is on its way out): for tests, and for low memory signals (P1). Any thread.
 void trim_tiles();
 
+// Pushes out, on this thread, tiles nothing pins (as the last unpin of one past the budget does) until the budget
+// holds `bytes` more, as far as tiles can go: before allocating that much for a BudgetUser to charge(), so that RAM
+// stays within the budget meanwhile rather than until the Background job catches up (K1c: a GPU store growing by
+// hundreds of MB at once). Any thread.
+void make_room(size_t bytes);
+
 // Memory a cache outside the store holds, counted in the tile budget: K2's mips, B2's atlas in VRAM (integrated GPUs
 // take it from RAM). charge() what is not tiles, as it comes and goes: the tiles a cache keeps count already, wherever
 // they are; it never blocks. When pushing tiles out cannot bring the store under budget (they are all pinned or out of

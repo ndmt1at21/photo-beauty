@@ -3,6 +3,7 @@
 // ulp moves hundreds of levels; what the atlas uploads and the cache keeps; what goes to the CPU until B3. And the
 // integer arithmetic of shaders/lib/blend.slang that makes the two agree, in C++, against the CPU's.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <random>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include "check.h"
@@ -296,7 +298,21 @@ TEST(test_gpu_composite_cache) {
     return s.uploaded == uploaded && s.composited == composited && s.cached == cached && s.dispatches == dispatches && !s.cpu;
   };
 
+  // Right after a frame (flushed): the device keeps only staging for reuse, no buffer a store held before it grew;
+  // once its pool freed those, its buffers' device memory is `device`, and the tile budget counts what it takes.
   const size_t charged = tile_stats().charged;
+  const auto held = [&](size_t device) {
+    const gpu::Device::Held now = dev->held();
+    if (now.kept != now.staging) return false;
+    const auto t0 = std::chrono::steady_clock::now();
+    for (;;) {
+      const gpu::Device::Held h = dev->held();
+      if (h.device == device && tile_stats().charged == charged + h.ram) return true;
+      if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30)) return false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
+  constexpr size_t kNone = 16;  // the buffer bound in place of a store's yet to have one
   {
     // 32 MB: 16 output tiles, 8 accumulators, an atlas of 32 tiles; none of it until a frame needs it.
     GpuComposite gc(*dev, 32 << 20);
@@ -306,18 +322,18 @@ TEST(test_gpu_composite_cache) {
     RenderInput in = with(0, grids[0], 0.7f);
     CHECK(max_diff(*dev, gc, in, {{0, 0}}) == 0);  // a tile: room for it alone
     CHECK(stats(gc, 5, 1, 0, 1) && gc.output_tiles() == 1 && bytes(1 + 5));
-    CHECK(tile_stats().charged == charged + gc.bytes());
+    CHECK(held(gc.bytes() + kNone));
     in = with(0, grids[0], 0.6f);  // it again, out of an atlas grown for the next one: what it held kept
     CHECK(max_diff(*dev, gc, in, rect(0, 0, 2, 1)) == 0);
     CHECK(stats(gc, 5, 2, 0, 1) && gc.output_tiles() == 2 && bytes(2 + 10));
     CHECK(max_diff(*dev, gc, in, tiles) == 0);  // all four: the two in the cache kept as it grows
     CHECK(stats(gc, 10, 2, 2, 1) && gc.output_tiles() == 4 && bytes(4 + 10));
-    CHECK(tile_stats().charged == charged + gc.bytes());
+    CHECK(held(gc.bytes() + kNone));
     CHECK(max_diff(*dev, gc, in, tiles) == 0);  // the second frame: nothing to do
     CHECK(stats(gc, 0, 0, 4, 0));
     in = with(2, grids[2], 0.3f);  // another opacity: every tile again, room for the 20 tiles at once
     CHECK(max_diff(*dev, gc, in, tiles) == 0);
-    CHECK(stats(gc, 10, 4, 0, 1) && bytes(4 + 20));
+    CHECK(stats(gc, 10, 4, 0, 1) && bytes(4 + 20) && held(gc.bytes() + kNone));
     in = with(2, grids[2], 0.4f);  // and again, out of the atlas; the cache's slots of the frame before go
     CHECK(max_diff(*dev, gc, in, tiles) == 0);
     CHECK(stats(gc, 0, 4, 0, 1) && bytes(4 + 20));
@@ -357,7 +373,7 @@ TEST(test_gpu_composite_cache) {
     }
     CHECK(threw);
   }
-  CHECK(tile_stats().charged == charged);  // given back
+  CHECK(held(0));  // given back
 
   // 12 MB: 6 output tiles, an atlas of 12 tiles for the frame's 20, 5 a tile: two dispatches, the tiles of the second
   // in the slots of the first's. Least recently used out first, a frame larger than the atlas goes up whole each time.
