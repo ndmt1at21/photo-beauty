@@ -21,7 +21,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Panel | U8–U14 | dock và 16 panel | Xong (18/10) |
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Xong (18/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10); U23: các phần sửa đã vào, trang soát v3 chờ bạn duyệt (19/10) |
-| Bổ sung | U25, U26 | hộp thoại prototype không vẽ; Độ trễ thấp (G1) | U25 xong (20/10); U26 đang làm |
+| Bổ sung | U25, U26 | hộp thoại prototype không vẽ; Độ trễ thấp (G1) | Xong (20/10); thử Iris Xe ở đợt tích hợp đầu |
 | Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
 
 ## Cách làm
@@ -215,7 +215,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 
   **Xong khi:** mỗi mục trên mở hộp thoại như artboard của canvas (đo so artboard); OK ghi một bước History giả như các hộp thoại khác; mỗi hộp thoại có test.
 
-- [ ] **U26 · Độ trễ thấp trong Thiết lập › Hiệu năng** (đang làm, 20/10; giao diện; Nhỏ; cần U21, C3c (p0-tasks.md); file `ui/main.cpp`, `ui/qml/Prefs.qml` (khóa `lowLatency` trong `perf`), `ui/qml/SettingsDialog.qml` (hàng ở trang Hiệu năng), `ui/tests/tst_u26.qml`): G1 bạn chốt 20/10: vsync FIFO mặc định, lựa chọn "Độ trễ thấp (có thể xé hình)" tắt sẵn, có hiệu lực từ lần mở app sau (ghi chú như dòng Ngôn ngữ). Bật thì `ui/main.cpp` đặt `QSG_NO_VSYNC=1` trước khi tạo cửa sổ (bản B của `build/orch/api/c3c-vsync.md`: đọc `prefs/json` của QSettings; biến môi trường đã đặt thì thắng): Vulkan lấy MAILBOX khi driver có, không thì IMMEDIATE (Iris Xe), D3D11 trình bày với interval 0.
+- [x] **U26 · Độ trễ thấp trong Thiết lập › Hiệu năng** (20/10/2026, d3bf882: hàng dưới Dùng GPU, ghi chú "có thể xé hình · có hiệu lực từ lần mở app sau"; tst_u26 5/5, một lượt cả bộ, đột biến 6/6; môi trường đang dùng của tiến trình có `QSG_NO_VSYNC=1` khi bật, biến đặt sẵn giữ nguyên, Qt báo "Swap interval is 0" với cửa sổ thật; trang Hiệu năng nay cuộn 7 px ở cỡ chữ Vừa; Iris Xe ở đợt tích hợp; giao diện; Nhỏ; cần U21, C3c (p0-tasks.md); file `ui/main.cpp`, `ui/qml/Prefs.qml` (khóa `lowLatency` trong `perf`), `ui/qml/SettingsDialog.qml` (hàng ở trang Hiệu năng), `ui/tests/tst_u26.qml`): G1 bạn chốt 20/10: vsync FIFO mặc định, lựa chọn "Độ trễ thấp (có thể xé hình)" tắt sẵn, có hiệu lực từ lần mở app sau (ghi chú như dòng Ngôn ngữ). Bật thì `ui/main.cpp` đặt `QSG_NO_VSYNC=1` trước khi tạo cửa sổ (bản B của `build/orch/api/c3c-vsync.md`: đọc `prefs/json` của QSettings; biến môi trường đã đặt thì thắng): Vulkan lấy MAILBOX khi driver có, không thì IMMEDIATE (Iris Xe), D3D11 trình bày với interval 0.
   **Xong khi:** `tst_u26`: hàng có ở trang Hiệu năng, mặc định tắt, bật thì lưu `lowLatency` và giữ qua `Prefs.restore()`; một lần: `pb-ui` chạy với `lowLatency` bật trong QSettings có `QSG_NO_VSYNC=1` trong `/proc/<pid>/environ`, tắt thì không, biến đặt sẵn thì giữ nguyên; đợt tích hợp: trên Iris Xe, bật thì hoạt cảnh không còn khóa ở 60 fps.
 
 ### N · Nối lõi
