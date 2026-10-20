@@ -8,10 +8,12 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QImage>
+#include <QJsonDocument>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QRasterWindow>
 #include <QScreen>
+#include <QSettings>
 #include <QTimer>
 #include <QtQml/qqmlextensionplugin.h>
 
@@ -61,6 +63,13 @@ int main(int argc, char* argv[]) {
   app.setApplicationName("photo-beauty");
   app.setOrganizationName("photo-beauty");
   app.setApplicationVersion(PB_VERSION);
+  // U26 (C3c, G1): Thiết lập › Hiệu năng › Độ trễ thấp, Prefs' lowLatency kept by the last start: Qt Quick presents
+  // without waiting for vsync. Vulkan takes MAILBOX where the driver has it, else IMMEDIATE (the Iris Xe has no MAILBOX:
+  // may tear in full screen); D3D11 presents at interval 0. Qt turns vsync off for any value of QSG_NO_VSYNC, read when
+  // the first window is made; one set before wins.
+  if (!qEnvironmentVariableIsSet("QSG_NO_VSYNC") &&
+      QJsonDocument::fromJson(QSettings().value("prefs/json").toByteArray())[u"lowLatency"].toBool())
+    qputenv("QSG_NO_VSYNC", "1");
 #ifndef Q_OS_WIN  // Windows windows take the exe's icon, ui/brand/photo-beauty.ico (U22)
   app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/PhotoBeauty/brand/icon.png")));
 #endif

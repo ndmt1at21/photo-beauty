@@ -290,6 +290,15 @@ DialogBox {
                                 Btn { implicitHeight: 26; text: qsTr("Kiểm tra lại") }  // nothing to look for on the mock (N2)
                             }
                         }
+                        Line {  // G1, not on the artboard (U26): presents without vsync; main.cpp reads it at the start
+                            label: qsTr("Độ trễ thấp")
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Toggle { topPadding: 0; bottomPadding: 0; checked: perf.p.lowLatency; Accessible.name: qsTr("Độ trễ thấp (có thể xé hình)"); onClicked: Prefs.set("lowLatency", !perf.p.lowLatency) }
+                                Text { Layout.fillWidth: true; text: qsTr("có thể xé hình · có hiệu lực từ lần mở app sau"); color: Theme.t3; font.pointSize: Theme.pt(12); wrapMode: Text.Wrap }
+                            }
+                        }
                         Cap { Layout.topMargin: 6; text: qsTr("Ổ scratch · dùng theo thứ tự") }
                         Rectangle {
                             Layout.fillWidth: true

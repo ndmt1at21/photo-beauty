@@ -128,8 +128,8 @@ QtObject {
         ]
     })
     // Hiệu năng: budgets (RAM as % of the machine's, VRAM and scratch in GB), GPU on, Cache Levels, scratch disks in the
-    // order they fill, on or not.
-    readonly property var perf: ({ ramBudget: 60, vramBudget: 1.5, scratchBudget: 200, gpu: true, cacheLevels: 4,
+    // order they fill, on or not; Độ trễ thấp (U26): no vsync from the next start, main.cpp reads it from the JSON kept.
+    readonly property var perf: ({ ramBudget: 60, vramBudget: 1.5, scratchBudget: 200, gpu: true, lowLatency: false, cacheLevels: 4,
         scratchDisks: [{ name: "C:", on: true }, { name: "D:", on: true }, { name: "E:", on: false }] })
     // The machine as the page shows it, mock until N2 asks K1's stats(): RAM GB, the GPU, what is in use, disks by name.
     readonly property var system: ({ ramGB: 16, gpuName: "Intel Iris Xe Graphics", gpuApi: "Vulkan 1.3", ramUsed: 3.1, vramUsed: 0.9, scratchUsed: 1.2,
