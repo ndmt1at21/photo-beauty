@@ -7,13 +7,27 @@ import "ToolSpec.js" as ToolSpec
 
 // The status bar, 24 high (docs/ui-tasks.md, U4; artboard Main): the zoom to type ("12,5%", Enter or leaving the box
 // sets it, Esc gives it back), the box Thông tin picks (Tools.statInfo), the document's size and resolution, its mode,
-// depth and profile, RAM and scratch in use (Prefs.system until N2 asks K1's stats()).
+// depth and profile, RAM and scratch in use: the tile store's (Session.stats(), K1; N2) once a second on a real document
+// or on this machine (Prefs.machine), RAM with its compressed part, against the budget; else the prototype's
+// (Prefs.system).
 Rectangle {
     id: sb
     readonly property Doc doc: Docs.current
     readonly property bool popupOpen: info.popup.visible
     readonly property var infos: [qsTr("Tài liệu"), qsTr("Hồ sơ màu"), qsTr("Kích thước"), qsTr("RAM, scratch"), qsTr("Thời gian thao tác"), qsTr("Công cụ đang dùng")]
     readonly property var system: Prefs.system
+    readonly property bool live: Prefs.machine || !!doc && doc.real
+    property var stats: Session.stats()  // bytes: raw, compressed, scratch, ram (what the budget counts), budget…
+    function refresh() { stats = Session.stats() }
+    Timer { interval: 1000; repeat: true; triggeredOnStart: true; running: sb.live && sb.visible; onTriggered: sb.refresh() }
+    // Bytes as KB below 1 MB ("504 KB"), MB below 1 GB ("48 MB"), else GB with one decimal ("1,2 GB"); none "0 MB".
+    function bytes(b) {
+        const kb = (b || 0) / 1024, mb = kb / 1024
+        return !b ? "0 MB" : kb < 1023.5 ? Fmt.vn(kb, 0) + " KB" : mb < 1023.95 ? Fmt.vn(mb, 0) + " MB" : Fmt.vn(mb / 1024, 1) + " GB"
+    }
+    readonly property string ramText: live ? qsTr("%1 / %2 · nén %3").arg(bytes(stats.ram)).arg(bytes(stats.budget)).arg(bytes(stats.compressed))
+                                           : qsTr("%1 / %2 GB").arg(Fmt.vn(system.ramUsed, 1)).arg(Fmt.vn(system.ramGB * Prefs.value("ramBudget") / 100, 1))
+    readonly property string scratchText: live ? bytes(stats.scratch) : qsTr("%1 GB").arg(Fmt.vn(system.scratchUsed, 1))
     readonly property string infoText: {
         const d = doc
         if (!d)
@@ -22,7 +36,7 @@ Rectangle {
         case 0: return d.mem || "—"
         case 1: return d.profile
         case 2: return qsTr("%1 × %2 cm").arg(Fmt.vn(d.w / d.ppi * 2.54, 2)).arg(Fmt.vn(d.h / d.ppi * 2.54, 2))
-        case 3: return qsTr("%1 GB · %2 GB").arg(Fmt.vn(system.ramUsed, 1)).arg(Fmt.vn(system.scratchUsed, 1))
+        case 3: return live ? bytes(stats.ram) + " · " + bytes(stats.scratch) : qsTr("%1 GB · %2 GB").arg(Fmt.vn(system.ramUsed, 1)).arg(Fmt.vn(system.scratchUsed, 1))
         case 4: return qsTr("%1 giây").arg(Fmt.vn(0.4, 1))
         default: return Tools.xf ? qsTr("Free Transform") : ToolSpec.name(Tools.tool)
         }
@@ -91,7 +105,7 @@ Rectangle {
             rightPadding: 10
             spacing: 4
             Plain { text: qsTr("RAM"); leftPadding: 0; rightPadding: 0 }
-            Mono { text: qsTr("%1 / %2 GB").arg(Fmt.vn(sb.system.ramUsed, 1)).arg(Fmt.vn(sb.system.ramGB * Prefs.value("ramBudget") / 100, 1)); leftPadding: 0; rightPadding: 0 }
+            Mono { text: sb.ramText; leftPadding: 0; rightPadding: 0 }
         }
         Rule {}
         Row {
@@ -99,7 +113,7 @@ Rectangle {
             rightPadding: 12
             spacing: 4
             Plain { text: qsTr("Scratch"); leftPadding: 0; rightPadding: 0 }
-            Mono { text: qsTr("%1 GB").arg(Fmt.vn(sb.system.scratchUsed, 1)); leftPadding: 0; rightPadding: 0 }
+            Mono { text: sb.scratchText; leftPadding: 0; rightPadding: 0 }
         }
     }
 

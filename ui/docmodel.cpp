@@ -4,6 +4,8 @@
 
 #include <QColorSpace>
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QFileInfo>
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -15,6 +17,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -80,7 +83,7 @@ const char* const kOps[] = {"selectLayers", "addLayer", "newLayer",   "newGroup"
                             "moveLayer",    "arrange",  "groupLayers", "ungroup", "setProps",     "deleteHidden"};
 const char* const kActions[] = {"undo",      "redo",     "toggleLast", "revert",     "dupDoc",  "newLayer", "newGroup",
                                 "dupLayer",  "delLayer", "delHidden",  "groupLayer", "ungroup", "hideLayer", "arr",
-                                "lockAll",   "rename"};
+                                "lockAll",   "rename",   "save"};
 const char* const kViewActions[] = {"close", "closeAll", "open",   "zoomIn", "zoomOut", "zoomFit", "zoomFill",
                                     "zoom100", "tog",    "scr",    "snapTo", "win",     "side",    "aa",
                                     "fp",    "openFile", "quit",   "clearRecent", "noop"};
@@ -252,9 +255,10 @@ int integer(const QJsonValue& v) {
 
 }  // namespace
 
-DocModel::DocModel(QJSEngine* js, const QString& path, const QString& file, qint64 bytes, int w, int h, int viewW,
-                   int viewH, QObject* parent)
-    : QObject(parent), js_(js), path_(path), file_(file), bytes_(bytes), viewW_(viewW), viewH_(viewH), w_(w), h_(h) {
+DocModel::DocModel(QJSEngine* js, const QString& path, const QString& file, qint64 bytes, bool pbd, int w, int h,
+                   int viewW, int viewH, QObject* parent)
+    : QObject(parent), js_(js), path_(path), file_(file), bytes_(bytes), pbd_(pbd), viewW_(viewW), viewH_(viewH), w_(w),
+      h_(h) {
   parse_ = js_->globalObject().property(QStringLiteral("JSON")).property(QStringLiteral("parse"));
   alphas_ = js_->newArray(0);
   hiddenChannels_ = js_->newObject();
@@ -343,11 +347,31 @@ void DocModel::bump() {
 
 bool DocModel::dirty() const { return doc_ && doc_->step(doc_->current()).serial != saved_; }
 
+int DocModel::unsaved() const {
+  if (!dirty()) return 0;
+  const long now = long(doc_->current());
+  for (size_t i = 0; i < doc_->steps(); i++)
+    if (doc_->step(i).serial == saved_) return int(std::labs(now - long(i)));
+  return int(std::max(1L, now));
+}
+
+void DocModel::saved(uint64_t serial, const QString& path) {
+  saved_ = serial;
+  if (path != path_) {
+    path_ = path;
+    file_ = QFileInfo(path).fileName();
+  }
+  pbd_ = true;
+  bytes_ = QFileInfo(path).size();
+  bump();
+}
+
 // ---- commands ----
 
 bool DocModel::can(const QString& name) const {
   const bool action = name.startsWith(u'@') || name.contains(u':');  // "@merge:down"; "mask" is an op of run()
   const QString n = (name.startsWith(u'@') ? name.mid(1) : name).section(u':', 0, 0);
+  if (name == u"dialog:SaveOptions") return !!doc_;  // Lưu thành, Lưu bản sao: a .pbd, where Main's FileDialog says (N2)
   if (name.startsWith(QLatin1String("dialog:")) || name.startsWith(QLatin1String("space:")) ||
       name.startsWith(QLatin1String("panel:")))
     return false;  // none yet
@@ -732,6 +756,34 @@ QString DocModel::dump() const {
 }
 
 // ---- the JS values ----
+
+QString DocModel::digest() const {
+  if (!doc_) return {};
+  const pb::DocState& d = *doc_->state();
+  QCryptographicHash hash(QCryptographicHash::Sha1);
+  std::vector<uint8_t> rows;
+  const std::function<void(const pb::Layer&)> walk = [&](const pb::Layer& g) {
+    for (const LayerPtr& c : g.children) {
+      const char kind = c->kind == pb::Kind::Group ? 'g' : c->pixels ? 'p' : 'o';
+      hash.addData(QByteArrayView(&kind, 1));
+      if (c->pixels) {
+        const pb::Format f = c->pixels->format();
+        const char format[2] = {char(f.channels), char(f.bytes())};
+        hash.addData(QByteArrayView(format, 2));
+        const size_t stride = size_t(d.width) * size_t(f.bytes());
+        for (int y = 0; y < d.height; y += pb::kTileSize) {
+          const int n = std::min(pb::kTileSize, d.height - y);
+          rows.resize(stride * size_t(n));
+          c->pixels->read_rect(0, y, d.width, n, rows.data(), stride);
+          hash.addData(QByteArrayView(reinterpret_cast<const char*>(rows.data()), qsizetype(rows.size())));
+        }
+      }
+      if (c->kind == pb::Kind::Group) walk(*c);
+    }
+  };
+  walk(*d.root);
+  return QString::fromLatin1(hash.result().toHex());
+}
 
 QString DocModel::thumbUrl(const pb::Layer& l) const {
   if (!l.pixels) return {};

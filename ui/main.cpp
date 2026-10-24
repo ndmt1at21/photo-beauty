@@ -129,6 +129,7 @@ int main(int argc, char* argv[]) {
   QVariantMap start{{"startState", args.value(state)},
                     {"startTheme", args.value(theme)},  // "" without --theme
                     {"persist", !args.isSet(shot)},     // screenshots start from the defaults
+                    {"machine", !args.isSet(shot)},     // this machine's numbers, budget, scratch (N2); not in screenshots
                     {"startFiles", args.positionalArguments()},  // opened once the window is up
                     {"visible", false}};                // shown once set up
   if (args.isSet(size)) {

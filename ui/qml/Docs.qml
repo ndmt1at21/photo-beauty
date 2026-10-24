@@ -6,7 +6,8 @@ import "View.js" as View
 // The open documents, recent files, files to recover and the background job (docs/ui-tasks.md, U3), as the prototype
 // opens (build/proto/Main.dc.html): three documents, "Đang lưu chân dung.psd" at 64 %. exec() runs the menus' actions
 // (the prototype's exec). Files opened for real (N1: JPEG, PNG, TIFF, .pbd through Session) are Docs whose core is a
-// DocModel (C++), beside the mock ones; the rest still opens as the mock's, by name. Session (N2) saves for real.
+// DocModel (C++), beside the mock ones; the rest still opens as the mock's, by name. They save for real (N2): as .pbd,
+// by Session in the background, the job's progress and Hủy those of the save.
 QtObject {
     id: ds
     property var docs: []  // Doc, in tab order
@@ -15,13 +16,17 @@ QtObject {
     property var recent: []  // as Mock.RECENT: { file, photo, w, h, ppi, bits, mem, size, mb, when, order }
     property var recovery: []  // { file, time }
     // One at a time: { on, run (going), done, verb ("save", "export"), name, p (0..100), sp (per tick), doc (unsaved no
-    // more when it is done), wait (ticks shown done), label ("Đang lưu chân dung.psd") }.
+    // more when it is done), wait (ticks shown done), label ("Đang lưu chân dung.psd") }; a real save's also real: true,
+    // path, and p from Session rather than ticks.
     property var job: ({ on: false })
     property var viewport: ({ w: 1034, h: 750 })  // the canvas frame, px: what Vừa màn hình fits (U6 sets it)
     property string error: ""  // why the last file did not open, "" once Main has shown it
 
     readonly property Component docC: Component { Doc {} }
     readonly property Timer ticker: Timer { interval: 250; repeat: true; running: !!ds.job.on; onTriggered: ds.tick() }
+    // A real document without a .pbd yet asks where (Lưu, SaveChanges' Lưu): Main's FileDialog, then saveAs(doc, file,
+    // copy) and then() once the save is under way; neither when no file is picked.
+    signal pathWanted(Doc doc, bool copy, var then)
 
     Component.onCompleted: reset()
 
@@ -177,11 +182,76 @@ QtObject {
     function dropRecovery(i) { recovery = recovery.filter((x, k) => k !== i) }
 
     // The background job: a save clears the document's unsaved dot when it ends; done, it shows "Đã lưu …" 10 ticks.
-    function save(d) { if (d) startJob("save", d.file, d, 2) }
+    // Lưu (Ctrl S): a mock document as the prototype does; a real one into its .pbd, appending what changed (M3), or,
+    // without a .pbd yet (opened from a JPEG, PNG, TIFF, new), asking where first (pathWanted), as Lưu thành; one saved
+    // and unchanged since stays as it is. `then` (SaveChanges) runs once the save is under way, not when no path is given.
+    function save(d, then) {
+        if (!d)
+            return
+        if (!d.real) {
+            startJob("save", d.file, d, 2)
+        } else if (d.model.loading) {
+            return
+        } else if (!d.model.pbd) {  // its .pbd once a save into one going on ends; else where?
+            const going = Session.savingTo(d.model)
+            if (!going) {
+                pathWanted(d, false, then || null)
+                return
+            }
+            saveAs(d, going, false)
+        } else if (d.dirty || !Session.fileInfo(d.model.path).bytes) {
+            saveAs(d, d.model.path, false)
+        }
+        if (then)
+            then()
+    }
+    // Lưu thành, Lưu bản sao of a real document: its state as a .pbd at `file` (a path or file: URL; ".pbd" added to
+    // another ending) by a Background job (Session.save()), the document going on meanwhile; a copy leaves the document
+    // as it was (its file, its dot). One asked for while another runs waits for it. False when it cannot be.
+    function saveAs(d, file, copy) {
+        if (!d || !d.real || d.model.loading)
+            return false
+        let path = Session.localPath(String(file))
+        if (!path)
+            return false
+        if (!/\.pbd$/i.test(path))
+            path += ".pbd"
+        return Session.save(d.model, path, !!copy)
+    }
+    readonly property Connections saves: Connections {  // a real save on the job, as it goes
+        target: Session
+        function onSaveStarted(model, path, copy) {
+            const d = ds.docs.find((x) => x.real && x.model === model) || null
+            ds.setJob({ on: true, run: true, done: false, verb: "save", name: path.replace(/^.*[\/\\]/, ""), p: 0, sp: 0, doc: d, wait: 0, real: true, path: path })
+        }
+        function onSaveProgress(part) {
+            if (ds.job.real && ds.job.run)
+                ds.setJob(Object.assign({}, ds.job, { p: part * 100 }))
+        }
+        function onSaveEnded(model, path, why, cancelled, copy) {
+            const j = ds.job, shown = !!j.real && j.path === path && !!j.run
+            const d = ds.docs.find((x) => x.real && x.model === model) || null
+            if (!why && !cancelled) {
+                if (shown || !j.on)  // Hủy too late: it saved
+                    ds.setJob({ on: true, run: false, done: true, verb: "save", name: path.replace(/^.*[\/\\]/, ""), p: 100, sp: 0, doc: d, wait: 0, real: true, path: path })
+                if (d && !copy)
+                    ds.listed(d)
+            } else if (shown) {
+                ds.setJob(Object.assign({}, j, { on: false, run: false }))
+            }
+            if (why)
+                ds.error = qsTr("Không lưu được %1: %2").arg(path.replace(/^.*[\/\\]/, "")).arg(why)
+        }
+    }
     function quickExport(d) { if (d) startJob("export", d.file.replace(/\.[^.]+$/, "") + ".png", null, 4) }
     function exportAs(d, file) { if (d) startJob("export", file, null, 4) }
     function startJob(verb, name, d, sp) { setJob({ on: true, run: true, done: false, verb: verb, name: name, p: 0, sp: sp, doc: d, wait: 0 }) }
-    function cancelJob() { setJob(Object.assign({}, job, { on: false, run: false })) }
+    // Hủy: a real save stops soon (its file as it was, or as saved last) and those waiting are dropped.
+    function cancelJob() {
+        if (job.real && job.run)
+            Session.cancelSave()
+        setJob(Object.assign({}, job, { on: false, run: false }))
+    }
     function setJob(j) {
         const save = j.verb === "save"
         j.label = (j.done ? (save ? qsTr("Đã lưu %1") : qsTr("Đã xuất %1")) : (save ? qsTr("Đang lưu %1") : qsTr("Đang xuất %1"))).arg(j.name)
@@ -189,7 +259,7 @@ QtObject {
     }
     function tick() {
         const j = job
-        if (!j.on)
+        if (!j.on || j.run && j.real)  // a real save's progress comes from Session
             return
         if (j.run && j.p + j.sp < 100)
             return setJob(Object.assign({}, j, { p: j.p + j.sp }))

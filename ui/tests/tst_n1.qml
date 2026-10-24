@@ -431,15 +431,17 @@ Item {
             const d = opened(file("mo.png", "png", 300, 200))
             verify(d.run({ op: "newLayer" }))
             const p1 = ["@mode:Gray", "@bits:16", "@merge:down", "@merge:flat", "@selAll", "@xf", "@mask:reveal", "@clip", "@toSO", "@rast",
-                "@save", "@quickExport", "@adj:Curves", "@fill:Solid Color", "@crot:90", "@cflip:h", "@invert", "@paste", "@place", "@qm",
+                "@quickExport", "@adj:Curves", "@fill:Solid Color", "@crot:90", "@cflip:h", "@invert", "@paste", "@place", "@qm",
                 "@ants:subject", "@newGuide", "@rot:90", "@flip:h"]
             for (const it of all) {
                 const p = MenuSpec.name(it.act || "")
-                if ((it.dialog || it.space) && !it.free || p1.indexOf(it.act) >= 0)
+                if ((it.dialog || it.space) && !it.free && it.dialog !== "SaveOptions" || p1.indexOf(it.act) >= 0)
                     verify(!w.can(it), "greyed: " + it.l)
             }
+            for (const it of all.filter(x => x.dialog === "SaveOptions"))  // Lưu thành…, Lưu bản sao…: a .pbd (N2)
+                verify(w.can(it), "the core has it: " + it.l)
             const on = ["@undo", "@newLayer", "@newGroup", "@dupLayer", "@delLayer", "@groupLayer", "@hideLayer", "@arr:up", "@lockAll",
-                "@zoomIn", "@zoom100", "@win:Layers", "@tog:rulers"]
+                "@zoomIn", "@zoom100", "@win:Layers", "@tog:rulers", "@save"]
             for (const a of on) {
                 const it = all.find(x => x.act === a)
                 verify(it, a)

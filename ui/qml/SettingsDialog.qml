@@ -243,7 +243,7 @@ DialogBox {
                             max: 90
                             step: 5
                             shown: qsTr("%1% · %2 GB").arg(perf.p.ramBudget).arg(Fmt.vn(perf.ram, 1))
-                            side: qsTr("RAM máy %1 GB").arg(perf.sys.ramGB)
+                            side: qsTr("RAM máy %1 GB").arg(Fmt.vn(perf.sys.ramGB, Number.isInteger(perf.sys.ramGB) ? 0 : 1))
                         }
                         Budget {
                             label: qsTr("Ngân sách VRAM")
@@ -287,7 +287,7 @@ DialogBox {
                                 Text { text: perf.sys.gpuName; color: Theme.t1; font.pointSize: Theme.pt(12) }
                                 Text { text: perf.sys.gpuApi; color: Theme.t3; font.family: Theme.mono; font.pointSize: Theme.pt(11) }
                                 Item { Layout.fillWidth: true }
-                                Btn { implicitHeight: 26; text: qsTr("Kiểm tra lại") }  // nothing to look for on the mock (N2)
+                                Btn { implicitHeight: 26; text: qsTr("Kiểm tra lại"); onClicked: Prefs.recheck() }  // the GPU and disks again (N2)
                             }
                         }
                         Line {  // G1, not on the artboard (U26): presents without vsync; main.cpp reads it at the start

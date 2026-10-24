@@ -32,6 +32,9 @@ QtObject {
     property string file
     property string mem  // the status bar's Tài liệu, "148 MB / 1,02 GB"
     property bool dirty  // unsaved: the tab's dot
+    // The steps closing it unsaved loses (SaveChanges): from the step saved on a real document (N2); the mock keeps no
+    // saved step, so its History index.
+    readonly property int unsaved: model ? model.unsaved : index
     property var photo  // the Mock.PHOTOS index of the image, null for a new document
     property bool faces  // Retouch has faces to work on
     property var view  // { x, y: the document point at the frame's centre; zoom: 1 is 100 %; angle: °, clockwise }

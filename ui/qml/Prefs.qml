@@ -5,7 +5,8 @@ import QtCore
 // Thiết lập (docs/ui-tasks.md, U3): every value of build/proto/Settings.dc.html's PANES and its Hiệu năng page, by key,
 // defaults as the artboard. `panes` is that list as data for the dialog (U21). Kept between starts as one JSON string in
 // QtCore Settings once Main sets persist (main.cpp: not in tests, nor with --screenshot); Theme does not read it (U4 ties
-// them). A select or a group of segments keeps the index of its option.
+// them). A select or a group of segments keeps the index of its option. With `machine` (N2) the Hiệu năng page shows this
+// machine and sets the tile store's budget and scratch folder (K1, through Session).
 QtObject {
     id: prefs
     property bool persist: false
@@ -131,9 +132,100 @@ QtObject {
     // order they fill, on or not; Độ trễ thấp (U26): no vsync from the next start, main.cpp reads it from the JSON kept.
     readonly property var perf: ({ ramBudget: 60, vramBudget: 1.5, scratchBudget: 200, gpu: true, lowLatency: false, cacheLevels: 4,
         scratchDisks: [{ name: "C:", on: true }, { name: "D:", on: true }, { name: "E:", on: false }] })
-    // The machine as the page shows it, mock until N2 asks K1's stats(): RAM GB, the GPU, what is in use, disks by name.
-    readonly property var system: ({ ramGB: 16, gpuName: "Intel Iris Xe Graphics", gpuApi: "Vulkan 1.3", ramUsed: 3.1, vramUsed: 0.9, scratchUsed: 1.2,
+    // The machine as the page shows it: RAM GB, the GPU, what is in use (GB), disks by name (free GB). This one's with
+    // `machine`, else the prototype's; a disk of scratchDisks it lacks (a settings file from elsewhere) as not found.
+    readonly property var system: {
+        const s = machine && found ? mine(found, used, Session.gpu) : prototype
+        const lacks = (values.scratchDisks || []).filter((d) => !(d.name in s.disks))
+        if (!lacks.length)
+            return s
+        const disks = Object.assign({}, s.disks)
+        for (const d of lacks)
+            disks[d.name] = { kind: qsTr("không thấy ổ"), free: 0 }
+        return Object.assign({}, s, { disks: disks })
+    }
+    readonly property var prototype: ({ ramGB: 16, gpuName: "Intel Iris Xe Graphics", gpuApi: "Vulkan 1.3", ramUsed: 3.1, vramUsed: 0.9, scratchUsed: 1.2,
         disks: { "C:": { kind: qsTr("SSD NVMe"), free: 118 }, "D:": { kind: qsTr("SSD"), free: 402 }, "E:": { kind: qsTr("HDD ngoài"), free: 1200 } } })
+
+    // ---- this machine (N2) ----
+    // pb-ui sets it (main.cpp's `machine`): `system` is this machine's (Session.machine(), its tile store's stats() each
+    // second, the GPU findGpu() finds; VRAM in use not known: 0), scratchDisks lists its disks, and the tile store's
+    // budget follows ramBudget (% of its RAM) and its scratch folder the first disk on (Session.useScratch(): the
+    // temporary folder on that disk, else <disk>/photo-beauty-scratch). Tests and screenshots keep it false: the
+    // prototype's machine, nothing set.
+    property bool machine: false
+    onMachineChanged: recheck()
+    property var found: null  // Session.machine() as last read
+    property var used: null  // Session.stats() as last read
+    readonly property Timer usage: Timer {
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        running: prefs.machine
+        onTriggered: prefs.used = Session.stats()
+    }
+    // Thiết lập's Kiểm tra lại, and once machine is set: the disks and the GPU looked for again, in the background
+    // (Session.findMachine(), findGpu()); the disks known already meanwhile.
+    function recheck() {
+        if (!machine)
+            return
+        if (Session.found.disks && !found) {
+            found = Session.found
+            fit()
+        }
+        Session.findMachine()
+        Session.findGpu()
+    }
+    readonly property Connections looked: Connections {
+        target: Session
+        function onFoundChanged() {
+            if (!prefs.machine)
+                return
+            prefs.found = Session.found
+            prefs.fit()
+        }
+    }
+    function mine(m, u, gpu) {
+        const gb = 1024 * 1024 * 1024, disks = {}
+        for (const d of m.disks)
+            disks[d.name] = { kind: d.kind, free: d.free / gb }
+        const looked = gpu.found !== undefined
+        return { ramGB: m.ram / gb, gpuName: gpu.name || (looked ? qsTr("Không thấy GPU dùng được") : qsTr("Đang dò GPU…")),
+            gpuApi: gpu.api || (looked ? qsTr("ghép trên CPU") : ""), ramUsed: u ? u.ram / gb : 0, vramUsed: 0,
+            scratchUsed: u ? u.scratch / gb : 0, disks: disks }
+    }
+    // scratchDisks as this machine's: those listed and still there, in their order, on or off as set, then its others,
+    // off; the temporary folder's disk on when none is (the prototype's C:, D:, E: on a first start). Then applied.
+    function fit() {
+        if (!machine || !found)
+            return
+        const names = found.disks.map((d) => d.name)
+        const list = values.scratchDisks.filter((d) => names.indexOf(d.name) >= 0)
+        for (const n of names)
+            if (!list.some((d) => d.name === n))
+                list.push({ name: n, on: false })
+        const temp = list.findIndex((d) => d.name === names[0])
+        if (temp >= 0 && !list.some((d) => d.on))
+            list[temp] = { name: names[0], on: true }
+        if (JSON.stringify(list) !== JSON.stringify(values.scratchDisks))
+            set("scratchDisks", list)
+        apply()
+    }
+    property string applied: ""  // what apply() set last, as one key
+    // The tile store's budget, ramBudget % of this machine's RAM, and its scratch folder, on the first disk on that
+    // takes one (none: the system's temporary folder).
+    function apply() {
+        if (!machine || !found)
+            return
+        const budget = Math.round(found.ram * values.ramBudget / 100)
+        const dirs = values.scratchDisks.filter((d) => d.on).map((d) => (found.disks.find((x) => x.name === d.name) || { dir: "" }).dir)
+        const key = budget + "|" + dirs.join("|")
+        if (key === applied)
+            return
+        applied = key
+        Session.setBudget(budget)
+        Session.useScratch(dirs)
+    }
     readonly property var defaults: {
         // New's Đã lưu (U16): presets as NewDocSpec.P() makes them; Nền quanh ảnh's Tùy chọn…, a colour a screen mode (U23);
         // Levels' Tùy chọn Auto saved as the default (U25, null until then).
@@ -159,6 +251,7 @@ QtObject {
             if (kept && kept[k] !== undefined && typeof kept[k] === typeof o[k] && Array.isArray(kept[k]) === Array.isArray(o[k]))
                 o[k] = kept[k]
         values = o
+        fit()  // the disks kept may not all be there
     }
     property Settings store: null  // [prefs] json=… in the app's settings
     readonly property Component storeC: Component { Settings { category: "prefs" } }
@@ -171,5 +264,6 @@ QtObject {
     onValuesChanged: {
         if (store)
             store.setValue("json", JSON.stringify(values))
+        apply()
     }
 }

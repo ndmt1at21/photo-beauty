@@ -34,7 +34,9 @@ class DocModel : public QObject {
   QML_ELEMENT
   QML_UNCREATABLE("Session opens documents")
   Q_PROPERTY(bool real READ real CONSTANT)          // a document of the core, unlike the mock's (N3 locks tools by it)
-  Q_PROPERTY(QString path READ path CONSTANT)       // the file's, local; "" for a document never saved
+  Q_PROPERTY(QString path READ path NOTIFY changed)  // the file's, local: opened from, then saved as; "" for neither
+  // path is a .pbd it was opened from or saved into: Lưu saves there (appending, M3); else Lưu is Lưu thành (N2)
+  Q_PROPERTY(bool pbd READ pbd NOTIFY changed)
   Q_PROPERTY(bool loading READ loading NOTIFY changed)  // the file being read: no layers, commands refused
   Q_PROPERTY(QString error READ error NOTIFY changed)   // why the file did not open; "" when it did or still may
   // For CanvasBar (Overlays.qml): the notice bar's text, what runs in the background and its share done (0..1, below 0
@@ -43,12 +45,15 @@ class DocModel : public QObject {
   Q_PROPERTY(QString task READ task NOTIFY changed)
   Q_PROPERTY(double progress READ progress NOTIFY changed)
   Q_PROPERTY(int version READ version NOTIFY changed)  // up by one at every change of what it shows
-  Q_PROPERTY(qint64 bytes READ bytes CONSTANT)         // the file's size, 0 without one
+  Q_PROPERTY(qint64 bytes READ bytes NOTIFY changed)   // the file's size, 0 without one
 
   // Mock.FIELDS, as Mock.makeDoc() has them
   Q_PROPERTY(QString file READ file NOTIFY changed)  // the name shown on the tab
   Q_PROPERTY(QString mem READ mem NOTIFY changed)    // "148 MB / 1,02 GB": flattened, all layers
   Q_PROPERTY(bool dirty READ dirty NOTIFY changed)   // the step shown is not the one saved (Step::serial)
+  // The steps between the one saved and the one shown, what closing unsaved loses (SaveChanges); 0 when not dirty, the
+  // steps since the first when the step saved is gone (a command after undoing past it, or trimmed).
+  Q_PROPERTY(int unsaved READ unsaved NOTIFY changed)
   Q_PROPERTY(QJSValue view READ view NOTIFY changed)  // { x, y, zoom, angle } as View.js
   Q_PROPERTY(QJSValue state READ state NOTIFY changed)  // { w, h, ppi, mode, bits, profile, root, selected, nextId… }
   Q_PROPERTY(QJSValue tree READ tree NOTIFY changed)    // the root: { id: 0, kind: "group", children } bottom first
@@ -84,9 +89,10 @@ class DocModel : public QObject {
   Q_PROPERTY(int snapshot READ snapshot NOTIFY changed)         // the snapshot shown, -1 for none
 
  public:
-  // Opening `path` (Session reads it, then opened() or failed()), the view fitted to a frame of viewW x viewH px.
-  DocModel(QJSEngine* js, const QString& path, const QString& file, qint64 bytes, int w, int h, int viewW, int viewH,
-           QObject* parent);
+  // Opening `path` (Session reads it, then opened() or failed()), a .pbd or not, the view fitted to a frame of viewW x
+  // viewH px.
+  DocModel(QJSEngine* js, const QString& path, const QString& file, qint64 bytes, bool pbd, int w, int h, int viewW,
+           int viewH, QObject* parent);
   ~DocModel() override;
 
   // ---- C++: Session, Canvas ----
@@ -101,10 +107,14 @@ class DocModel : public QObject {
   std::shared_ptr<const pb::Preview> takePreview() { return std::move(preview_); }
   void failed(const QString& why);  // the file did not open: error, no document
   void touched();                   // the history changed outside run() (a stroke's step): what it shows follows
+  // Session saved the state of step `serial` (Step::serial) as the .pbd at `path`: that step is the one saved, path the
+  // document's (its tab named after it).
+  void saved(uint64_t serial, const QString& path);
 
   // ---- QML ----
   bool real() const { return true; }
   QString path() const { return path_; }
+  bool pbd() const { return pbd_; }
   bool loading() const { return !doc_ && error_.isEmpty(); }
   QString error() const { return error_; }
   QString notice() const { return notice_; }
@@ -115,6 +125,7 @@ class DocModel : public QObject {
   QString file() const { return file_; }
   QString mem() const { return mem_; }
   bool dirty() const;
+  int unsaved() const;
   QJSValue view() const { return view_; }
   QJSValue state() const { return state_; }
   QJSValue tree() const { return tree_; }
@@ -143,8 +154,9 @@ class DocModel : public QObject {
   // One command, { op, …fields } as the mock's (Mock.js lists them): a History step, but for selectLayers and within a
   // gesture; false, nothing changed, when it cannot run, would change nothing, or the core has no such command yet.
   Q_INVOKABLE bool run(const QJSValue& cmd);
-  // Whether the core has `name`: an op of run(), a menu action ("@merge:down"), "dialog:<name>" or "space:<name>" (none
-  // yet), "panel:<name>" for a panel greyed whole, none of its controls the core's yet (Properties, Retouch, Channels);
+  // Whether the core has `name`: an op of run(), a menu action ("@merge:down"), "dialog:<name>" or "space:<name>" (only
+  // "dialog:SaveOptions": Lưu thành, Lưu bản sao, which Main turns into its FileDialog for a .pbd), "panel:<name>" for a
+  // panel greyed whole, none of its controls the core's yet (Properties, Retouch, Channels);
   // a menu requirement (Mock.CX: "layer", "!bgl") is the mock's to judge: true. Doc.can() asks this and then the mock's
   // requirement.
   Q_INVOKABLE bool can(const QString& name) const;
@@ -158,7 +170,7 @@ class DocModel : public QObject {
   Q_INVOKABLE void deleteStep();  // the step shown and those after it
   Q_INVOKABLE void beginGesture();
   Q_INVOKABLE void endGesture();
-  Q_INVOKABLE void markSaved();   // the step shown is the one saved (N2 saves)
+  Q_INVOKABLE void markSaved();   // the step shown is the one saved (a save of Session marks its own step: saved())
   Q_INVOKABLE void setView(const QJSValue& patch);  // some of { x, y, zoom, angle }
   Q_INVOKABLE void zoomTo(double pct);              // %, 1 to 12.800
   Q_INVOKABLE void toggleOpen(int group);           // a group's rows shown in Layers, or not
@@ -172,6 +184,9 @@ class DocModel : public QObject {
   // For tests: the core's state shown, as JSON: { width, height, selected, nextId, layers: [{ id, kind, props
   // (to_json()), tiles: [ids] of a pixel layer, layers of a group }] } bottom first; "" while the file is read.
   Q_INVOKABLE QString dump() const;
+  // For tests: a hash of the layers' pixels over the canvas, bottom first, as read_rect() reads them (however tiles hold
+  // them: in RAM, compressed, in a file), with each layer's kind and format; "" while the file is read.
+  Q_INVOKABLE QString digest() const;
 
  signals:
   void changed();        // anything it shows; Doc.qml copies the fields, the canvas asks for a frame
@@ -195,6 +210,7 @@ class DocModel : public QObject {
   QJSValue parse_;  // JSON.parse of js_: a layer's props as one call
   QString path_, file_, error_, notice_, task_;
   qint64 bytes_ = 0;
+  bool pbd_ = false;
   double progress_ = -1;
   QElapsedTimer reading_;
   QTimer ticker_;  // progress while reading

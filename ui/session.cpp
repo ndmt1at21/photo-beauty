@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -11,21 +12,28 @@
 #include <QPointer>
 #include <QQmlEngine>
 #include <QQuickImageProvider>
+#include <QStorageInfo>
 #include <QUrl>
+#include <QVariantList>
 #include <QVariantMap>
 
 #include <algorithm>
+#include <condition_variable>
 #include <filesystem>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 #include "docmodel.h"
+#include "gpu.h"
 #include "jobs.h"
 #include "mip.h"
 #include "open.h"
 #include "pbd.h"
 #include "profile.h"
 #include "render.h"
+#include "tile.h"
+#include "tilecache.h"
 
 namespace {
 
@@ -267,6 +275,26 @@ uint64_t document(const DocPtr& state) {
 }
 }  // namespace pb::thumbs
 
+struct Session::Flights {
+  std::mutex lock;
+  std::condition_variable done;
+  int running = 0;
+};
+
+Session::Session(QJSEngine* js) : js_(js), flights_(std::make_shared<Flights>()) {}
+
+Session::~Session() {
+  {
+    std::unique_lock l(flights_->lock);
+    flights_->done.wait(l, [&] { return flights_->running == 0; });
+  }
+  for (const Save& s : waiting_) try {  // no event loop now: here, one after the other
+      pb::save_pbd(*s.state, QFileInfo(s.path).filesystemAbsoluteFilePath());
+    } catch (const std::exception& e) {
+      qWarning("pb: %s not saved: %s", qPrintable(s.path), e.what());
+    }
+}
+
 Session* Session::create(QQmlEngine* engine, QJSEngine* js) {
   if (!engine->imageProvider(QStringLiteral("pb"))) engine->addImageProvider(QStringLiteral("pb"), new Thumbs);
   return new Session(js);
@@ -278,6 +306,8 @@ QString Session::localPath(const QString& file) const {
   if (file.isEmpty() || url.scheme().size() > 1) return {};  // "C:/x.png" has a scheme of one letter
   return QFileInfo(file).absoluteFilePath();
 }
+
+QUrl Session::fileUrl(const QString& path) const { return QUrl::fromLocalFile(path); }
 
 bool Session::canOpen(const QString& file) const {
   const QString path = localPath(file);
@@ -296,7 +326,7 @@ DocModel* Session::open(const QString& file, int viewW, int viewH) {
   const Header head = sniff(path);
   if (!head.image) return nullptr;
   const QFileInfo f(path);
-  auto* m = new DocModel(js_, f.absoluteFilePath(), f.fileName(), f.size(), head.w, head.h, viewW, viewH, this);
+  auto* m = new DocModel(js_, f.absoluteFilePath(), f.fileName(), f.size(), head.pbd, head.w, head.h, viewW, viewH, this);
   QQmlEngine::setObjectOwnership(m, QQmlEngine::CppOwnership);  // Session's, until close()
   pb::submit(pb::Priority::Background, [to = QPointer<DocModel>(m), p = f.filesystemAbsoluteFilePath(), pbd = head.pbd] {
     PROFILE_ZONE("session_open");
@@ -332,7 +362,7 @@ DocModel* Session::open(const QString& file, int viewW, int viewH) {
 DocModel* Session::duplicate(DocModel* doc, const QString& name) {
   if (!doc || !doc->document()) return nullptr;
   const pb::DocPtr state = doc->current();
-  auto* m = new DocModel(js_, QString(), name, 0, state->width, state->height, 0, 0, this);
+  auto* m = new DocModel(js_, QString(), name, 0, false, state->width, state->height, 0, 0, this);
   QQmlEngine::setObjectOwnership(m, QQmlEngine::CppOwnership);
   m->opened(state, "Duplicate", false);
   m->setView(doc->view());
@@ -341,4 +371,204 @@ DocModel* Session::duplicate(DocModel* doc, const QString& name) {
 
 void Session::close(DocModel* doc) {
   if (doc && doc->parent() == this) doc->deleteLater();
+}
+
+// ---- saving ----
+
+bool Session::save(DocModel* doc, const QString& file, bool copy) {
+  const QString path = localPath(file);
+  if (!doc || !doc->document() || path.isEmpty() || QFileInfo(path).isDir()) return false;
+  const pb::Document& history = *doc->document();
+  // all the UI thread does: the step's state, shared, and its serial
+  Save s{history.state(), history.step(history.current()).serial, QFileInfo(path).absoluteFilePath(), copy, doc};
+  if (!saving_) {
+    start(std::move(s));
+    return true;
+  }
+  const auto same = std::find_if(waiting_.begin(), waiting_.end(),
+                                 [&](const Save& w) { return w.doc == doc && w.path == s.path && w.copy == copy; });
+  if (same != waiting_.end())
+    *same = std::move(s);
+  else
+    waiting_.push_back(std::move(s));
+  emit savingChanged();
+  return true;
+}
+
+void Session::start(Save s) {
+  cancel_ = pb::make_token();
+  saving_ = true;
+  running_ = s;
+  const double stopAt = std::exchange(cancelAt_, 2.);
+  {
+    const std::lock_guard l(flights_->lock);
+    flights_->running++;
+  }
+  pb::submit(pb::Priority::Background, [s, stopAt, cancel = cancel_, flights = flights_, self = QPointer<Session>(this),
+                                        where = QFileInfo(s.path).filesystemAbsoluteFilePath()] {
+    PROFILE_ZONE("session_save");
+    QString error;
+    bool cancelled = false;
+    int shown = -1;  // the percent last told: a hundred posts at most
+    pb::SaveOptions o;
+    o.cancel = cancel;
+    o.progress = [&](double part) {
+      if (part >= stopAt) cancel->store(true);
+      const int percent = int(part * 100);
+      if (percent == shown) return;
+      shown = percent;
+      if (QCoreApplication* app = QCoreApplication::instance())
+        QMetaObject::invokeMethod(app, [self, part] {
+          if (self && self->saving_) emit self->saveProgress(part);
+        }, Qt::QueuedConnection);
+    };
+    try {
+      pb::save_pbd(*s.state, where, o);
+    } catch (const pb::Cancelled&) {
+      cancelled = true;
+    } catch (const std::exception& e) {
+      error = QString::fromUtf8(e.what());
+      if (error.isEmpty()) error = QStringLiteral("?");
+    }
+    if (QCoreApplication* app = QCoreApplication::instance())
+      QMetaObject::invokeMethod(app, [self, s, error, cancelled] {
+        if (self) self->finish(s, error, cancelled);
+      }, Qt::QueuedConnection);
+    const std::lock_guard l(flights->lock);
+    flights->running--;
+    flights->done.notify_all();
+  });
+  emit savingChanged();
+  emit saveStarted(s.doc, s.path, s.copy);
+}
+
+void Session::finish(const Save& s, const QString& error, bool cancelled) {
+  saving_ = false;
+  cancel_.reset();
+  running_ = {};
+  if (s.doc && error.isEmpty() && !cancelled && !s.copy) s.doc->saved(s.serial, s.path);
+  if (waiting_.empty()) emit savingChanged();
+  emit saveEnded(s.doc, s.path, error, cancelled, s.copy);
+  if (!saving_ && !waiting_.empty()) {  // saveEnded()'s listeners may have started one
+    Save next = std::move(waiting_.front());
+    waiting_.pop_front();
+    start(std::move(next));
+  }
+}
+
+void Session::cancelSave() {
+  if (cancel_) cancel_->store(true);
+  if (waiting_.empty()) return;
+  waiting_.clear();
+  emit savingChanged();
+}
+
+QString Session::savingTo(DocModel* doc) const {
+  if (saving_ && running_.doc == doc && !running_.copy) return running_.path;
+  for (const Save& w : waiting_)
+    if (w.doc == doc && !w.copy) return w.path;
+  return {};
+}
+
+// ---- the tile store, this machine ----
+
+QVariantMap Session::stats() const {
+  const pb::TileStats t = pb::tile_stats();
+  const auto n = [](size_t v) { return QVariant(double(v)); };
+  return {{QStringLiteral("raw"), n(t.raw)},
+          {QStringLiteral("compressed"), n(t.compressed)},
+          {QStringLiteral("scratch"), n(t.scratch)},
+          {QStringLiteral("pinned"), n(t.pinned)},
+          {QStringLiteral("charged"), n(t.charged)},
+          {QStringLiteral("ram"), n(t.raw + t.compressed + t.charged)},
+          {QStringLiteral("budget"), n(pb::tile_budget())}};
+}
+
+QVariantMap Session::machine() const {
+  const QString temp = QDir::tempPath();
+  const QStorageInfo tempDisk(temp);
+  // ponytail: file systems that are not disks by their type; a list per OS if one shows up on the page
+  static const QByteArray kNotDisks[] = {"tmpfs", "devtmpfs", "ramfs", "squashfs", "overlay", "proc", "sysfs",
+                                         "cgroup", "cgroup2", "autofs", "devpts", "fuse.snapfuse"};
+  QVariantList disks;
+  QList<QByteArray> devices;
+  QList<QStorageInfo> volumes = QStorageInfo::mountedVolumes();
+  std::stable_sort(volumes.begin(), volumes.end(), [&](const QStorageInfo& a, const QStorageInfo& b) {
+    const bool ta = a.rootPath() == tempDisk.rootPath(), tb = b.rootPath() == tempDisk.rootPath();
+    return ta != tb ? ta : a.rootPath().size() != b.rootPath().size() ? a.rootPath().size() < b.rootPath().size()
+                                                                       : a.rootPath() < b.rootPath();
+  });
+  for (const QStorageInfo& v : volumes) {
+    if (!v.isValid() || !v.isReady() || v.isReadOnly() || v.bytesTotal() < (qint64(1) << 30) ||
+        std::find(std::begin(kNotDisks), std::end(kNotDisks), v.fileSystemType()) != std::end(kNotDisks) ||
+        devices.contains(v.device()))  // the same disk mounted again further down (WSL's /mnt/wslg/distro)
+      continue;
+    devices.push_back(v.device());
+    QString name = v.rootPath();
+    if (name.size() == 3 && name.endsWith(QLatin1String(":/"))) name.chop(1);  // "C:/" → "C:"
+    const QString fs = QString::fromUtf8(v.fileSystemType());
+    const QString label = v.name();
+    const bool hasTemp = v.rootPath() == tempDisk.rootPath();
+    disks.push_back(QVariantMap{
+        {QStringLiteral("name"), name},
+        {QStringLiteral("kind"), label.isEmpty() || label == fs ? fs : label + QStringLiteral(" · ") + fs},
+        {QStringLiteral("free"), double(v.bytesAvailable())},
+        {QStringLiteral("total"), double(v.bytesTotal())},
+        {QStringLiteral("dir"), hasTemp ? temp : QDir(v.rootPath()).filePath(QStringLiteral("photo-beauty-scratch"))}});
+  }
+  return {{QStringLiteral("ram"), double(pb::physical_memory())},
+          {QStringLiteral("temp"), temp},
+          {QStringLiteral("disks"), disks}};
+}
+
+void Session::findMachine() {
+  pb::submit(pb::Priority::Background, [self = QPointer<Session>(this)] {
+    if (!self) return;
+    QVariantMap m = self->machine();  // touches nothing of Session's
+    if (QCoreApplication* app = QCoreApplication::instance())
+      QMetaObject::invokeMethod(app, [self, m] {
+        if (!self) return;
+        self->found_ = m;
+        emit self->foundChanged();
+      }, Qt::QueuedConnection);
+  });
+}
+
+void Session::setBudget(double bytes) { pb::set_tile_budget(size_t(std::max(bytes, double(1 << 20)))); }
+
+QString Session::useScratch(const QStringList& dirs) {
+  QString use = QDir::tempPath();
+  for (const QString& d : dirs)
+    if (!d.isEmpty() && QDir().mkpath(d) && QFileInfo(d).isWritable()) {
+      use = QFileInfo(d).absoluteFilePath();
+      break;
+    }
+  if (use != scratchDir_) {
+    pb::set_scratch_dir(QFileInfo(use).filesystemAbsoluteFilePath());
+    scratchDir_ = use;
+    emit scratchDirChanged();
+  }
+  return use;
+}
+
+void Session::findGpu() {
+  pb::submit(pb::Priority::Background, [self = QPointer<Session>(this)] {
+    QVariantMap gpu{{QStringLiteral("found"), false}};
+    try {
+      if (const auto dev = pb::gpu::Device::create()) {
+        gpu[QStringLiteral("found")] = true;
+        gpu[QStringLiteral("name")] = QString::fromStdString(dev->name());
+        const QString driver = QString::fromStdString(dev->driver());
+        gpu[QStringLiteral("api")] = driver.isEmpty() ? QStringLiteral("Vulkan") : QStringLiteral("Vulkan · ") + driver;
+      }
+    } catch (const std::exception& e) {
+      qWarning("pb: no GPU: %s", e.what());
+    }
+    if (QCoreApplication* app = QCoreApplication::instance())
+      QMetaObject::invokeMethod(app, [self, gpu] {
+        if (!self) return;
+        self->gpu_ = gpu;
+        emit self->gpuChanged();
+      }, Qt::QueuedConnection);
+  });
 }

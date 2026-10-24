@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtQuick.Templates as T
+import QtCore
 import "MenuSpec.js" as MenuSpec
 
 // The app's window (docs/ui-tasks.md, U4; artboards Main, Start, the grid of Tokens): top bar 44, options bar 36,
@@ -19,6 +20,9 @@ ApplicationWindow {
     property string startTheme: ""  // --theme: "dark" or "light", over Thiết lập's for this run; "" without it
     // main.cpp: keep Prefs between starts; tests and screenshots start from the defaults.
     property bool persist: false
+    // main.cpp: this machine's numbers in Thiết lập › Hiệu năng, its budget and scratch folder set from there (Prefs.machine,
+    // N2); tests and screenshots keep the prototype's machine.
+    property bool machine: false
     property var startFiles: []  // main.cpp: the files on the command line, opened once the window is up (N1)
     readonly property bool hasDoc: Docs.docs.length > 0
     readonly property int screenMode: hasDoc ? Tools.screen : 0  // 0 chuẩn, 1 toàn màn hình có menu, 2 toàn màn hình
@@ -43,6 +47,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         Prefs.persist = persist
+        Prefs.machine = machine
         TitleBar.use(win)
         if (startState)
             start(startState)
@@ -88,6 +93,10 @@ ApplicationWindow {
         if (!can(item))
             return false
         acted(item)
+        if (item.dialog === "SaveOptions" && Docs.current.real) {  // Lưu thành, Lưu bản sao: a .pbd, where the FileDialog says
+            askPath(Docs.current, !!(item.params && item.params.copy), null)
+            return true
+        }
         if (item.dialog)
             return !!openDialog(item.dialog, item.params)
         if (item.space)
@@ -189,6 +198,40 @@ ApplicationWindow {
     function openFiles(urls) {
         for (const u of urls)
             Docs.openFile(u)
+    }
+    // Lưu thành, Lưu bản sao of a real document, and Lưu of one without a .pbd yet (Docs.pathWanted): where its .pbd goes
+    // (N2; JPEG, PNG, TIFF, PSD wait for P1), beside its file and named after it at first. Once a file is picked Docs
+    // saves there, then then() (SaveChanges goes on); nothing when none is.
+    function askPath(d, copy, then) {
+        if (!d || !d.real)
+            return
+        const path = d.model.path
+        const folder = path ? Session.fileUrl(path.replace(/[\/\\][^\/\\]*$/, "")) : StandardPaths.writableLocation(StandardPaths.PicturesLocation)
+        const name = (d.file.replace(/\.[^.]+$/, "") || "photo-beauty") + (copy ? qsTr(" bản sao") : "") + ".pbd"
+        savePath.doc = d
+        savePath.copy = !!copy
+        savePath.then = then || null
+        savePath.currentFolder = folder
+        savePath.selectedFile = String(folder).replace(/\/?$/, "/") + encodeURIComponent(name)
+        savePath.open()
+    }
+    FileDialog {
+        id: savePath
+        objectName: "savePath"
+        property Doc doc: null
+        property bool copy: false
+        property var then: null
+        title: copy ? qsTr("Lưu bản sao") : qsTr("Lưu thành")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "pbd"
+        nameFilters: [qsTr("Tài liệu photo-beauty (*.pbd)")]
+        onAccepted: {
+            const next = savePath.then
+            savePath.then = null
+            if (Docs.saveAs(savePath.doc, savePath.selectedFile, savePath.copy) && next)
+                next()
+        }
+        onRejected: savePath.then = null
     }
     FileDialog {
         id: files
@@ -313,6 +356,7 @@ ApplicationWindow {
     // A file that did not open (Docs.error): why, in a toast made for it (as BugReportDialog's) at the foot of the window.
     Connections {
         target: Docs
+        function onPathWanted(d, copy, then) { win.askPath(d, copy, then) }
         function onErrorChanged() {
             const t = Docs.error ? win.type("Toast")?.createObject(win.contentItem, { text: Docs.error, err: true }) : null
             if (!t)

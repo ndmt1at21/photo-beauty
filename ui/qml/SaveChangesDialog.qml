@@ -2,8 +2,9 @@ import QtQuick
 
 // Lưu thay đổi (docs/ui-tasks.md, U20; build/proto/Notices.dc.html, "Lưu khi đóng"), as Main opens it when what closes
 // is not saved, a tab, Đóng tất cả or the window: { docs, done }. It asks about each of docs in turn, as Photoshop
-// does: Lưu saves it (Docs.save, the background job), Không lưu leaves it; after the last, done() goes on closing.
-// Hủy, Esc, a click outside stop there and nothing closes. Without docs (--state SaveChanges), those not saved.
+// does: Lưu saves it (Docs.save, the background job; a real document without a .pbd asks where first, N2), Không lưu
+// leaves it; after the last, done() goes on closing. Hủy, Esc, a click outside stop there and nothing closes, as does
+// no file picked for Lưu. Without docs (--state SaveChanges), those not saved.
 DialogBox {
     id: dlg
     property var params: ({})
@@ -11,14 +12,17 @@ DialogBox {
     Component.onCompleted: docs = params.docs || Docs.docs.filter(d => d.dirty)
     property int at: 0  // the one asked about
     readonly property Doc doc: docs[at] || null
-    // ponytail: the steps since it was opened (History's index): the mock keeps no step of the last save, N2 does.
-    readonly property int steps: doc ? doc.index : 0
+    readonly property int steps: doc ? doc.unsaved : 0  // since the step saved (N2; the mock's History index)
     readonly property int after: docs.length - at - 1  // asked about after this one
 
     header: null
     function next(save) {
         if (save && doc)
-            Docs.save(doc)
+            Docs.save(doc, () => { if (dlg.visible) dlg.go() })  // once it saves: at once, or once a file is picked
+        else
+            go()
+    }
+    function go() {
         if (after > 0) {
             at++
             return
