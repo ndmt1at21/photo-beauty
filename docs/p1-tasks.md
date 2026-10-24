@@ -40,7 +40,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | Đang làm D30 (24/10) |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
-| F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | Chưa làm |
+| F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | Đang làm F31 (25/10) |
 | C · Cọ, vẽ, tô, tẩy, gradient | C30–C41 | Lõi (CPU, GPU) | Chưa làm |
 | S · Vùng chọn, Quick Mask, Select and Mask | S30–S39 | Lõi | Đang làm S30 (24/10) |
 | H · Retouch | H30–H39 | Lõi | Chưa làm |
@@ -358,7 +358,7 @@ Tầng giao diện (plan: rasterize bằng QtGui): C++ trong `ui/` (GCC 13, Qt 6
   - `pb-bench filter <tên> <tham số…>`: xem trước một view 1920 × 1080 của D1 ở vừa màn hình và 100 %, áp full size một layer D1 (ms, cho Q đo).
 
   **Xong khi:** hai bộ lọc thử trong test (đảo màu; trung bình 3 × 3, lề 1) áp full size khớp tham chiếu viết thẳng ở biên ô, mép canvas, layer tràn canvas, vùng chọn mềm, lock alpha, lưới 1 kênh, U8, U16; hủy giữa chừng không đổi tài liệu; xem trước mức 2 khớp áp full rồi thu nhỏ (ΔE2000 trung bình < 0,5); Last Filter ra cùng điểm ảnh; GPU khớp CPU với bộ lọc thử; bench chạy.
-- [ ] **F31 · Ảnh mẫu Photoshop: bộ lọc, style, chữ, hình, smart object** (lõi; Vừa; agent viết, bạn chạy ở B33; cần B30; file `tools/ps-golden/p1/filters.jsx`, `tools/ps-golden/p1/styles.jsx`): `filters.jsx`: mỗi bộ lọc cột P0–P1 × 2–5 bộ tham số trên `photo.png`, `impulse.png` (nhân của Blur, Blur More, Sharpen, Sharpen More, Gaussian bán kính nhỏ, Box, Motion), `ramp.png`; layer đầy canvas và layer trong suốt một phần (luật mép); xám 50 % (thống kê Add Noise); Average, Despeckle, Reduce Noise. `styles.jsx`: 4 style × tham số trên `shapes.png` (Drop Shadow góc, khoảng cách, Spread, Size; Stroke Size 1, 3, 10, 50 × ba vị trí; overlay × mode; Fill 0, knockout, mask), in mặc định của Photoshop cho từng style; chữ Space Grotesk (cỡ, tracking, 5 kiểu khử răng cưa, tiếng Việt) và hình (chữ nhật bo góc, elip, đa giác, Line, Stroke ba kiểu căn) cho Y; smart object (ảnh đặt vào, thu 50 %, xoay 30°) cho L35; mask Feather 10 px cho B36. Ảnh ra và `index.json` như D32.
+- [ ] **F31 · Ảnh mẫu Photoshop: bộ lọc, style, chữ, hình, smart object** (đang làm: worktree `f31`, 25/10; lõi; Vừa; agent viết, bạn chạy ở B33; cần B30; file `tools/ps-golden/p1/filters.jsx`, `tools/ps-golden/p1/styles.jsx`): `filters.jsx`: mỗi bộ lọc cột P0–P1 × 2–5 bộ tham số trên `photo.png`, `impulse.png` (nhân của Blur, Blur More, Sharpen, Sharpen More, Gaussian bán kính nhỏ, Box, Motion), `ramp.png`; layer đầy canvas và layer trong suốt một phần (luật mép); xám 50 % (thống kê Add Noise); Average, Despeckle, Reduce Noise. `styles.jsx`: 4 style × tham số trên `shapes.png` (Drop Shadow góc, khoảng cách, Spread, Size; Stroke Size 1, 3, 10, 50 × ba vị trí; overlay × mode; Fill 0, knockout, mask), in mặc định của Photoshop cho từng style; chữ Space Grotesk (cỡ, tracking, 5 kiểu khử răng cưa, tiếng Việt) và hình (chữ nhật bo góc, elip, đa giác, Line, Stroke ba kiểu căn) cho Y; smart object (ảnh đặt vào, thu 50 %, xoay 30°) cho L35; mask Feather 10 px cho B36. Ảnh ra và `index.json` như D32.
 
   **Xong khi:** script qua kiểm cú pháp; `index.json` mẫu viết tay khớp script.
 - [ ] **F32 · Gaussian Blur, High Pass, Unsharp Mask, Sharpen Edges** (lõi, GPU; Vừa; cần F30, S30; file `core/filter_gaussian.cpp`, `core/filter_sharpen.cpp`, `shaders/filter_gaussian.slang`, `shaders/filter_sharpen.slang`, `tests/test_filter_gaussian.cpp`):
