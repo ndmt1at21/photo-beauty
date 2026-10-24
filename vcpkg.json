@@ -5,8 +5,19 @@
   "dependencies": [
     "lcms",
     "libjpeg-turbo",
+    {
+      "$comment": "dng-lossy: lossy (JPEG) DNGs. It takes libjpeg-turbo's libjpeg 8 API (jpeg8), for tiff too.",
+      "name": "libraw",
+      "features": ["dng-lossy"]
+    },
     "libspng",
+    {
+      "$comment": "demux reads ICC, EXIF, XMP, frames; libwebpmux (a default, named for the writer) writes them.",
+      "name": "libwebp",
+      "features": ["libwebpmux"]
+    },
     "nlohmann-json",
+    "pugixml",
     {
       "$comment": "Deflate and JPEG; LZW and PackBits are built in. No lzma, zstd, webp, lerc.",
       "name": "tiff",

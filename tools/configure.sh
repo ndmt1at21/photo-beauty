@@ -1,15 +1,19 @@
 #!/bin/sh
 # Configures build/<preset> of the worktree this script is in, on the dev machine (WSL2, Ubuntu 24.04, GCC 13; it was
 # 20.04 with GCC 9 until 22/10/2026), under tools/heavy.sh:
-# - one vcpkg_installed per triplet for every worktree (build/vcpkg_installed of the main checkout, -mingw for
-#   Windows), linked from the build dir so include paths read alike in each worktree and ccache hits; installed only
-#   when a package is missing, as manifest mode removes what the manifest lacks (another worktree's packages);
+# - one vcpkg_installed per triplet and manifest for every worktree: build/vcpkg_installed-<hash> of the main checkout,
+#   vcpkg_installed-mingw-<hash> for Windows, <hash> the first 8 hex digits of vcpkg.json's SHA-256, as vcpkg's manifest
+#   mode removes the packages a manifest lacks and rebuilds those it wants with other features: a worktree with another
+#   vcpkg.json (a task adding a package, or one not rebased on that yet) has its own. A new one fills from vcpkg's
+#   binary cache (~/.cache/vcpkg/archives) but for packages never built before. Linked from the build dir so include
+#   paths read alike in each worktree and ccache hits, linked again when a rebase brings another manifest; installed
+#   only when a package is missing. Nothing removes the directories of manifests no worktree has any more;
 # - ccache with photo-beauty's cache, vcpkg's slangc (or ~/.local/opt/slang-2026.19's), samples/ linked to the main
 #   checkout's;
 # - TSan: libtsan_preinit.o made here when the compiler lacks it (GCC 9 did).
-# The ui presets (Qt 6.11 from QT_ROOT_DIR, aqt's ~/Qt/6.11.3/gcc_64 unless set) keep their own vcpkg_installed-ui,
-# from when they ran on another distro than the core's; so has ui-mingw, the Windows UI, its vcpkg_installed-ui-mingw;
-# Windows' Qt is ~/Qt-win/6.11.3/llvm-mingw_64 unless QT_WIN_DIR says.
+# The ui presets (Qt 6.11 from QT_ROOT_DIR, aqt's ~/Qt/6.11.3/gcc_64 unless set) keep their own
+# vcpkg_installed-ui-<hash>, from when they ran on another distro than the core's; so has ui-mingw, the Windows UI, its
+# vcpkg_installed-ui-mingw-<hash>; Windows' Qt is ~/Qt-win/6.11.3/llvm-mingw_64 unless QT_WIN_DIR says.
 # Its preset names the compilers by full path: a build that configures again (a new file) has tools/ui.sh's PATH.
 # Usage: tools/configure.sh <preset> [more cmake arguments]
 set -e
@@ -40,8 +44,9 @@ case $preset in
   ui*) triplet=x64-linux installed=$main/build/vcpkg_installed-ui ;;
   *) triplet=x64-linux installed=$main/build/vcpkg_installed ;;
 esac
+installed=$installed-$(sha256sum vcpkg.json | cut -c1-8)
 mkdir -p "$build" "$installed"
-[ -e "$build/vcpkg_installed" ] || ln -s "$installed" "$build/vcpkg_installed"
+ln -sfn "$installed" "$build/vcpkg_installed"
 [ -e samples ] || ln -s "$main/samples" samples
 
 # Every feature's packages (tracy: the profile preset), so presets never take each other's away.

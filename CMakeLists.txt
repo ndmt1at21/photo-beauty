@@ -29,10 +29,13 @@ find_program(SLANGC slangc REQUIRED
 find_package(Threads REQUIRED)
 find_package(lcms2 CONFIG REQUIRED)
 find_package(libjpeg-turbo CONFIG REQUIRED)
+find_package(libraw CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
 find_package(SPNG CONFIG REQUIRED)
 find_package(TIFF REQUIRED)
 find_package(volk CONFIG REQUIRED)
+find_package(WebP CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 
@@ -54,13 +57,21 @@ foreach(src ${PB_KERNELS})
   list(APPEND PB_SHADER_HEADERS "${PB_SHADER_OUT}/${entry}.spv.h")
 endforeach()
 
-# Every library P0 needs, public, so later tasks only add files.
+# Every library P0 and P1 need, public, so later tasks only add files. P1's (M30): LibRaw (its thread-safe raw_r),
+# libwebp with demux and mux, pugixml (XMP); HEIC and HEIF through the system (M36): WIC on Windows, ImageIO on macOS,
+# the latter as Apple documents it, not linked on a Mac yet.
 file(GLOB PB_CORE_SOURCES CONFIGURE_DEPENDS core/*.cpp)
 add_library(pb_core ${PB_CORE_SOURCES} ${PB_SHADER_HEADERS})
 target_include_directories(pb_core PUBLIC core "${PB_SHADER_OUT}")
 target_link_libraries(pb_core PUBLIC Threads::Threads zstd::libzstd ZLIB::ZLIB lcms2::lcms2 TIFF::TIFF nlohmann_json::nlohmann_json
   $<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>
-  $<IF:$<TARGET_EXISTS:spng::spng>,spng::spng,spng::spng_static> PRIVATE volk::volk)
+  $<IF:$<TARGET_EXISTS:spng::spng>,spng::spng,spng::spng_static>
+  libraw::raw_r WebP::webp WebP::webpdemux WebP::libwebpmux pugixml::pugixml PRIVATE volk::volk)
+if(WIN32)
+  target_link_libraries(pb_core PUBLIC windowscodecs ole32)
+elseif(APPLE)
+  target_link_libraries(pb_core PUBLIC "-framework ImageIO" "-framework CoreGraphics" "-framework CoreFoundation")
+endif()
 if(PB_TRACY)
   find_package(Tracy CONFIG REQUIRED)
   target_link_libraries(pb_core PUBLIC Tracy::TracyClient)
