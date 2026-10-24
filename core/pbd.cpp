@@ -7,8 +7,10 @@
 // half the size for photographs, an 8-bit tile's pixels as 1 does. Full saves write 2; a save into a file keeps its
 // format; both open.
 // The JSON is the document: size, mode, depth, next id, selection, the ICC profile's chunk, the preview's, and the
-// layer tree, each pixel layer with its fill, its tiles ([tx, ty, chunk], or [tx, ty, [samples]] for a solid one)
-// and its mip tiles from level 3 on ([level, tx, ty, chunk | [samples] | null for one all fill]).
+// layer tree, each layer with its kind by name (kKindNames) and its props; a group with its layers; a pixel, text or
+// shape layer with its pixels' fill, tiles ([tx, ty, chunk], or [tx, ty, [samples]] for a solid one) and mip tiles
+// from level 3 on ([level, tx, ty, chunk | [samples] | null for one all fill]); a layer of any kind with a mask with
+// the mask's likewise, of one channel, as "mask". Adjustment and fill layers hold no tiles but their mask's.
 #include "pbd.h"
 
 #include <turbojpeg.h>
@@ -470,7 +472,7 @@ struct Reader {
     TilePtr tile;
   };
   std::vector<Mip> mips;
-  Format format;
+  Format of_pixels, of_masks;  // the document's pixel_format() and mask_format()
   uint32_t version = 0;  // the file's format
   uint64_t read = 0;
 
@@ -485,23 +487,45 @@ struct Reader {
     return p;
   }
 
-  Pixel values(const json& a) {
-    if (!a.is_array() || a.size() != size_t(format.channels)) corrupt("a solid tile without its samples");
+  Pixel values(const json& a, Format f) {
+    if (!a.is_array() || a.size() != size_t(f.channels)) corrupt("a solid tile without its samples");
     Pixel v{};
-    for (int c = 0; c < format.channels; c++)
-      v[size_t(c)] = uint16_t(integer(a[size_t(c)], 0, max_value(format.depth), "a sample"));
+    for (int c = 0; c < f.channels; c++)
+      v[size_t(c)] = uint16_t(integer(a[size_t(c)], 0, max_value(f.depth), "a sample"));
     return v;
   }
   int coordinate(const json& j) { return int(integer(j, -kMaxTile, kMaxTile - 1, "a tile coordinate")); }
-  // A tile entry's last item: the frame's chunk (an elsewhere() tile, made once) or a solid tile's samples.
-  TilePtr tile(const json& j) {
-    if (j.is_array()) return Tile::solid(format, values(j));
+  // A tile entry's last item, of format f: the frame's chunk (an elsewhere() tile, made once) or a solid tile's
+  // samples. A chunk is one tile's, so of one format: a mask's and a layer's pixels never share one.
+  TilePtr tile(const json& j, Format f) {
+    if (j.is_array()) return Tile::solid(f, values(j, f));
     const uint32_t i = number(j);
     if (!tiles[i]) {
       if (!chunks[i].size) corrupt("a tile of 0 bytes");
-      tiles[i] = Tile::elsewhere(format, file, data + chunks[i].offset, chunks[i].size, predicted(version, format));
+      tiles[i] = Tile::elsewhere(f, file, data + chunks[i].offset, chunks[i].size, predicted(version, f));
+    } else if (tiles[i]->format() != f) {
+      corrupt("a tile in two formats");
     }
     return tiles[i];
+  }
+  // A grid of format f from its fill, tiles and mip tiles (attached once the whole file has opened): a layer's
+  // pixels or its mask.
+  std::shared_ptr<const TileGrid> grid(const json& j, Format f) {
+    TileGrid g(f, values(member(j, "fill"), f));
+    for (const json& e : array(j, "tiles")) {
+      if (!e.is_array() || e.size() != 3) corrupt("a tile entry is malformed");
+      g.set(coordinate(e[0]), coordinate(e[1]), tile(e[2], f));
+    }
+    auto out = std::make_shared<const TileGrid>(std::move(g));
+    for (const json& e : array(j, "mips")) {  // keyed by the tiles under them, so by the whole grid
+      if (!e.is_array() || e.size() != 4) corrupt("a mip entry is malformed");
+      // All that may throw before the braces: GCC 9 leaks the members a braced init made before a throw (PR 66139),
+      // here `out`, which would keep the file mapped.
+      const int level = int(integer(e[0], kFirstMip, 31, "a mip level")), tx = coordinate(e[1]), ty = coordinate(e[2]);
+      TilePtr t = e[3].is_null() ? nullptr : tile(e[3], f);
+      mips.push_back({out, level, tx, ty, std::move(t)});
+    }
+    return out;
   }
 
   LayerPtr layer(const json& j, int depth) {
@@ -511,28 +535,14 @@ struct Reader {
     const std::optional<LayerProps> props = props_from_json(member(j, "props").dump());
     if (!props) corrupt("a layer's properties are malformed");
     l->props = *props;
-    const json& kind = member(j, "kind");
-    if (kind == "group") {
-      l->kind = Kind::Group;
+    const std::string* kind = member(j, "kind").get_ptr<const std::string*>();
+    const auto k = kind ? std::find(std::begin(kKindNames), std::end(kKindNames), *kind) : std::end(kKindNames);
+    if (k == std::end(kKindNames)) corrupt("a layer of no known kind");
+    l->kind = Kind(k - std::begin(kKindNames));
+    if (l->kind == Kind::Group)
       for (const json& c : array(j, "layers")) l->children.push_back(layer(c, depth + 1));
-      return l;
-    }
-    if (kind != "pixel") corrupt("a layer of no known kind");
-    TileGrid grid(format, values(member(j, "fill")));
-    for (const json& e : array(j, "tiles")) {
-      if (!e.is_array() || e.size() != 3) corrupt("a tile entry is malformed");
-      grid.set(coordinate(e[0]), coordinate(e[1]), tile(e[2]));
-    }
-    auto pixels = std::make_shared<const TileGrid>(std::move(grid));
-    for (const json& e : array(j, "mips")) {  // keyed by the tiles under them, so by the whole grid
-      if (!e.is_array() || e.size() != 4) corrupt("a mip entry is malformed");
-      // All that may throw before the braces: GCC 9 leaks the members a braced init made before a throw (PR 66139),
-      // here `pixels`, which would keep the file mapped.
-      const int level = int(integer(e[0], kFirstMip, 31, "a mip level")), tx = coordinate(e[1]), ty = coordinate(e[2]);
-      TilePtr t = e[3].is_null() ? nullptr : tile(e[3]);
-      mips.push_back({pixels, level, tx, ty, std::move(t)});
-    }
-    l->pixels = std::move(pixels);
+    if (has_pixels(l->kind)) l->pixels = grid(j, of_pixels);
+    if (const auto m = j.find("mask"); m != j.end()) l->mask = grid(*m, of_masks);
     return l;
   }
 
@@ -560,22 +570,24 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
   PROFILE_ZONE("save_pbd");
   validate(doc);
   if (o.version < 1 || o.version > kFormat) throw std::invalid_argument("pb: no such .pbd format");
-  const int channels = pixel_format(doc).channels;
 
-  // The pixel layers' grids, each once (duplicates share theirs), and their data tiles, each once by id.
+  // The layers' grids, pixels and masks, in the tree's order, each once (duplicates share theirs), and their data
+  // tiles, each once by id.
   std::vector<const TileGrid*> grids;
   std::unordered_map<const TileGrid*, size_t> grid_at;
   std::vector<const Tile*> tiles;  // the snapshot holds them
   std::unordered_set<uint64_t> seen;
+  const auto add = [&](const TileGrid* g) {
+    if (!g || !grid_at.emplace(g, grids.size()).second) return;
+    grids.push_back(g);
+    for (const auto& [xy, t] : g->tiles())
+      if (!t->is_solid() && seen.insert(t->id()).second) tiles.push_back(t.get());
+  };
   const std::function<void(const Layer&)> gather = [&](const Layer& g) {
     for (const LayerPtr& l : g.children) {
-      if (l->kind == Kind::Group) {
-        gather(*l);
-      } else if (grid_at.emplace(l->pixels.get(), grids.size()).second) {
-        grids.push_back(l->pixels.get());
-        for (const auto& [xy, t] : l->pixels->tiles())
-          if (!t->is_solid() && seen.insert(t->id()).second) tiles.push_back(t.get());
-      }
+      add(l->pixels.get());
+      add(l->mask.get());
+      gather(*l);
     }
   };
   gather(*doc.root);
@@ -681,7 +693,7 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
         if (!t) {
           s += "null";
         } else if (t->is_solid()) {
-          samples(s, t->value(), channels);
+          samples(s, t->value(), grids[m.grid]->format().channels);
         } else {
           const auto [it, first] = chunk_of.emplace(t->id(), 0);
           if (first && in_file[i]) {
@@ -722,31 +734,43 @@ void save_pbd(const DocState& doc, const std::filesystem::path& path, const Save
     for (size_t i = 1; i < w.chunks.size(); i++) used += w.chunks[i].size;
     s += ",\"waste\":" + std::to_string(out.size() - used) + ",\"preview\":{\"chunk\":" + std::to_string(pv_chunk) +
          ",\"level\":" + std::to_string(pv.level) + "},\"layers\":";
+    // A grid's fill, tiles and mip tiles, samples in its own format: a layer's pixels or its mask.
+    const auto grid = [&](const TileGrid& g) {
+      const int channels = g.format().channels;
+      s += "\"fill\":";
+      samples(s, g.fill(), channels);
+      s += ",\"tiles\":[";
+      bool first = true;
+      for (const auto& [xy, t] : g.tiles()) {
+        s += (first ? "[" : ",[") + std::to_string(xy.x) + ',' + std::to_string(xy.y) + ',';
+        if (t->is_solid())
+          samples(s, t->value(), channels);
+        else
+          s += std::to_string(chunk_of.at(t->id()));
+        s += ']';
+        first = false;
+      }
+      const std::string& m = mip_entries[grid_at.at(&g)];
+      s += "],\"mips\":" + (m.empty() ? std::string("[]") : m + ']');
+    };
     const std::function<void(const Layer&)> layers = [&](const Layer& g) {
       s += '[';
       for (size_t i = 0; i < g.children.size(); i++) {
         const Layer& l = *g.children[i];
-        s += (i ? ",{\"id\":" : "{\"id\":") + std::to_string(l.id) + ",\"kind\":\"" +
-             (l.kind == Kind::Group ? "group" : "pixel") + "\",\"props\":" + to_json(l.props);
+        s += (i ? ",{\"id\":" : "{\"id\":") + std::to_string(l.id) + ",\"kind\":\"" + kKindNames[size_t(l.kind)] +
+             "\",\"props\":" + to_json(l.props);
         if (l.kind == Kind::Group) {
           s += ",\"layers\":";
           layers(l);
-        } else {
-          s += ",\"fill\":";
-          samples(s, l.pixels->fill(), channels);
-          s += ",\"tiles\":[";
-          bool first = true;
-          for (const auto& [xy, t] : l.pixels->tiles()) {
-            s += (first ? "[" : ",[") + std::to_string(xy.x) + ',' + std::to_string(xy.y) + ',';
-            if (t->is_solid())
-              samples(s, t->value(), channels);
-            else
-              s += std::to_string(chunk_of.at(t->id()));
-            s += ']';
-            first = false;
-          }
-          const std::string& m = mip_entries[grid_at.at(l.pixels.get())];
-          s += "],\"mips\":" + (m.empty() ? std::string("[]") : m + ']');
+        }
+        if (l.pixels) {
+          s += ',';
+          grid(*l.pixels);
+        }
+        if (l.mask) {
+          s += ",\"mask\":{";
+          grid(*l.mask);
+          s += '}';
         }
         s += '}';
       }
@@ -872,7 +896,7 @@ OpenedPbd open_pbd(const std::filesystem::path& path) {
       const json& pv = member(j, "preview");
       out.preview =
           r.preview(r.number(member(pv, "chunk")), int(integer(member(pv, "level"), 0, 31, "the preview's level")), *d);
-      r.format = pixel_format(*d);
+      r.of_pixels = pixel_format(*d), r.of_masks = mask_format(*d);
       r.tiles.resize(count);
       auto root = std::make_shared<Layer>();
       root->kind = Kind::Group;
