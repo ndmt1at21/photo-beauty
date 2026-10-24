@@ -37,7 +37,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A30, A30b, A31, A40, A41 | Lõi (lô 0) | A30 xong (25/10); đang làm A30b, A40 |
 | B · Ghép | B30–B38 | Lõi (CPU, GPU), ảnh mẫu | B30 xong (24/10) |
-| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30 xong (25/10); đang làm D32 |
+| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30 xong (25/10); đang làm D32, D31 |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | Đang làm F31 (25/10) |
@@ -48,7 +48,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | O · AI | O30–O32 | Lõi (ONNX Runtime) | Chưa làm |
 | T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | Chưa làm |
 | V · View, canvas | V30–V33 | Lõi, GPU, giao diện | Chưa làm |
-| K · Kho ô, hiệu năng lõi | K30–K34 | Lõi, GPU | Chưa làm |
+| K · Kho ô, hiệu năng lõi | K30–K34 | Lõi, GPU | Đang làm K30 (25/10) |
 | M · File | M30–M51 | Lõi, build | M39 xong (25/10); đang làm M30 |
 | U · Giao diện | U30–U35 | Giao diện | Chưa làm |
 | N · Nối lõi | N30–N39, N42–N53 | Giao diện | Chưa làm |
@@ -240,7 +240,7 @@ Lô 0, nối tiếp A30 → A40 → A31 → A41: cùng `core/doc.h`, `core/rende
   - Hình Linear, Radial, Angle, Reflected, Diamond theo điểm đầu, cuối (hay tâm, góc), Scale, Reverse, offset; Dither: băm ±0,5 mức 8 bit trước khi lượng tử. `core/hash.h`, `shaders/lib/hash.slang`: băm số nguyên dùng chung (Dissolve, dither, Add Noise). `render_gradient()` vẽ lên lưới (công cụ Gradient kiểu cổ điển của C36, rasterize fill layer).
 
   **Xong khi:** hai điểm Classic không điểm giữa ra tuyến tính; tại điểm dừng ra đúng màu; Linear đen sang trắng ở giữa ra 0,5 tuyến tính; điểm giữa m cho 0,5 tại m; Stripes đổi đúng chỗ; giá trị tại các điểm đã biết của 5 hình, cả Reverse, góc, Scale; dither giữ trung bình, lệch ≤ 0,5 mức 8 bit; GPU khớp CPU từng bit trên lavapipe (`gradient_check.slang`); so ảnh mẫu D32 khi có.
-- [ ] **D31 · Khung adjustment, áp lên điểm ảnh, histogram** (lõi, GPU; Vừa; cần A30; file `core/adjust.h`, `core/adjust.cpp`, `core/adj_*.cpp` (16 file khung), `shaders/lib/adjust.slang`, `shaders/lib/adj_*.slang` (16 file khung), `shaders/adjust_apply.slang`, `core/histogram.h`, `core/histogram.cpp`, `tests/adjust_check.h`, `tests/test_adjust.cpp`):
+- [ ] **D31 · Khung adjustment, áp lên điểm ảnh, histogram** (đang làm: worktree `d31`, 25/10, mở sớm từ lô 4; lõi, GPU; Vừa; cần A30; file `core/adjust.h`, `core/adjust.cpp`, `core/adj_*.cpp` (16 file khung), `shaders/lib/adjust.slang`, `shaders/lib/adj_*.slang` (16 file khung), `shaders/adjust_apply.slang`, `core/histogram.h`, `core/histogram.cpp`, `tests/adjust_check.h`, `tests/test_adjust.cpp`):
   - `Adjustment` (bất biến, cache theo nội dung JSON) dựng từ `adj` + `vals` (khóa, khoảng, mặc định như `AdjustSpec.js`, thiếu khóa là mặc định); `identity()`; `apply()` trên float 0–1 mã hóa của tài liệu (RGB; tài liệu xám tính R = G = B rồi lấy R; adjustment Photoshop tắt ở Grayscale thì `available(Mode)` báo); `pack()`: 32 số cho GPU và phần bảng của nó trong buffer `tables`.
   - 16 loại, mỗi loại một cặp file `core/adj_<loại>.cpp` (dựng từ JSON, `apply`, `pack`) và `shaders/lib/adj_<loại>.slang` (cùng công thức): brightness_contrast, levels, curves, exposure, vibrance, hue_saturation, color_balance, black_white, photo_filter, channel_mixer, color_lookup, invert, posterize, threshold, gradient_map, selective_color. D31 viết khung identity cho cả 16 và bảng phân loại trong `adjust.cpp`, `adjust.slang`, nên D33–D39 chỉ sửa file của loại mình, chạy song song.
   - Image › Adjustments: `apply_adjustment(lưới, adjustment, vùng chọn, lock alpha, hủy, tiến độ)` theo ô (`parallel_for`, Background): ô trống bỏ qua (giữ id), alpha giữ, vùng chọn mềm trộn theo giá trị; chạy cả trên lưới mask 1 kênh (Invert, Levels, Curves… lên mask như Photoshop); CPU (ponytail: GPU khi Q đo áp một layer D1 quá 1 s). `preview_state(doc, layer, adjustment, vùng chọn)`: trạng thái tạm có adjustment layer clip vào layer đích, mask là vùng chọn: xem trước của hộp thoại, không vào lịch sử.
@@ -595,7 +595,7 @@ Thước, lưới, lưới điểm ảnh, guide vẽ bằng QML qua `View.js` (U
 
 Việc K, V ở mục Để sau của p0-tasks.md (ngân sách tự co, `VK_EXT_memory_budget` và upload không staging, phần lịch sử nhiều tab), cộng ponytail còn mở của K1, K1b, T2 và cache ảnh ghép mà công cụ P1 cần. Phần khác của Để sau thuộc nhóm khác: cọ lớn, làm mượt, preset (C35, C32, C34); Background, Merge, Flatten (T31); `.pbd`, tự lưu, EXIF, frame đầu JPEG (M31–M33); Wintab (I30); Crashpad (R30); D4 đủ (E30). Frame đầu JPEG 45 MP đã 245 ms ở V2b (chỉ tiêu ≤ 300 ms): không thêm task trừ khi Q đo trượt (M33).
 
-- [ ] **K30 · Cache ảnh ghép cho công cụ** (lõi, GPU; Vừa; cần —; file `core/compcache.h`, `core/compcache.cpp`, `tests/test_compcache.cpp`, `bench/compcache.cpp`): `composite_cached(input, mức, tx, ty)`: như `composite_tile()`, giữ trong kho ô (đẩy được, tính ngân sách), khóa theo băm của kế hoạch ghép (`id` ô vào, mode, alpha, như cache của `GpuComposite`); `composite_grid(input, mức, vùng)` song song, GPU khi có (`GpuComposite` ghép rồi tải về, giữ khóa device); điền trước ở job Background khi tài liệu đứng yên 1 s (vùng nhìn thấy trước rồi cả ảnh, hủy khi tài liệu đổi). Cho Magic Wand, Color Range (Sample All Layers), Eyedropper, Copy Merged, Merge, Select Subject, tìm mặt, Histogram, Navigator.
+- [ ] **K30 · Cache ảnh ghép cho công cụ** (đang làm: worktree `k30`, 25/10, mở sớm từ lô 4; lõi, GPU; Vừa; cần —; file `core/compcache.h`, `core/compcache.cpp`, `tests/test_compcache.cpp`, `bench/compcache.cpp`): `composite_cached(input, mức, tx, ty)`: như `composite_tile()`, giữ trong kho ô (đẩy được, tính ngân sách), khóa theo băm của kế hoạch ghép (`id` ô vào, mode, alpha, như cache của `GpuComposite`); `composite_grid(input, mức, vùng)` song song, GPU khi có (`GpuComposite` ghép rồi tải về, giữ khóa device); điền trước ở job Background khi tài liệu đứng yên 1 s (vùng nhìn thấy trước rồi cả ảnh, hủy khi tài liệu đổi). Cho Magic Wand, Color Range (Sample All Layers), Eyedropper, Copy Merged, Merge, Select Subject, tìm mặt, Histogram, Navigator.
 
   **Xong khi:** test: bằng `composite_tile()` từng bit; lần hai không ghép lại (đếm); đổi một ô layer chỉ ô ảnh ghép đó ghép lại; byte nằm trong `tile_stats()`; `pb-bench compcache` cả D1 ở mức 0: CPU, lavapipe; Iris Xe một lần (in giây, MB).
 - [ ] **K31 · Pin song song không giành khóa; gộp trang ô** (lõi; Vừa; cần —; file `core/tile.cpp`, `core/tilecache.cpp`, `tests/test_tilecache.cpp`, `bench/tilecache.cpp`): pin ô đang thô trong RAM không qua mutex chung (đếm pin, dấu vừa dùng bằng nguyên tử trên ô; khóa chỉ khi nạp lại, đẩy ra, dời danh sách LRU theo lô), như ponytail của K1 ("per-tile atomics khi pin() bị giành"), vì công cụ P1 pin hàng nghìn ô từ mọi luồng (loang, lấy mẫu lại, ghép); điểm ảnh ô cấp theo slab nhiều trang mỗi mapping để số mapping ≤ ngân sách / cỡ slab + hằng, xa `vm.max_map_count` 65.530 cả khi ngân sách 64 GB (ponytail của K1b), slab trống trả về hệ điều hành.
