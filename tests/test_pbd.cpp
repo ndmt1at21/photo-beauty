@@ -272,7 +272,7 @@ std::shared_ptr<const TileGrid> random_grid(const DocState& d, std::mt19937& rng
 LayerProps random_props(std::mt19937& rng, bool group) {
   static const char* const kBits[] = {"a", "Z", " ", "Lớp", "ảnh", "\"", "\\", "\n", "\x01", "€", "😀", "{"};
   static const char* const kExtras[] = {"", R"({"a":1})", R"({"z":null,"é":"ü"})",
-                                        R"({"blendIf":{"gray":[0,255,0,255]}})"};
+                                        R"({"blendX":{"gray":[0,255,0,255]}})"};  // blendIf has its own shape since A30
   LayerProps p;
   for (int n = int(rng() % 4); n > 0; n--) p.name += kBits[rng() % std::size(kBits)];
   p.visible = rng() % 4;

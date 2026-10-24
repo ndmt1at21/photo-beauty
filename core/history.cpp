@@ -27,9 +27,9 @@ void append(std::string& json, const std::string& cmd) {
   json += ',' + cmd + ']';
 }
 
-// The data tiles that layers of one state hold and the same layers (by id) of another do not, and the other way
-// round: each placement +1 or -1 in `net`. The trees are walked together past the nodes and grids they share, so it
-// costs what changed between them, not what they hold.
+// The data tiles that layers of one state hold (pixels and masks) and the same layers (by id) of another do not, and
+// the other way round: each placement +1 or -1 in `net`. The trees are walked together past the nodes and grids they
+// share, so it costs what changed between them, not what they hold.
 struct Diff {
   std::unordered_map<uint64_t, std::pair<int, const Tile*>> net;  // by id
   std::unordered_map<LayerId, const Layer*> left, entered;  // layers out of their group or into one, and all in them
@@ -66,6 +66,7 @@ struct Diff {
   void layers(const Layer& a, const Layer& b) {
     if (&a == &b) return;
     grids(a.pixels.get(), b.pixels.get());
+    grids(a.mask.get(), b.mask.get());
     const auto& x = a.children;
     const auto& y = b.children;
     const auto same = [](const LayerPtr& p, const LayerPtr& q) { return p->id == q->id; };
@@ -91,10 +92,12 @@ struct Diff {
   void moved() {
     for (const auto& [id, l] : left) {
       const auto it = entered.find(id);
-      grids(l->pixels.get(), it == entered.end() ? nullptr : it->second->pixels.get());
+      const Layer* now = it == entered.end() ? nullptr : it->second;
+      grids(l->pixels.get(), now ? now->pixels.get() : nullptr);
+      grids(l->mask.get(), now ? now->mask.get() : nullptr);
     }
     for (const auto& [id, l] : entered)
-      if (!left.count(id)) grids(nullptr, l->pixels.get());
+      if (!left.count(id)) grids(nullptr, l->pixels.get()), grids(nullptr, l->mask.get());
   }
 };
 

@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <locale>
@@ -19,12 +20,17 @@
 namespace pb {
 namespace {
 
-// LayerProps' numbers and switches by JSON key, in the order to_json() writes them.
+// LayerProps' numbers and switches by JSON key, in the order to_json() writes them; numbers read clamped to 0..max.
 struct FloatKey {
   const char* key;
   float LayerProps::*field;
+  float max;
 };
-constexpr FloatKey kFloats[] = {{"opacity", &LayerProps::opacity}, {"fill", &LayerProps::fill}};
+constexpr float kMaxFeather = 1000;  // px, as Properties' Feather
+constexpr FloatKey kFloats[] = {{"opacity", &LayerProps::opacity, 1},
+                                {"fill", &LayerProps::fill, 1},
+                                {"maskDensity", &LayerProps::mask_density, 1},
+                                {"maskFeather", &LayerProps::mask_feather, kMaxFeather}};
 struct BoolKey {
   const char* key;
   bool LayerProps::*field;
@@ -33,9 +39,34 @@ constexpr BoolKey kBools[] = {{"visible", &LayerProps::visible},
                               {"lockTransparency", &LayerProps::lock_transparency},
                               {"lockPixels", &LayerProps::lock_pixels},
                               {"lockPosition", &LayerProps::lock_position},
-                              {"lockAll", &LayerProps::lock_all}};
+                              {"lockAll", &LayerProps::lock_all},
+                              {"clip", &LayerProps::clip},
+                              {"maskOff", &LayerProps::mask_off},
+                              {"maskLinked", &LayerProps::mask_linked}};
+// Channels' check boxes by JSON key, as LayerStyleDialog names them.
+struct ChannelKey {
+  const char* key;
+  bool Channels::*field;
+};
+constexpr ChannelKey kChannels[] = {
+    {"r", &Channels::r}, {"g", &Channels::g}, {"b", &Channels::b}, {"gray", &Channels::gray}};
+// The JSON objects kept as text.
+struct ObjectKey {
+  const char* key;
+  JsonPtr LayerProps::*field;
+};
+constexpr ObjectKey kObjects[] = {{"vals", &LayerProps::vals},
+                                  {"fx", &LayerProps::fx},
+                                  {"content", &LayerProps::content},
+                                  {"source", &LayerProps::source}};
 
 std::string dump(const nlohmann::json& j) { return j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace); }
+
+bool ordered(const std::array<uint8_t, 4>& v) { return v[0] <= v[1] && v[1] <= v[2] && v[2] <= v[3]; }
+bool is_default(const BlendRange& r) {
+  static const BlendRange none;
+  return r.layer == none.layer && r.under == none.under;
+}
 
 }  // namespace
 
@@ -52,6 +83,28 @@ std::string to_json(const LayerProps& p) {
     if (p.*k.field != def.*k.field) s << ",\"" << k.key << "\":" << p.*k.field;
   for (const BoolKey& k : kBools)
     if (p.*k.field != def.*k.field) s << ",\"" << k.key << "\":" << (p.*k.field ? "true" : "false");
+  // Blend If: the channels off their default, both sliders each; Channels: the boxes off.
+  const auto slider = [&](const char* key, const std::array<uint8_t, 4>& v) {
+    s << '"' << key << "\":[" << int(v[0]) << ',' << int(v[1]) << ',' << int(v[2]) << ',' << int(v[3]) << ']';
+  };
+  bool any = false;
+  for (size_t c = 0; c < p.blend_if.size(); c++) {
+    if (is_default(p.blend_if[c])) continue;
+    s << (any ? "," : ",\"blendIf\":{") << '"' << kBlendIfNames[c] << "\":{";
+    slider("layer", p.blend_if[c].layer);
+    s << ',';
+    slider("under", p.blend_if[c].under);
+    s << '}';
+    any = true;
+  }
+  if (any) s << '}';
+  any = false;
+  for (const ChannelKey& k : kChannels)
+    if (!(p.channels.*k.field)) s << (any ? "," : ",\"channels\":{") << '"' << k.key << "\":false", any = true;
+  if (any) s << '}';
+  if (!p.adj.empty()) s << ",\"adj\":" << dump(p.adj);
+  for (const ObjectKey& k : kObjects)
+    if (p.*k.field) s << ",\"" << k.key << "\":" << *(p.*k.field);
   if (p.extra.size() > 2) s << ',' << std::string_view(p.extra).substr(1, p.extra.size() - 2);  // its members
   s << '}';
   return s.str();
@@ -59,8 +112,42 @@ std::string to_json(const LayerProps& p) {
 
 namespace {
 
-// Numbers are clamped to 0..1; extra gets the keys it does not know, members sorted, so what to_json() wrote reads
-// back and writes the same bytes.
+// Blend If as LayerStyleDialog writes it, {"gray": {"layer": [4 numbers], "under": [...]}, ...}, a channel or slider
+// left out at its default: the numbers rounded to 0..255, each slider's in order.
+bool blend_if_from(const nlohmann::json& v, std::array<BlendRange, 4>& to) {
+  if (v.is_null()) return true;
+  if (!v.is_object()) return false;
+  for (const auto& [name, channel] : v.items()) {
+    const auto c = std::find(std::begin(kBlendIfNames), std::end(kBlendIfNames), name);
+    if (c == std::end(kBlendIfNames) || !channel.is_object()) return false;
+    BlendRange& r = to[size_t(c - std::begin(kBlendIfNames))];
+    for (const auto& [which, a] : channel.items()) {
+      if ((which != "layer" && which != "under") || !a.is_array() || a.size() != 4) return false;
+      std::array<uint8_t, 4>& out = which == "layer" ? r.layer : r.under;
+      for (size_t i = 0; i < 4; i++) {
+        if (!a[i].is_number()) return false;
+        out[i] = uint8_t(std::lround(std::clamp(a[i].get<double>(), 0., 255.)));
+      }
+      if (!ordered(out)) return false;
+    }
+  }
+  return true;
+}
+bool channels_from(const nlohmann::json& v, Channels& to) {
+  if (v.is_null()) return true;
+  if (!v.is_object()) return false;
+  for (const auto& [name, on] : v.items()) {
+    const auto k =
+        std::find_if(std::begin(kChannels), std::end(kChannels), [&](const ChannelKey& c) { return name == c.key; });
+    if (k == std::end(kChannels) || !on.is_boolean()) return false;
+    to.*k->field = on.get<bool>();
+  }
+  return true;
+}
+
+// Numbers are clamped to their range; null for one of P1's keys that takes an object or a name is its default, as the
+// UI's mock writes them. extra gets the keys it does not know, members sorted, as do the JSON objects kept as text,
+// so what to_json() wrote reads back and writes the same bytes.
 std::optional<LayerProps> props_from(const nlohmann::json& j) {
   using nlohmann::json;
   const auto version = j.is_object() ? j.find("version") : j.end();
@@ -73,12 +160,16 @@ std::optional<LayerProps> props_from(const nlohmann::json& j) {
     const auto is = [&](const auto& k) { return key == k.key; };
     const auto f = std::find_if(std::begin(kFloats), std::end(kFloats), is);
     const auto b = std::find_if(std::begin(kBools), std::end(kBools), is);
+    const auto o = std::find_if(std::begin(kObjects), std::end(kObjects), is);
     if (f != std::end(kFloats)) {
       if (!v.is_number()) return std::nullopt;
-      p.*f->field = float(std::clamp(v.get<double>(), 0., 1.));
+      p.*f->field = float(std::clamp(v.get<double>(), 0., double(f->max)));
     } else if (b != std::end(kBools)) {
       if (!v.is_boolean()) return std::nullopt;
       p.*b->field = v.get<bool>();
+    } else if (o != std::end(kObjects)) {
+      if (!v.is_null() && !v.is_object()) return std::nullopt;
+      p.*o->field = v.is_null() ? nullptr : std::make_shared<const std::string>(dump(v));
     } else if (key == "name") {
       if (!v.is_string()) return std::nullopt;
       p.name = v.get<std::string>();
@@ -87,6 +178,13 @@ std::optional<LayerProps> props_from(const nlohmann::json& j) {
       const auto n = std::find(std::begin(kBlendNames), std::end(kBlendNames), name);
       if (n == std::end(kBlendNames)) return std::nullopt;
       p.blend = Blend(n - std::begin(kBlendNames));
+    } else if (key == "blendIf") {
+      if (!blend_if_from(v, p.blend_if)) return std::nullopt;
+    } else if (key == "channels") {
+      if (!channels_from(v, p.channels)) return std::nullopt;
+    } else if (key == "adj") {
+      if (!v.is_null() && !v.is_string()) return std::nullopt;
+      p.adj = v.is_null() ? std::string() : v.get<std::string>();
     } else if (key != "version") {
       extra[key] = v;
     }
@@ -174,7 +272,11 @@ bool rebuild(const LayerPtr& l, const Edit& edit, Layers& out) {
     kids.reserve(l->children.size());
     bool changed = false;
     for (const LayerPtr& c : l->children) changed |= rebuild(c, edit, kids);
-    if (changed) now = std::make_shared<const Layer>(Layer{l->id, l->kind, l->props, l->pixels, std::move(kids)});
+    if (changed) {
+      auto c = std::make_shared<Layer>(*l);  // the rest as it was
+      c->children = std::move(kids);
+      now = std::move(c);
+    }
   }
   if (std::optional<Layers> e = edit(now)) {
     out.insert(out.end(), e->begin(), e->end());
@@ -192,9 +294,9 @@ LayerPtr rebuilt(const DocState& d, const Edit& edit) {
 
 // g with `layers` put in among its children at index `at`.
 LayerPtr inserted(const LayerPtr& g, size_t at, const Layers& layers) {
-  Layers kids = g->children;
-  kids.insert(kids.begin() + std::ptrdiff_t(at), layers.begin(), layers.end());
-  return std::make_shared<const Layer>(Layer{g->id, g->kind, g->props, g->pixels, std::move(kids)});
+  auto c = std::make_shared<Layer>(*g);
+  c->children.insert(c->children.begin() + std::ptrdiff_t(at), layers.begin(), layers.end());
+  return c;
 }
 
 // The tree with a copy of layer id changed.
@@ -207,10 +309,27 @@ LayerPtr changed(const DocState& d, LayerId id, const std::function<void(Layer&)
   });
 }
 
-const LayerProps& checked(const LayerProps& p, Kind kind) {
+// JSON text of an object, checked without building it.
+bool is_object(const std::string& text) {
+  const size_t at = text.find_first_not_of(" \t\n\r");
+  return at != std::string::npos && text[at] == '{' && nlohmann::json::accept(text);
+}
+
+// p for a layer of `kind`. `was`: the props the layer has, whose JSON objects need no second look (a slider dragged
+// on a layer with a 3D LUT parses nothing).
+const LayerProps& checked(const LayerProps& p, Kind kind, const LayerProps* was = nullptr) {
+  if (size_t(kind) >= std::size(kKindNames)) throw bad("no such kind of layer");
   if (size_t(p.blend) >= std::size(kBlendNames)) throw bad("no such blend mode");
   if (p.blend == Blend::PassThrough && kind != Kind::Group) throw bad("Pass Through is for groups");
   if (!(p.opacity >= 0 && p.opacity <= 1 && p.fill >= 0 && p.fill <= 1)) throw bad("opacity and fill go 0..1");
+  if (!(p.mask_density >= 0 && p.mask_density <= 1 && p.mask_feather >= 0 && p.mask_feather <= kMaxFeather))
+    throw bad("mask density goes 0..1, feather 0..1000 px");
+  for (const BlendRange& r : p.blend_if)
+    if (!ordered(r.layer) || !ordered(r.under)) throw bad("Blend If's sliders out of order");
+  for (const ObjectKey& k : kObjects) {
+    const JsonPtr& j = p.*k.field;
+    if (j && !(was && was->*k.field == j) && !is_object(*j)) throw bad(std::string(k.key) + " is not a JSON object");
+  }
   return p;
 }
 
@@ -219,21 +338,34 @@ void check_pixels(const DocState& d, const TileGrid& g) {
   if (g.format() != f || g.fill()[size_t(f.channels - 1)] != 0)
     throw bad("pixels not in the document's format, or not transparent where empty");
 }
-// A pixel layer's grid in d: g, checked, or an empty one for null.
-std::shared_ptr<const TileGrid> layer_pixels(const DocState& d, std::shared_ptr<const TileGrid> g) {
+// A layer's pixels in d: a pixel, text or shape layer's grid g, checked, or an empty one for null; other kinds have
+// none. Its kind checked first.
+std::shared_ptr<const TileGrid> layer_pixels(const DocState& d, Kind kind, std::shared_ptr<const TileGrid> g) {
+  if (!has_pixels(kind)) {
+    if (g) throw bad(std::string("a layer of kind ") + kKindNames[size_t(kind)] + " has no pixels");
+    return nullptr;
+  }
   if (!g) return std::make_shared<const TileGrid>(pixel_format(d));
   check_pixels(d, *g);
   return g;
 }
 
-// l and everything in it again, under new ids from `next` on (each before what it holds), sharing their pixels.
+void check_mask(const DocState& d, const TileGrid& g) {
+  const int fill = g.fill()[0];
+  if (g.format() != mask_format(d) || (fill != 0 && fill != max_value(d.depth)))
+    throw bad("a mask not in the document's mask format, or neither white nor black where empty");
+}
+std::shared_ptr<const TileGrid> layer_mask(const DocState& d, std::shared_ptr<const TileGrid> g) {
+  if (g) check_mask(d, *g);
+  return g;
+}
+
+// l and everything in it again, under new ids from `next` on (each before what it holds), sharing their pixels,
+// masks and props' JSON.
 LayerPtr copy_layer(const Layer& l, LayerId& next) {
-  auto c = std::make_shared<Layer>();
+  auto c = std::make_shared<Layer>(l);
   c->id = next++;
-  c->kind = l.kind;
-  c->props = l.props;
-  c->pixels = l.pixels;
-  for (const LayerPtr& k : l.children) c->children.push_back(copy_layer(*k, next));
+  for (LayerPtr& k : c->children) k = copy_layer(*k, next);
   return c;
 }
 
@@ -244,10 +376,8 @@ void perform(const DocState& d, DocState& n, const AddLayer& c) {
   auto l = std::make_shared<Layer>();
   l->kind = c.kind;
   l->props = checked(c.props, c.kind);
-  if (c.kind == Kind::Pixel)
-    l->pixels = layer_pixels(d, c.pixels);
-  else if (c.pixels)
-    throw bad("a group has no pixels");
+  l->pixels = layer_pixels(d, c.kind, c.pixels);
+  l->mask = layer_mask(d, c.mask);
   l->id = n.next_id++;
   n.root = rebuilt(d, [&](const LayerPtr& x) -> std::optional<Layers> {
     if (x->id != c.parent) return std::nullopt;
@@ -332,13 +462,15 @@ void perform(const DocState& d, DocState& n, const Ungroup& c) {
 }
 
 void perform(const DocState& d, DocState& n, const SetProps& c) {
-  const LayerProps& p = checked(c.props, (*need(d, c.layer).layer)->kind);
-  n.root = changed(d, c.layer, [&](Layer& l) { l.props = p; });
+  const Layer& l = **need(d, c.layer).layer;
+  const LayerProps& p = checked(c.props, l.kind, &l.props);
+  n.root = changed(d, c.layer, [&](Layer& x) { x.props = p; });
 }
 
 void perform(const DocState& d, DocState& n, const SetPixels& c) {
-  if ((*need(d, c.layer).layer)->kind != Kind::Pixel) throw bad("layer " + std::to_string(c.layer) + " is a group");
-  const auto pixels = layer_pixels(d, c.pixels);
+  if ((*need(d, c.layer).layer)->kind != Kind::Pixel)
+    throw bad("layer " + std::to_string(c.layer) + " is not a pixel layer");
+  const auto pixels = layer_pixels(d, Kind::Pixel, c.pixels);
   n.root = changed(d, c.layer, [&](Layer& l) { l.pixels = pixels; });
 }
 
@@ -353,6 +485,32 @@ void perform(const DocState& d, DocState& n, const SelectLayers& c) {
     if (id == 0 || it == all.end() || *it != id) throw bad("no layer " + std::to_string(id) + " to select");
     if (!taken[size_t(it - all.begin())]) taken[size_t(it - all.begin())] = true, n.selected.push_back(id);
   }
+}
+
+void perform(const DocState& d, DocState& n, const SetMask& c) {
+  need(d, c.layer);
+  const auto mask = layer_mask(d, c.mask);
+  n.root = changed(d, c.layer, [&](Layer& l) { l.mask = mask; });
+}
+
+void perform(const DocState& d, DocState& n, const ReplaceLayer& c) {
+  const Layer& old = **need(d, c.layer).layer;
+  if (c.kind == Kind::Group) throw bad("ReplaceLayer makes no group");
+  auto l = std::make_shared<Layer>();
+  l->id = c.layer;
+  l->kind = c.kind;
+  l->props = checked(c.props, c.kind);
+  l->pixels = layer_pixels(d, c.kind, c.pixels);
+  l->mask = layer_mask(d, c.mask);
+  std::vector<LayerId> gone;  // a group's layers go with it
+  for (const LayerPtr& k : old.children) collect(*k, gone);
+  std::sort(gone.begin(), gone.end());
+  n.root = rebuilt(d, [&](const LayerPtr& x) -> std::optional<Layers> {
+    if (x->id != c.layer) return std::nullopt;
+    return Layers{l};
+  });
+  const auto is_gone = [&](LayerId id) { return std::binary_search(gone.begin(), gone.end(), id); };
+  n.selected.erase(std::remove_if(n.selected.begin(), n.selected.end(), is_gone), n.selected.end());
 }
 
 }  // namespace
@@ -388,7 +546,8 @@ void validate(const DocState& d) {
   if (d.width < 1 || d.height < 1) throw bad("a canvas without pixels");
   if ((d.mode != Mode::Rgb && d.mode != Mode::Gray) || (d.depth != Depth::U8 && d.depth != Depth::U16))
     throw bad("no such mode or depth");
-  if (!d.root || d.root->id != 0 || d.root->kind != Kind::Group || d.root->pixels) throw bad("no root group");
+  if (!d.root || d.root->id != 0 || d.root->kind != Kind::Group || d.root->pixels || d.root->mask)
+    throw bad("no root group");
   if (d.next_id == 0) throw bad("next_id 0, the root's");
   std::vector<LayerId> ids;
   const std::function<void(const Layer&)> walk = [&](const Layer& g) {
@@ -396,13 +555,15 @@ void validate(const DocState& d) {
       if (!l) throw bad("a null layer");
       if (l->id == 0 || l->id >= d.next_id) throw bad("layer id " + std::to_string(l->id) + " not in 1 to next_id");
       checked(l->props, l->kind);
-      if (l->kind == Kind::Pixel) {
-        if (!l->pixels) throw bad("pixel layer " + std::to_string(l->id) + " without pixels");
+      if (has_pixels(l->kind)) {
+        if (!l->pixels) throw bad("layer " + std::to_string(l->id) + " without its pixels");
         check_pixels(d, *l->pixels);
-        if (!l->children.empty()) throw bad("layers inside pixel layer " + std::to_string(l->id));
-      } else if (l->kind != Kind::Group || l->pixels) {
-        throw bad("layer " + std::to_string(l->id) + " neither a pixel layer nor a group");
+      } else if (l->pixels) {
+        throw bad("pixels on layer " + std::to_string(l->id) + ", of kind " + kKindNames[size_t(l->kind)]);
       }
+      if (l->kind != Kind::Group && !l->children.empty())
+        throw bad("layers inside layer " + std::to_string(l->id) + ", not a group");
+      if (l->mask) check_mask(d, *l->mask);
       ids.push_back(l->id);
       walk(*l);
     }
@@ -427,12 +588,16 @@ std::string to_json(const Command& cmd) {
     for (size_t i = 0; i < v.size(); i++) s << (i ? "," : "") << v[i];
     s << ']';
   };
+  const auto kind = [&](Kind k) {  // "" for none known, which command_from_json() refuses
+    s << ",\"kind\":\"" << (size_t(k) < std::size(kKindNames) ? kKindNames[size_t(k)] : "") << '"';
+  };
   std::visit(
       [&](const auto& c) {
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, AddLayer>) {
-          s << "{\"op\":\"addLayer\",\"parent\":" << c.parent << ",\"index\":" << c.index << ",\"kind\":\""
-            << (c.kind == Kind::Group ? "group" : "pixel") << "\",\"props\":" << to_json(c.props);
+          s << "{\"op\":\"addLayer\",\"parent\":" << c.parent << ",\"index\":" << c.index;
+          kind(c.kind);
+          s << ",\"props\":" << to_json(c.props);
         } else if constexpr (std::is_same_v<T, DeleteLayers>) {
           s << "{\"op\":\"deleteLayers\"";
           ids(c.layers);
@@ -451,10 +616,16 @@ std::string to_json(const Command& cmd) {
           s << "{\"op\":\"setProps\",\"layer\":" << c.layer << ",\"props\":" << to_json(c.props);
         } else if constexpr (std::is_same_v<T, SetPixels>) {
           s << "{\"op\":\"setPixels\",\"layer\":" << c.layer;
-        } else {
-          static_assert(std::is_same_v<T, SelectLayers>, "a command to_json() does not write");
+        } else if constexpr (std::is_same_v<T, SelectLayers>) {
           s << "{\"op\":\"selectLayers\"";
           ids(c.layers);
+        } else if constexpr (std::is_same_v<T, SetMask>) {  // whether there is one: its grid is left out
+          s << "{\"op\":\"setMask\",\"layer\":" << c.layer << ",\"mask\":" << (c.mask ? "true" : "false");
+        } else {
+          static_assert(std::is_same_v<T, ReplaceLayer>, "a command to_json() does not write");
+          s << "{\"op\":\"replaceLayer\",\"layer\":" << c.layer;
+          kind(c.kind);
+          s << ",\"props\":" << to_json(c.props);
         }
       },
       cmd);
@@ -498,6 +669,14 @@ bool props(const nlohmann::json& j, LayerProps& to) {
   to = std::move(*p);
   return true;
 }
+bool kind(const nlohmann::json& j, Kind& to) {
+  const auto it = j.find("kind");
+  if (it == j.end() || !it->is_string()) return false;
+  const auto n = std::find(std::begin(kKindNames), std::end(kKindNames), it->get_ref<const std::string&>());
+  if (n == std::end(kKindNames)) return false;
+  to = Kind(n - std::begin(kKindNames));
+  return true;
+}
 
 }  // namespace
 
@@ -509,10 +688,8 @@ std::optional<Command> command_from_json(const std::string& text) {
   const std::string& name = op->get_ref<const std::string&>();
   if (name == "addLayer") {
     AddLayer c;
-    const auto kind = j.find("kind");
-    if (kind == j.end() || !kind->is_string() || !(*kind == "pixel" || *kind == "group")) return std::nullopt;
-    c.kind = *kind == "group" ? Kind::Group : Kind::Pixel;
-    if (integer(j, "parent", c.parent) && integer(j, "index", c.index) && props(j, c.props)) return c;
+    if (kind(j, c.kind) && integer(j, "parent", c.parent) && integer(j, "index", c.index) && props(j, c.props))
+      return c;
   } else if (name == "deleteLayers") {
     DeleteLayers c;
     if (ids(j, c.layers)) return c;
@@ -534,8 +711,12 @@ std::optional<Command> command_from_json(const std::string& text) {
   } else if (name == "selectLayers") {
     SelectLayers c;
     if (ids(j, c.layers)) return c;
+  } else if (name == "setMask") {
+    SetMask c;  // the mask deleted; one set has its grid left out
+    const auto mask = j.find("mask");
+    if (integer(j, "layer", c.layer) && mask != j.end() && mask->is_boolean() && !mask->get<bool>()) return c;
   }
-  return std::nullopt;  // setPixels too: its JSON lacks the pixels
+  return std::nullopt;  // setPixels, replaceLayer too: their JSON lacks the grids
 }
 
 }  // namespace pb

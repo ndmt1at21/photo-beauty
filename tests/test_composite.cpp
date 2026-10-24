@@ -1,9 +1,11 @@
 // composite_tile() (render.h), its plan (composite.h) and its formulas (blend.h): each P0 mode against W3C's formula
-// (Photoshop's where they differ), Normal, what is skipped, isolated and Pass Through groups, the stroke overlay, 8 bits
-// against 16, grey against RGB, mip levels 1 to 6. Documents are made by hand.
+// (Photoshop's where they differ), Normal, what is skipped, isolated and Pass Through groups, the stroke overlay, 8
+// bits against 16, grey against RGB, mip levels 1 to 6; P1's kinds of layer, a filter's preview on the CPU and the
+// GPU. Documents are made by hand.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -17,6 +19,7 @@
 #include "blend.h"
 #include "check.h"
 #include "composite.h"
+#include "gpu_composite.h"
 #include "mip.h"
 #include "render.h"
 
@@ -503,5 +506,126 @@ TEST(test_composite_downsampled) {
         if (a / (n * n) >= 1)
           for (int k = 0; k < 3; k++) CHECK(std::abs(g[k] - c[k] / a) <= tol);
       }
+  }
+}
+
+// Text and shape layers composite as pixel layers do; adjustment and fill layers leave no steps until D40.
+TEST(test_composite_kinds) {
+  std::mt19937 rng(31);
+  const auto rnd = [&] { return at00(make_tile(kRgba16, [&](size_t) { return random_px(rng, kRgba16); })); };
+  const auto as = [](const LayerPtr& l, Kind k) {
+    auto c = std::make_shared<Layer>(*l);
+    c->kind = k;
+    return LayerPtr(std::move(c));
+  };
+  const auto a = rnd(), b = rnd(), c = rnd();
+  const auto want = composite(doc({pixel(1, a), pixel(2, b, Blend::Multiply, 0.7f), pixel(3, c, Blend::Screen, 0.5f)}));
+  CHECK(composite(doc({as(pixel(1, a), Kind::Text), as(pixel(2, b, Blend::Multiply, 0.7f), Kind::Shape),
+                       group(4, {as(pixel(3, c, Blend::Screen, 0.5f), Kind::Text)})})) == want);
+  const LayerPtr adj = as(pixel(5, nullptr, Blend::Luminosity), Kind::Adj), fill = as(pixel(6, nullptr), Kind::Fill);
+  const auto among = doc({pixel(1, a), adj, pixel(2, b, Blend::Multiply, 0.7f), fill, pixel(3, c, Blend::Screen, 0.5f)});
+  CHECK(composite(among) == want);
+  const CompositePlan p = composite_plan({doc({pixel(1, a), adj, group(7, {fill}, Blend::Normal)})}, 0, 0, 0);
+  CHECK(p.steps.size() == 1 && p.steps[0].layer == 1 && p.depth == 1);
+}
+
+// A filter's preview (RenderInput::preview) stands in for its layer's tiles at its level: where it stores a tile, that
+// one (a transparent solid one clears the layer's tile), elsewhere and at other levels the layer's own. The GPU
+// composites it as the CPU does, both running composite_plan().
+TEST(test_composite_preview) {
+  std::mt19937 rng(37);
+  const auto rnd = [&] { return make_tile(kRgba16, [&](size_t) { return random_px(rng, kRgba16); }); };
+  std::vector<std::pair<TileXY, TilePtr>> own, below;
+  for (int y = 0; y < 2; y++)
+    for (int x = 0; x < 3; x++) own.push_back({{x, y}, rnd()}), below.push_back({{x, y}, rnd()});
+  const int w = 3 * S - 50, h = 2 * S - 30;  // in 3 x 2 tiles; at level 2 in one
+  const auto above = grid(kRgba16, {{{1, 1}, rnd()}});
+  const auto make = [&](std::shared_ptr<const TileGrid> layer, int width, int height, bool visible = true) {
+    LayerPtr l = pixel(3, std::move(layer), Blend::Multiply, 0.8f);
+    if (!visible) l = hidden(l);
+    return doc({pixel(1, grid(kRgba16, below)), group(2, {l}, Blend::Normal, 0.9f),
+                pixel(4, above, Blend::Screen, 0.6f)},
+               Depth::U16, Mode::Rgb, width, height);
+  };
+  const DocPtr d = make(grid(kRgba16, own), w, h);
+  // At level 0: tile (0, 0) another, (1, 0) cleared, (2, 1) solid; the rest the layer's own.
+  const TilePtr other = rnd(), opaque = Tile::solid(kRgba16, {100, 20000, 65535, 65535});
+  const auto tiles0 = grid(kRgba16, {{{0, 0}, other}, {{1, 0}, Tile::solid(kRgba16, {7, 7, 7, 0})}, {{2, 1}, opaque}});
+  std::vector<std::pair<TileXY, TilePtr>> merged;
+  for (const auto& [xy, t] : own)
+    if (!(xy == TileXY{1, 0})) merged.push_back({xy, xy == TileXY{0, 0} ? other : xy == TileXY{2, 1} ? opaque : t});
+  const DocPtr want0 = make(grid(kRgba16, merged), w, h);
+  const RenderInput in0{d, {}, LayerPreview{3, 0, tiles0}};
+  bool changed = false;
+  for (int ty = -1; ty <= 2; ty++)
+    for (int tx = -1; tx <= 3; tx++) {
+      const auto got = pixels_of(composite_tile(in0, 0, tx, ty));
+      CHECK(got == pixels_of(composite_tile({want0}, 0, tx, ty)));
+      changed |= got != pixels_of(composite_tile({d}, 0, tx, ty));
+    }
+  CHECK(changed);
+  CHECK(composite_plan(in0, 0, 0, 0).steps[2].tile == other && composite_plan(in0, 0, 2, 1).steps[2].tile == opaque);
+  CHECK(composite_plan(in0, 0, 1, 0).steps.size() == 1 && composite_plan(in0, 0, 0, 1).steps[2].tile == own[3].second);
+  // At level 2: its tile in place of the layer's mip tile; the level-0 preview shows nowhere else.
+  const TilePtr shrunk = rnd();
+  const RenderInput in2{d, {}, LayerPreview{3, 2, grid(kRgba16, {{{0, 0}, shrunk}})}};
+  CHECK(composite_plan(in2, 2, 0, 0).steps[2].tile == shrunk);
+  auto at2 = std::make_shared<DocState>(*d);
+  at2->root = shrink(d->root, 2);
+  at2->width = (w + 3) / 4, at2->height = (h + 3) / 4;
+  auto l3 = std::make_shared<Layer>(*at2->root->children[1]->children[0]);
+  l3->pixels = at00(shrunk);
+  auto g2 = std::make_shared<Layer>(*at2->root->children[1]);
+  g2->children = {l3};
+  auto root = std::make_shared<Layer>(*at2->root);
+  root->children[1] = g2;
+  at2->root = root;
+  CHECK(pixels_of(composite_tile(in2, 2, 0, 0)) == pixels_of(composite_tile({at2}, 0, 0, 0)));
+  CHECK(pixels_of(composite_tile(in2, 0, 1, 1)) == pixels_of(composite_tile({d}, 0, 1, 1)));
+  CHECK(pixels_of(composite_tile(in0, 2, 0, 0)) == pixels_of(composite_tile({d}, 2, 0, 0)));
+  // A preview of a layer not there, of a hidden layer: nothing; tiles of another format: refused.
+  CHECK(pixels_of(composite_tile({d, {}, LayerPreview{9, 0, tiles0}}, 0, 0, 0)) ==
+        pixels_of(composite_tile({d}, 0, 0, 0)));
+  const DocPtr off = make(grid(kRgba16, own), w, h, false);
+  CHECK(pixels_of(composite_tile({off, {}, LayerPreview{3, 0, tiles0}}, 0, 0, 0)) ==
+        pixels_of(composite_tile({off}, 0, 0, 0)));
+  bool threw = false;
+  try {
+    composite_plan({d, {}, LayerPreview{3, 0, std::make_shared<const TileGrid>(Format{Depth::U8, 4})}}, 0, 0, 0);
+  } catch (const std::invalid_argument&) {
+    threw = true;
+  }
+  CHECK(threw);
+
+  // The GPU: as the CPU to the bit where it rounds as IEEE says (x86-64), else within a level of 8 bits (as
+  // test_gpu_composite_matches_cpu).
+  const auto dev = pb::test::gpu_device();
+  if (!dev) return;
+  GpuComposite gc(*dev, 32 << 20);
+  const std::pair<RenderInput, int> runs[] = {{in0, 0}, {in2, 2}, {RenderInput{d}, 0}};
+  for (const auto& [in, level] : runs) {
+    std::vector<TileXY> tiles;
+    for (int ty = 0; ty < (level ? 1 : 2); ty++)
+      for (int tx = 0; tx < (level ? 1 : 3); tx++) tiles.push_back({tx, ty});
+    const std::vector<int> slots = gc.composite(in, level, tiles);
+    std::vector<uint16_t> all(size_t(gc.output_tiles()) * kPixels * 4);
+    dev->download(gc.output(), all.data(), all.size() * 2);
+    dev->flush();
+    int worst = 0;
+    size_t differ = 0;
+    for (size_t i = 0; i < tiles.size(); i++) {
+      const std::vector<uint16_t> want = pixels_of(composite_tile(in, level, tiles[i].x, tiles[i].y));
+      for (size_t j = 0; j < want.size(); j++) {
+        const int got = slots[i] < 0 ? 0 : all[size_t(slots[i]) * kPixels * 4 + j];
+        worst = std::max(worst, std::abs(got - int(want[j])));
+        differ += got != want[j];
+      }
+    }
+    std::printf("test_composite_preview: GPU at level %d: %zu samples off, by up to %d 16-bit levels\n", level, differ,
+                worst);
+    CHECK(worst <= 257);
+#if defined(__x86_64__) || defined(_M_X64)
+    CHECK(differ == 0);
+#endif
   }
 }

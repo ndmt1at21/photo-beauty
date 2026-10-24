@@ -34,8 +34,10 @@ struct Planner {
       const float alpha = std::min(p.opacity * p.fill, 1.f);
       const bool pass = p.blend == Blend::PassThrough;
       if (!p.visible || !(alpha > 0)) continue;
-      if (l->kind == Kind::Pixel) {
+      if (has_pixels(l->kind)) {  // text and shape layers too
         add_pixels(*l, alpha);
+      } else if (l->kind != Kind::Group) {
+        continue;  // adjustment and fill layers: D40; masks, clipping, Blend If, Channels: B34 (composite.h)
       } else if (pass && alpha == 1) {
         add(*l);  // its layers straight onto the backdrop
       } else {
@@ -52,8 +54,21 @@ struct Planner {
     }
   }
 
+  // The layer's tile here: the preview's where it has one, else its pixels' at the level.
+  TilePtr tile_of(const Layer& l) const {
+    const std::optional<LayerPreview>& v = in.preview;
+    if (v && v->layer == l.id && v->level == level && v->tiles) {
+      const auto& tiles = v->tiles->tiles();
+      if (const auto it = tiles.find({tx, ty}); it != tiles.end()) {
+        const TilePtr& t = it->second;
+        return t->is_solid() && !t->value()[size_t(t->format().channels - 1)] ? nullptr : t;  // cleared
+      }
+    }
+    return l.pixels ? mip(*l.pixels, level, tx, ty) : nullptr;
+  }
+
   void add_pixels(const Layer& l, float alpha) {
-    TilePtr t = l.pixels ? mip(*l.pixels, level, tx, ty) : nullptr;
+    TilePtr t = tile_of(l);
     const bool stroked = in.stroke && in.stroke->layer == l.id && in.stroke->buffer;
     TilePtr cover = stroked ? mip(*in.stroke->buffer, level, tx, ty) : nullptr;
     if (!t && (!cover || in.stroke->erase)) return;  // erasing where there is nothing leaves nothing
@@ -146,6 +161,8 @@ CompositePlan composite_plan(const RenderInput& in, int level, int tx, int ty) {
   if (in.stroke && in.stroke->buffer && in.stroke->buffer->format() != Format{Depth::U16, 1})
     throw std::invalid_argument("pb: composite_plan: a stroke buffer is 1 channel U16");
   const DocState& d = *in.doc;
+  if (in.preview && in.preview->tiles && in.preview->tiles->format() != pixel_format(d))
+    throw std::invalid_argument("pb: composite_plan: a preview's tiles are in the document's pixel format");
   // The canvas at the level. A pixel partly on it averages in what lies past the edge (mip.h): transparent for a layer
   // within the canvas. ponytail: a layer spilling past the canvas tints that last row and column at levels > 0; mask
   // such layers at the edge before averaging if it shows.

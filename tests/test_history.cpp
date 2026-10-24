@@ -3,7 +3,7 @@
 // tile bytes against a count over every step afresh, with the oldest steps dropped past a quarter of the budget and no
 // more; a slider dragged through 100 values one step; layers chosen joining a step; steps leaving the store with their
 // tiles, shared tiles counted once; a real brush stroke undone to the layer's very tiles; the cost of a step on a tree
-// shaped as D4.
+// shaped as D4. Masks' tiles count as pixels' do (A30).
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -41,6 +41,8 @@ void dump(std::ostream& s, const Layer& l) {
     << p.lock_position << p.lock_all << ' ' << p.opacity << ' ' << p.fill << ' ' << int(p.blend) << ' ' << p.extra;
   if (l.pixels)
     for (const auto& [xy, t] : l.pixels->tiles()) s << ' ' << xy.x << ',' << xy.y << '=' << t->id();
+  if (l.mask)
+    for (const auto& [xy, t] : l.mask->tiles()) s << " m" << xy.x << ',' << xy.y << '=' << t->id();
   for (const LayerPtr& c : l.children) dump(s, *c);
   s << ']';
 }
@@ -63,9 +65,10 @@ std::map<uint64_t, size_t> tiles_of(const std::vector<DocPtr>& states) {
   std::unordered_set<const Layer*> seen;  // shared nodes once
   const auto walk = [&](const Layer& l, const auto& self) -> void {
     if (!seen.insert(&l).second) return;
-    if (l.pixels)
-      for (const auto& [xy, t] : l.pixels->tiles())
-        if (!t->is_solid()) out[t->id()] = raw_size(*t);
+    for (const TileGrid* g : {l.pixels.get(), l.mask.get()})
+      if (g)
+        for (const auto& [xy, t] : g->tiles())
+          if (!t->is_solid()) out[t->id()] = raw_size(*t);
     for (const LayerPtr& c : l.children) self(*c, self);
   };
   for (const DocPtr& d : states) walk(*d->root, walk);
@@ -557,6 +560,53 @@ void check_stroke() {
   CHECK(tile_stats().raw == raw);
 }
 
+// Masks' tiles (A30) count as pixels' do: what only other steps hold, each tile once, at its own size (one channel);
+// a layer moved into a group with its mask changed in the same step, duplicated, replaced, deleted with its group.
+void check_masks() {
+  const Format m{Depth::U8, 1};
+  const auto mask = [&](int n, uint8_t v) {  // n data tiles of v, white where empty
+    auto g = std::make_shared<TileGrid>(m, Pixel{255});
+    for (int i = 0; i < n; i++) std::memset(g->write(i, 0).data(), v, size_t(S) * S);
+    return std::shared_ptr<const TileGrid>(std::move(g));
+  };
+  const size_t tile = size_t(S) * S;  // a mask tile's bytes
+  DocPtr d = new_document(1024, 512, Mode::Rgb, Depth::U8, nullptr);
+  d = run(*d, AddLayer{0, 0, Kind::Pixel, {}, nullptr});
+  d = run(*d, AddLayer{0, 1, Kind::Group, {}, nullptr});
+  Document doc(d, "Open");
+  const auto held = [&](size_t tiles) {
+    return doc.history_bytes() == tiles * tile && doc.history_bytes() == held_elsewhere(states_of(doc), doc.state());
+  };
+  const auto a = mask(2, 1);
+  doc.run(SetMask{1, a}, "Add Layer Mask");
+  CHECK(held(0));
+  auto b = std::make_shared<TileGrid>(*a);  // a's tile (1, 0) painted over
+  std::memset(b->write(1, 0).data(), 2, tile);
+  doc.run(SetMask{1, std::move(b)}, "Brush");
+  CHECK(held(1));
+  doc.run(SetMask{1, nullptr}, "Delete Layer Mask");
+  CHECK(held(3));
+  CHECK(doc.undo() && held(1) && doc.undo() && held(1) && doc.redo() && held(1));
+  // Moved into the group and its mask replaced in one step: the old mask's tiles to the history, the new one's now.
+  doc.begin_gesture();
+  doc.run(MoveLayer{1, 2, 0}, "Layer Order");
+  doc.run(SetMask{1, mask(1, 7)}, "Layer Order");
+  doc.end_gesture();
+  CHECK(doc.steps() == 4 && held(3));
+  // A copy shares the mask; deleting it changes nothing; replaced, the layer's mask goes to the history.
+  doc.run(DuplicateLayers{{1}}, "Duplicate Layer");
+  CHECK(held(3));
+  doc.run(DeleteLayers{{doc.state()->selected[0]}}, "Delete Layer");
+  CHECK(held(3));
+  doc.run(ReplaceLayer{1, Kind::Adj, {}, nullptr, mask(1, 9)}, "Replace Layer");
+  CHECK(held(4));
+  // The group with a mask of its own deleted with what it holds: all of it to the history.
+  doc.run(SetMask{2, mask(2, 5)}, "Add Layer Mask");
+  CHECK(held(4));
+  doc.run(DeleteLayers{{2}}, "Delete Layer");
+  CHECK(held(7));
+}
+
 double ms(std::chrono::steady_clock::time_point t0) {
   return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
@@ -658,6 +708,7 @@ TEST(test_history) {
   check_select();
   check_stroke();  // before the checks that lower the budget: its raw bytes stay put
   check_budget();
+  check_masks();
   check_random();
   check_d4();
 }

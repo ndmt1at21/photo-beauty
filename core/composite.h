@@ -19,7 +19,7 @@ struct CompositeStep {
   bool pass = false;            // Push, Pop
   Blend blend = Blend::Normal;  // Layer, Pop
   float alpha = 1;              // Layer, Pop: opacity x fill, 0 < alpha <= 1
-  TilePtr tile;                 // Layer: the layer's pixels at the level; null where it has none and the stroke paints
+  TilePtr tile;                 // Layer: its pixels at the level, or the preview's; null where none and the stroke paints
   TilePtr cover;                // Layer: the stroke buffer's tile at the level when the stroke is on this layer
 };
 
@@ -30,10 +30,15 @@ struct CompositePlan {
 };
 
 // The plan of tile (tx, ty) at mip level `level` (as composite_tile()): each layer's tile is mip(pixels, level, tx, ty)
-// (mip.h; at level 0 the layer's own), the stroke buffer's likewise; hidden layers, layers at opacity or fill 0 or
-// without pixels there and groups of none leave no steps. The canvas at level L is ceil(width / 2^L) x
-// ceil(height / 2^L) pixels, a pixel partly on it counting. Builds the mip tiles the cache lacks. Throws
-// std::invalid_argument for no document, a level outside 0..31, a stroke buffer other than 1-channel U16. Any thread.
+// (mip.h; at level 0 the layer's own), a text or shape layer's as a pixel layer's, but where RenderInput::preview has
+// a tile of the layer at the level: that one (none where it is transparent and solid). The stroke buffer's likewise.
+// Hidden layers, layers at opacity or fill 0 or without pixels there and groups of none leave no steps. The canvas at
+// level L is ceil(width / 2^L) x ceil(height / 2^L) pixels, a pixel partly on it counting. Builds the mip tiles the
+// cache lacks. Throws std::invalid_argument for no document, a level outside 0..31, a stroke buffer other than
+// 1-channel U16, a preview's tiles not in pixel_format(). Any thread.
+// Not yet (the props and masks are kept, not composited): adjustment and fill layers leave no steps until D40; masks,
+// clipping, Blend If and Channels come with B34, layer styles with L34. RenderInput::warp is left alone until X30:
+// from then on a layer it lists composites the tile warp_tile() makes of it (warp.h), its mask too where linked.
 CompositePlan composite_plan(const RenderInput&, int level, int tx, int ty);
 
 }  // namespace pb

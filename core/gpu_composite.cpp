@@ -189,7 +189,8 @@ struct GpuComposite::Impl {
   uint64_t batch = 1, call = 0;  // stamps
   Stats stats;
   // The cache's keys of the tiles planned for `planned_doc` (by level and place; empty: transparent), so that a tile the
-  // cache has needs no plan: a view shows the same document frame after frame (V2d). Frames with a stroke plan anew.
+  // cache has needs no plan: a view shows the same document frame after frame (V2d). Frames with a stroke, a filter's
+  // preview or layers being transformed (RenderInput's, A30) plan anew: the document alone does not make their tiles.
   // A mip tile built again since (the mip cache let it go) has a new id but the same pixels: the key stays good.
   static constexpr size_t kPlanned = 8192;
   std::weak_ptr<const DocState> planned_doc;
@@ -432,7 +433,7 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   int waiting = 0;                 // optional tiles past `most`
   const bool budgeted = most > 0;  // once spent, the rest wait unplanned: plans cost too
   bool spent = false;              // some tile took of `most`: a tile of more layers than it still comes in turn
-  const bool reuse = !in.stroke;   // keys planned before stand
+  const bool reuse = !in.stroke && !in.preview && !in.warp;  // keys planned before stand
   if (m.planned_doc.lock() != in.doc || m.planned.size() > Impl::kPlanned) m.planned.clear(), m.planned_doc = in.doc;
   for (size_t i = 0; i < tiles.size(); i++) {
     const uint64_t at = uint64_t(level) << 56 | uint64_t(uint32_t(tiles[i].y)) << 28 | uint32_t(tiles[i].x);

@@ -1,6 +1,6 @@
-// Commands read back from their JSON (doc.h: command_from_json()): every command without pixels writes, read back, the
-// JSON it wrote, its props byte for byte with unknown keys; SetPixels and what is not a command give nullopt; a command
-// read back runs to the same state.
+// Commands read back from their JSON (doc.h: command_from_json()): every command without grids writes, read back, the
+// JSON it wrote, its props byte for byte with P1's keys and unknown keys, layers of every kind; SetPixels, SetMask with
+// a mask, ReplaceLayer and what is not a command give nullopt; a command read back runs to the same state.
 #include <cstdint>
 #include <cstdio>
 #include <limits>
@@ -49,8 +49,15 @@ LayerProps random_props(std::mt19937& r, bool group) {
   p.blend = Blend(1 + r() % (std::size(kBlendNames) - 1));
   if (group && r() % 2) p.blend = Blend::PassThrough;
   p.lock_transparency = r() % 2, p.lock_pixels = r() % 2, p.lock_position = r() % 2, p.lock_all = r() % 2;
-  if (r() % 2) p.extra = R"x({"background":true,"mask":null,"tag":"#e8664a","vals":{"pre":"Lighter (RGB)","s":-30}})x";
-  return props_of(to_json(p));  // extra as reading leaves it: members sorted
+  p.clip = r() % 2, p.mask_off = r() % 2, p.mask_linked = r() % 2;
+  p.mask_density = std::uniform_real_distribution<float>(0, 1)(r), p.mask_feather = float(r() % 1001);
+  if (r() % 2) p.blend_if[r() % 4] = {{0, uint8_t(r() % 100), uint8_t(100 + r() % 100), 255}, {9, 9, 9, 9}};
+  p.channels.g = r() % 2;
+  if (r() % 2) p.adj = random_name(r);
+  if (r() % 2) p.vals = std::make_shared<const std::string>(R"x({"pre":"Lighter (RGB)","s":-30})x");
+  if (r() % 2) p.fx = std::make_shared<const std::string>(R"( {"stroke": {"on": true, "size": 6}} )");  // as the UI may
+  if (r() % 2) p.extra = R"x({"background":true,"mask":null,"tag":"#e8664a"})x";
+  return props_of(to_json(p));  // as reading leaves them: members sorted, no spaces
 }
 
 std::vector<LayerId> random_ids(std::mt19937& r) {
@@ -67,9 +74,20 @@ TEST(test_doc_json) {
   const LayerProps full = props_of(
       R"({"version":1,"name":"Tách tần số \"Cao\"","blend":"linearLight","opacity":0.3,"fill":0.75,"visible":false,)"
       R"("lockTransparency":true,"lockPixels":true,"lockPosition":true,"lockAll":true,"clip":true,"fx":{"dropShadow":{"on":true}}})");
+  const LayerProps p1 = props_of(
+      R"({"version":1,"name":"Curves 1","maskDensity":0.5,"maskFeather":12.5,"clip":true,"maskOff":true,)"
+      R"("maskLinked":false,"blendIf":{"gray":{"layer":[0,10,200,255],"under":[0,0,255,255]}},)"
+      R"x("channels":{"r":false},"adj":"Curves","vals":{"pre":"Medium Contrast (RGB)"},"tag":"#e8664a"})x");
   const std::vector<Command> some = {
       AddLayer{0, 0, Kind::Pixel, plain, nullptr},
       AddLayer{7, 3, Kind::Group, full, nullptr},
+      AddLayer{0, 1, Kind::Adj, p1, nullptr},
+      AddLayer{0, 1, Kind::Fill, plain, nullptr},
+      AddLayer{2, 0, Kind::Text, full, nullptr},
+      AddLayer{2, 0, Kind::Shape, p1, nullptr},
+      SetProps{4, p1},
+      SetMask{3, nullptr},
+      SetMask{std::numeric_limits<LayerId>::max(), nullptr},
       AddLayer{std::numeric_limits<LayerId>::max(), -1, Kind::Pixel, full, nullptr},  // run() refuses; JSON keeps it
       DeleteLayers{{}},
       DeleteLayers{{1, 2, 3}},
@@ -90,27 +108,38 @@ TEST(test_doc_json) {
   std::mt19937 r(20261024);
   for (int i = 0; i < 2000; i++) {
     const bool group = r() % 2;
-    switch (r() % 8) {
-      case 0: round_trip(AddLayer{LayerId(r() % 100), int(r() % 50), group ? Kind::Group : Kind::Pixel, random_props(r, group), nullptr}); break;
+    switch (r() % 9) {
+      case 0: {
+        const Kind kind = group ? Kind::Group : Kind(r() % 2 ? 0 : 2 + r() % 4);  // pixel, or adj, fill, text, shape
+        round_trip(AddLayer{LayerId(r() % 100), int(r() % 50), kind, random_props(r, group), nullptr});
+        break;
+      }
       case 1: round_trip(DeleteLayers{random_ids(r)}); break;
       case 2: round_trip(DuplicateLayers{random_ids(r)}); break;
       case 3: round_trip(MoveLayer{LayerId(r()), LayerId(r() % 100), int(r() % 1000) - 10}); break;
       case 4: round_trip(GroupLayers{random_ids(r), random_props(r, true)}); break;
       case 5: round_trip(Ungroup{LayerId(r())}); break;
       case 6: round_trip(SetProps{LayerId(r() % 100), random_props(r, group)}); break;
+      case 7: round_trip(SetMask{LayerId(r()), nullptr}); break;
       default: round_trip(SelectLayers{random_ids(r)}); break;
     }
   }
 
-  // Pixels are not in the JSON: SetPixels does not come back; AddLayer comes back without them.
+  // Grids are not in the JSON: SetPixels, SetMask with a mask, ReplaceLayer do not come back; AddLayer comes back
+  // without pixels or mask.
   const DocPtr d0 = new_document(600, 400, Mode::Rgb, Depth::U8, nullptr);
   auto grid = std::make_shared<TileGrid>(pixel_format(*d0));
   grid->set(0, 0, Tile::solid(pixel_format(*d0), {10, 20, 30, 255}));
+  const auto mask = std::make_shared<const TileGrid>(mask_format(*d0), Pixel{255});
   CHECK(!command_from_json(to_json(SetPixels{1, grid})));
   CHECK(!command_from_json(R"({"op":"setPixels","layer":1})"));
+  CHECK(!command_from_json(to_json(SetMask{1, mask})));
+  CHECK(!command_from_json(to_json(ReplaceLayer{1, Kind::Pixel, plain, grid, mask})));
+  CHECK(!command_from_json(to_json(ReplaceLayer{1, Kind::Fill, p1, nullptr, nullptr})));
   {
-    const std::optional<Command> a = command_from_json(to_json(AddLayer{0, 0, Kind::Pixel, plain, grid}));
-    CHECK(a && std::holds_alternative<AddLayer>(*a) && !std::get<AddLayer>(*a).pixels);
+    const std::optional<Command> a = command_from_json(to_json(AddLayer{0, 0, Kind::Text, plain, grid, mask}));
+    CHECK(a && std::holds_alternative<AddLayer>(*a) && !std::get<AddLayer>(*a).pixels && !std::get<AddLayer>(*a).mask);
+    CHECK(std::get<AddLayer>(*a).kind == Kind::Text);
   }
 
   // A command read back runs to the same state as the one that wrote it.
@@ -119,7 +148,9 @@ TEST(test_doc_json) {
     d = run(*d, AddLayer{0, 1, Kind::Group, props_of(R"({"version":1,"name":"Group 1","blend":"passThrough"})"), nullptr});
     const std::vector<Command> steps = {
         AddLayer{2, 0, Kind::Pixel, full, nullptr}, DuplicateLayers{{3}}, MoveLayer{4, 0, 1}, SetProps{1, full},
-        GroupLayers{{3, 4}, plain}, SelectLayers{{1, 5}}, Ungroup{5}, DeleteLayers{{2}}};
+        GroupLayers{{3, 4}, plain}, SelectLayers{{1, 5}}, Ungroup{5}, DeleteLayers{{2}},
+        AddLayer{0, 0, Kind::Adj, p1, nullptr}, AddLayer{0, 2, Kind::Shape, p1, nullptr}, SetProps{6, full},
+        SetMask{1, nullptr}};
     DocPtr a = d, b = d;
     for (const Command& c : steps) {
       a = run(*a, c);
@@ -130,7 +161,7 @@ TEST(test_doc_json) {
     std::vector<std::string> ta, tb;
     const auto walk = [](const Layer& g, std::vector<std::string>& out, const auto& self) -> void {
       for (const LayerPtr& l : g.children) {
-        out.push_back(std::to_string(l->id) + (l->kind == Kind::Group ? "g" : "p") + to_json(l->props) +
+        out.push_back(std::to_string(l->id) + kKindNames[size_t(l->kind)] + to_json(l->props) +
                       (l->pixels ? std::to_string(l->pixels->tiles().size()) : "-"));
         self(*l, out, self);
         out.emplace_back("}");
@@ -145,7 +176,9 @@ TEST(test_doc_json) {
   const char* const bad[] = {
       "", "{", "[]", "null", "3", R"("addLayer")", "{}", R"({"op":3})", R"({"op":"nope","layers":[]})",
       R"({"op":"AddLayer","parent":0,"index":0,"kind":"pixel","props":{"version":1}})",          // ops are camelCase
-      R"({"op":"addLayer","parent":0,"index":0,"kind":"text","props":{"version":1}})",           // no such kind (yet)
+      R"({"op":"addLayer","parent":0,"index":0,"kind":"so","props":{"version":1}})",             // no such kind (yet)
+      R"({"op":"addLayer","parent":0,"index":0,"kind":"Text","props":{"version":1}})",           // kinds are lower case
+      R"({"op":"addLayer","parent":0,"index":0,"kind":2,"props":{"version":1}})",
       R"({"op":"addLayer","parent":0,"index":0,"props":{"version":1}})",                         // no kind
       R"({"op":"addLayer","parent":0,"kind":"pixel","props":{"version":1}})",                    // no index
       R"({"op":"addLayer","parent":0,"index":0,"kind":"pixel"})",                                // no props
@@ -163,6 +196,10 @@ TEST(test_doc_json) {
       R"({"op":"duplicateLayers","layers":[4294967296]})", R"({"op":"moveLayer","layer":1,"parent":0})",
       R"({"op":"groupLayers","layers":[1]})", R"({"op":"ungroup"})", R"({"op":"ungroup","group":true})",
       R"({"op":"setProps","layer":1})", R"({"op":"setProps","props":{"version":1}})", R"({"op":"selectLayers"})",
+      R"({"op":"setProps","layer":1,"props":{"version":1,"blendIf":{"gray":[0,255,0,255]}}})",
+      R"({"op":"setMask","layer":1,"mask":true})", R"({"op":"setMask","layer":1})", R"({"op":"setMask","mask":false})",
+      R"({"op":"setMask","layer":1,"mask":0})", R"({"op":"setMask","layer":1,"mask":null})",
+      R"({"op":"replaceLayer","layer":1,"kind":"pixel","props":{"version":1}})",
   };
   for (const char* b : bad)
     if (command_from_json(b)) {

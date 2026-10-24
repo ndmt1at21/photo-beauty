@@ -1,6 +1,6 @@
-// The document model (doc.h): layer properties <-> JSON byte for byte, unknown keys included; every command on a
-// small tree and what each rejects; states left as they were; random commands keeping the invariants; the time of
-// each command on a tree shaped as D4 (1000 layers, groups 6 deep).
+// The document model (doc.h): layer properties <-> JSON byte for byte, P1's keys and unknown keys included; every
+// command on a small tree and what each rejects, P1's kinds of layer and masks too; states left as they were; random
+// commands keeping the invariants; the time of each command on a tree shaped as D4 (1000 layers, groups 6 deep).
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -20,6 +20,7 @@
 
 #include "check.h"
 #include "doc.h"
+#include "history.h"
 
 using namespace pb;
 
@@ -38,8 +39,10 @@ LayerProps named(const char* name, Blend blend = Blend::Normal) {
 bool same(const LayerProps& a, const LayerProps& b) {
   return a.name == b.name && a.visible == b.visible && a.opacity == b.opacity && a.fill == b.fill &&
          a.blend == b.blend && a.lock_transparency == b.lock_transparency && a.lock_pixels == b.lock_pixels &&
-         a.lock_position == b.lock_position && a.lock_all == b.lock_all && a.extra == b.extra;
+         a.lock_position == b.lock_position && a.lock_all == b.lock_all && a.extra == b.extra &&
+         to_json(a) == to_json(b);  // and P1's
 }
+JsonPtr json_of(const char* text) { return std::make_shared<const std::string>(text); }
 
 // The tree as ids, bottom first, what a group holds in parentheses: "5() 1 2(4 3)".
 std::string shape(const Layer& g) {
@@ -69,14 +72,18 @@ std::map<TileXY, uint64_t> tile_ids(const TileGrid& g) {
   return out;
 }
 
-// Everything a state holds, down to its tiles' ids: an equal dump, an unchanged state.
+// Everything a state holds, down to its tiles' ids and props' JSON objects: an equal dump, an unchanged state.
 void dump(std::ostream& s, const Layer& l) {
   const LayerProps& p = l.props;
   s << '[' << l.id << ' ' << int(l.kind) << ' ' << p.name << '|' << p.visible << p.lock_transparency << p.lock_pixels
     << p.lock_position << p.lock_all << ' ' << p.opacity << ' ' << p.fill << ' ' << int(p.blend) << ' ' << p.extra
+    << ' ' << to_json(p) << ' ' << p.vals.get() << ' ' << p.fx.get() << ' ' << p.content.get() << ' ' << p.source.get()
     << ' ' << l.pixels.get();
   if (l.pixels)
     for (const auto& [xy, id] : tile_ids(*l.pixels)) s << ' ' << xy.x << ',' << xy.y << '=' << id;
+  s << " mask " << l.mask.get();
+  if (l.mask)
+    for (const auto& [xy, id] : tile_ids(*l.mask)) s << ' ' << xy.x << ',' << xy.y << '=' << id;
   for (const LayerPtr& c : l.children) dump(s, *c);
   s << ']';
 }
@@ -136,6 +143,15 @@ std::shared_ptr<const TileGrid> solid(Format f, unsigned v) {
   g->set(int(v % 5) - 2, int(v % 3) - 1, Tile::solid(f, {s, s, s, s}));
   return g;
 }
+// A mask of d: white (Reveal All) or black where empty, and a data tile and a solid one unless bare.
+std::shared_ptr<const TileGrid> mask_of(const DocState& d, bool white, bool bare = false) {
+  auto g = std::make_shared<TileGrid>(mask_format(d), Pixel{uint16_t(white ? max_value(d.depth) : 0)});
+  if (bare) return g;
+  g->set(1, 0, Tile::solid(mask_format(d), {uint16_t(max_value(d.depth) / 2)}));
+  const WritePin w = g->write(0, 0);
+  std::fill(w.data(), w.data() + size_t(kTileSize) * kTileSize * size_t(mask_format(d).bytes()), uint8_t(0x5a));
+  return g;
+}
 
 LayerProps every_key() {
   LayerProps p = named("Lớp 1", Blend::Overlay);
@@ -143,6 +159,15 @@ LayerProps every_key() {
   p.opacity = 0.37f;
   p.fill = 0.5f;
   p.lock_transparency = p.lock_pixels = p.lock_position = p.lock_all = true;
+  p.clip = p.mask_off = true, p.mask_linked = false;
+  p.mask_density = 0.6f, p.mask_feather = 250.5f;
+  p.blend_if[2].layer = {10, 20, 200, 255};
+  p.channels.b = false;
+  p.adj = "Levels";
+  p.vals = json_of(R"({"in0":8,"in1":238})");
+  p.fx = json_of(R"({"stroke":{"on":true,"size":3}})");
+  p.content = json_of(R"({"color":"#808080"})");
+  p.source = json_of(R"({"text":"x"})");
   p.extra = R"({"zz":[1,2]})";
   return p;
 }
@@ -150,10 +175,23 @@ LayerProps every_key() {
 LayerProps random_props(std::mt19937& rng) {
   static const char* const kBits[] = {"a", "Z", " ", "Lớp", "ảnh", "\"", "\\", "\n", "\t", "\x01", "/", "€", "😀", "{"};
   static const char* const kExtras[] = {"", R"({"a":1})", R"({"z":null,"é":"ü"})",
-                                        R"({"blendIf":{"gray":[0,255,0,255]},"style":[{"fx":"stroke","size":3.5}]})"};
+                                        R"({"blendX":{"gray":[0,255,0,255]},"style":[{"fx":"stroke","size":3.5}]})"};
   static const float kValues[] = {0, 1, 0.5f, 0.37f, 1e-40f, 0.999999f};
+  // JSON objects as props_from_json() writes them: members sorted, no spaces.
+  static const JsonPtr kObjects[] = {
+      json_of("{}"), json_of(R"({"a":1})"), json_of(R"({"l":10,"rng":"Yellows","s":-30})"),
+      json_of(R"({"dropShadow":{"angle":120,"on":true},"stroke":{"color":"#f7c873","size":6}})"),
+      json_of(R"({"lines":["Xin chào","ảnh \"1\""],"size":72.5})")};
+  static const char* const kAdjs[] = {"Curves", "Hue/Saturation", "Black & White", "Lớp"};
   const auto value = [&] {
     return rng() % 2 ? kValues[rng() % std::size(kValues)] : std::uniform_real_distribution<float>(0, 1)(rng);
+  };
+  const auto object = [&] { return rng() % 3 ? nullptr : kObjects[rng() % std::size(kObjects)]; };
+  const auto slider = [&] {
+    std::array<uint8_t, 4> v{};
+    for (uint8_t& x : v) x = uint8_t(rng() % 4 ? rng() : (rng() % 2) * 255);
+    std::sort(v.begin(), v.end());
+    return v;
   };
   LayerProps p;
   for (int n = int(rng() % 6); n > 0; n--) p.name += kBits[rng() % std::size(kBits)];
@@ -162,23 +200,87 @@ LayerProps random_props(std::mt19937& rng) {
   p.fill = value();
   p.blend = Blend(rng() % std::size(kBlendNames));
   p.lock_transparency = rng() % 2, p.lock_pixels = rng() % 2, p.lock_position = rng() % 2, p.lock_all = rng() % 2;
+  p.clip = rng() % 2, p.mask_off = rng() % 2, p.mask_linked = rng() % 2;
+  p.mask_density = value();
+  p.mask_feather = rng() % 2 ? 0 : float(rng() % 100001) / 100;
+  for (BlendRange& r : p.blend_if)
+    if (rng() % 4 == 0) r.layer = slider(), r.under = slider();
+  for (bool* c : {&p.channels.r, &p.channels.g, &p.channels.b, &p.channels.gray}) *c = rng() % 4;
+  if (rng() % 3 == 0) p.adj = kAdjs[rng() % std::size(kAdjs)];
+  p.vals = object(), p.fx = object(), p.content = object(), p.source = object();
   p.extra = kExtras[rng() % std::size(kExtras)];
   return p;
 }
 
 void check_json() {
   CHECK(to_json(LayerProps{}) == R"({"version":1})");
-  // Every key off its default and unknown keys of every kind, members sorted as written back: the same bytes.
+  // Every key off its default, P1's too, and unknown keys of every kind, members sorted as written back: the same
+  // bytes.
   const std::string all =
-      R"({"version":1,"name":"Lớp \"1\"\n\\","blend":"linearDodge","opacity":0.5,"fill":0.300000012,"visible":false,)"
+      R"({"version":1,"name":"Lớp \"1\"\n\\","blend":"linearDodge","opacity":0.5,"fill":0.300000012,)"
+      R"("maskDensity":0.25,"maskFeather":12.5,"visible":false,)"
       R"("lockTransparency":true,"lockPixels":true,"lockPosition":true,"lockAll":true,)"
-      R"("blendIf":{"gray":[0,255,0,255]},"style":{"fx":[{"size":3.5,"type":"stroke"}],"on":true},"zz":null})";
+      R"("clip":true,"maskOff":true,"maskLinked":false,)"
+      R"("blendIf":{"gray":{"layer":[0,10,200,255],"under":[0,0,128,255]},"blue":{"layer":[30,30,255,255],)"
+      R"("under":[0,0,255,255]}},"channels":{"g":false,"gray":false},"adj":"Hue/Saturation",)"
+      R"("vals":{"l":10,"rng":"Yellows","s":-30},"fx":{"dropShadow":{"on":true,"size":24}},)"
+      R"("content":{"color":"#ff8800"},"source":{"text":"Xin chào"},)"
+      R"("style":{"fx":[{"size":3.5,"type":"stroke"}],"on":true},"zz":null})";
   const std::optional<LayerProps> p = props_from_json(all);
   CHECK(p && p->name == "Lớp \"1\"\n\\" && p->blend == Blend::LinearDodge && p->opacity == 0.5f && p->fill == 0.3f);
   CHECK(!p->visible && p->lock_transparency && p->lock_pixels && p->lock_position && p->lock_all);
-  CHECK(p->extra ==
-        R"({"blendIf":{"gray":[0,255,0,255]},"style":{"fx":[{"size":3.5,"type":"stroke"}],"on":true},"zz":null})");
+  CHECK(p->clip && p->mask_off && !p->mask_linked && p->mask_density == 0.25f && p->mask_feather == 12.5f);
+  using Slider = std::array<uint8_t, 4>;
+  CHECK(p->blend_if[0].layer == (Slider{0, 10, 200, 255}) && p->blend_if[0].under == (Slider{0, 0, 128, 255}));
+  CHECK(p->blend_if[3].layer == (Slider{30, 30, 255, 255}) && p->blend_if[3].under == (Slider{0, 0, 255, 255}));
+  CHECK(p->blend_if[1].layer == (Slider{0, 0, 255, 255}) && p->blend_if[2].under == (Slider{0, 0, 255, 255}));
+  CHECK(p->channels.r && !p->channels.g && p->channels.b && !p->channels.gray && p->adj == "Hue/Saturation");
+  CHECK(*p->vals == R"({"l":10,"rng":"Yellows","s":-30})" && *p->fx == R"({"dropShadow":{"on":true,"size":24}})");
+  CHECK(*p->content == R"({"color":"#ff8800"})" && *p->source == R"({"text":"Xin chào"})");
+  CHECK(p->extra == R"({"style":{"fx":[{"size":3.5,"type":"stroke"}],"on":true},"zz":null})");
   CHECK(to_json(*p) == all);
+  {
+    const LayerProps e = every_key();
+    const auto back = props_from_json(to_json(e));
+    CHECK(back && same(*back, e) && *back->vals == *e.vals && back->vals != e.vals);  // the text, not the pointer
+  }
+
+  // P0's JSON reads as P0 read it, P1's keys at their default, and writes the same bytes: the T1 keys, unknown ones,
+  // and the UI's (N1: the Background, a colour label).
+  for (const char* text :
+       {R"({"version":1})", R"({"version":1,"name":"Background","background":true})",
+        R"({"version":1,"name":"Layer 1","opacity":0.300000012,"tag":"#e8664a"})",
+        R"({"version":1,"name":"a","blend":"multiply","fill":0.5,"visible":false,"lockAll":true,"st":[1],"zz":{}})"}) {
+    const auto q = props_from_json(text);
+    CHECK(q && to_json(*q) == text && !q->clip && !q->mask_off && q->mask_linked && q->mask_density == 1);
+    CHECK(q->mask_feather == 0 && q->channels.r && q->channels.g && q->channels.b && q->channels.gray);
+    CHECK(q->adj.empty() && !q->vals && !q->fx && !q->content && !q->source);
+    for (const BlendRange& r : q->blend_if) CHECK(r.layer == (Slider{0, 0, 255, 255}) && r.under == r.layer);
+  }
+  // P1's keys: null as their default (the mock writes them so), objects written as read (members sorted, no spaces),
+  // numbers clamped (Blend If's rounded), defaults left out.
+  CHECK(to_json(*props_from_json(R"({"version":1,"adj":null,"vals":null,"fx":null,"content":null,"source":null,)"
+                                 R"("blendIf":null,"channels":null,"clip":false,"maskLinked":true,)"
+                                 R"("maskDensity":1})")) == R"({"version":1})");
+  CHECK(to_json(*props_from_json(R"({"version":1,"fx":{ "stroke" : {"size": 6}, "dropShadow": {"on": true} }})")) ==
+        R"({"version":1,"fx":{"dropShadow":{"on":true},"stroke":{"size":6}}})");
+  CHECK(to_json(*props_from_json(R"({"version":1,"maskDensity":2,"maskFeather":5000,"blendIf":{"red":)"
+                                 R"({"layer":[-5,127.6,300,1e9]},"gray":{"under":[0,0,255,255]}},"channels":)"
+                                 R"({"r":true,"g":true,"b":true,"gray":true}})")) ==
+        R"({"version":1,"maskFeather":1000,"blendIf":{"red":{"layer":[0,128,255,255],)"
+        R"("under":[0,0,255,255]}}})");
+  CHECK(props_from_json(R"({"version":1,"maskFeather":-3})")->mask_feather == 0);
+
+  // A JSON object of megabytes (a 3D LUT's values): copies of the props share it.
+  {
+    std::string lut = R"({"lut":[)";
+    for (int i = 0; i < 200000; i++) lut += (i ? "," : "") + std::to_string(i % 4096);
+    lut += "]}";
+    LayerProps a = named("Color Lookup 1");
+    a.vals = std::make_shared<const std::string>(lut);
+    const LayerProps b = a;
+    CHECK(b.vals == a.vals && a.vals.use_count() == 2 && to_json(b).size() > lut.size());
+  }
 
   // Each blend mode by its name; Normal, the default, left out.
   for (size_t b = 0; b < std::size(kBlendNames); b++) {
@@ -211,6 +313,24 @@ void check_json() {
         R"({"version":1,"opacity":"1"})", R"({"version":1,"fill":null})", R"({"version":1,"blend":"hardmix"})",
         R"({"version":1,"blend":3})", R"({"version":1,"lockAll":"true"})"})
     CHECK(!props_from_json(text));
+  // P1's keys of the wrong type or shape, Blend If's sliders out of order: nothing either.
+  for (const char* text :
+       {R"({"version":1,"clip":1})", R"({"version":1,"maskOff":"true"})", R"({"version":1,"maskLinked":null})",
+        R"({"version":1,"maskDensity":"1"})", R"({"version":1,"maskFeather":null})", R"({"version":1,"blendIf":[]})",
+        R"({"version":1,"blendIf":{"gray":[0,255,0,255]}})", R"({"version":1,"blendIf":{"alpha":{}}})",
+        R"({"version":1,"blendIf":{"gray":{"layer":[0,0,255]}}})",
+        R"({"version":1,"blendIf":{"gray":{"layer":[0,0,255,"255"]}}})",
+        R"({"version":1,"blendIf":{"gray":{"layer":[10,5,255,255]}}})",
+        R"({"version":1,"blendIf":{"red":{"under":[0,200,100,255]}}})",
+        R"({"version":1,"blendIf":{"gray":{"lower":[0,0,255,255]}}})", R"({"version":1,"blendIf":{"gray":null}})",
+        R"({"version":1,"channels":{"r":1}})", R"({"version":1,"channels":{"alpha":false}})",
+        R"({"version":1,"channels":[true]})", R"({"version":1,"adj":3})", R"({"version":1,"adj":{}})",
+        R"({"version":1,"vals":[1]})", R"({"version":1,"fx":"x"})", R"({"version":1,"content":true})",
+        R"({"version":1,"source":1})"})
+    if (props_from_json(text)) {
+      std::fprintf(stderr, "read as props: %s\n", text);
+      CHECK(false);
+    }
 
   // A name of broken UTF-8 still writes JSON. Decimals with '.', no thousands separators, whatever the locale.
   const auto mended = props_from_json(to_json(named("a\xff" "b")));
@@ -227,12 +347,26 @@ void check_json() {
   std::locale::global(std::locale::classic());
   CHECK(text == R"({"version":1,"opacity":0.5}{"op":"moveLayer","layer":1234,"parent":0,"index":1000})");
 
-  // Commands; pixels left out.
+  // Commands; pixels and masks left out, but whether SetMask sets one.
+  const auto grid = painted({Depth::U8, 4}, 1);
+  const auto mask = std::make_shared<const TileGrid>(Format{Depth::U8, 1}, Pixel{255});
   const std::pair<Command, std::string> cmds[] = {
+      {AddLayer{0, 3, Kind::Adj, named("Curves 1"), nullptr, mask},
+       R"({"op":"addLayer","parent":0,"index":3,"kind":"adj","props":{"version":1,"name":"Curves 1"}})"},
+      {AddLayer{0, 0, Kind::Text, LayerProps{}, grid, mask},
+       R"({"op":"addLayer","parent":0,"index":0,"kind":"text","props":{"version":1}})"},
+      {AddLayer{0, 0, Kind::Fill, LayerProps{}},
+       R"({"op":"addLayer","parent":0,"index":0,"kind":"fill","props":{"version":1}})"},
+      {AddLayer{0, 0, Kind::Shape, LayerProps{}},
+       R"({"op":"addLayer","parent":0,"index":0,"kind":"shape","props":{"version":1}})"},
+      {SetMask{4, mask}, R"({"op":"setMask","layer":4,"mask":true})"},
+      {SetMask{4, nullptr}, R"({"op":"setMask","layer":4,"mask":false})"},
+      {ReplaceLayer{6, Kind::Pixel, named("Xin chào"), grid, mask},
+       R"({"op":"replaceLayer","layer":6,"kind":"pixel","props":{"version":1,"name":"Xin chào"}})"},
       {AddLayer{2, 1, Kind::Group, named("g", Blend::PassThrough), nullptr},
        R"({"op":"addLayer","parent":2,"index":1,"kind":"group",)"
        R"("props":{"version":1,"name":"g","blend":"passThrough"}})"},
-      {AddLayer{0, 0, Kind::Pixel, LayerProps{}, painted({Depth::U8, 4}, 1)},
+      {AddLayer{0, 0, Kind::Pixel, LayerProps{}, grid},
        R"({"op":"addLayer","parent":0,"index":0,"kind":"pixel","props":{"version":1}})"},
       {DeleteLayers{{3, 4}}, R"({"op":"deleteLayers","layers":[3,4]})"},
       {DuplicateLayers{{7}}, R"({"op":"duplicateLayers","layers":[7]})"},
@@ -240,7 +374,7 @@ void check_json() {
       {GroupLayers{{1, 2}, named("G")}, R"({"op":"groupLayers","layers":[1,2],"props":{"version":1,"name":"G"}})"},
       {Ungroup{5}, R"({"op":"ungroup","group":5})"},
       {SetProps{9, *p}, R"({"op":"setProps","layer":9,"props":)" + all + "}"},
-      {SetPixels{9, painted({Depth::U8, 4}, 1)}, R"({"op":"setPixels","layer":9})"},
+      {SetPixels{9, grid}, R"({"op":"setPixels","layer":9})"},
       {SelectLayers{}, R"({"op":"selectLayers","layers":[]})"},
   };
   for (const auto& [cmd, want] : cmds) CHECK(to_json(cmd) == want);
@@ -401,6 +535,149 @@ void check_commands() {
   CHECK(dump(*base) == was && dump(*d0) == blank);
 }
 
+// P1's kinds of layer and masks (A30): each kind added; masks set, replaced, deleted; a text layer and a group replaced
+// by pixel layers; what each refuses; copies sharing masks and props' JSON; undo through the history (T2) gives each
+// state back.
+void check_p1_commands() {
+  const DocPtr d0 = new_document(300, 200, Mode::Rgb, Depth::U8, nullptr);
+  const Format f = pixel_format(*d0);
+  const auto reveal = mask_of(*d0, true, true), drawn = mask_of(*d0, false);
+  LayerProps curves = named("Curves 1"), color = named("Color Fill 1"), title = named("Xin chào");
+  curves.adj = "Curves";
+  curves.vals = json_of(R"x({"pre":"Medium Contrast (RGB)"})x");
+  color.content = json_of(R"({"color":"#ff8800"})");
+  title.source = json_of(R"({"text":"Xin chào"})");
+  title.fx = json_of(R"({"stroke":{"on":true}})");
+  const auto text = painted(f, 4);
+  DocPtr d = run(*d0, AddLayer{0, 0, Kind::Pixel, named("bg"), painted(f, 1)});  // 1
+  d = run(*d, AddLayer{0, 1, Kind::Adj, curves, nullptr, reveal});              // 2
+  d = run(*d, AddLayer{0, 2, Kind::Fill, color, nullptr, drawn});               // 3
+  d = run(*d, AddLayer{0, 3, Kind::Text, title, text});                         // 4
+  d = run(*d, AddLayer{0, 4, Kind::Shape, named("Rectangle 1"), nullptr});      // 5
+  d = run(*d, AddLayer{0, 5, Kind::Group, named("g"), nullptr, drawn});         // 6
+  d = run(*d, AddLayer{6, 0, Kind::Pixel, named("in g"), nullptr});             // 7
+  const DocPtr base = d;
+  const std::string was = dump(*base);
+  validate(*base);
+  CHECK(shape(base) == "1 2 3 4 5 6(7)" && base->selected == Ids{7} && base->next_id == 8);
+  const auto at = [&](LayerId id) { return find_layer(*base, id); };
+  CHECK(at(2)->kind == Kind::Adj && !at(2)->pixels && at(2)->mask == reveal && at(2)->props.vals == curves.vals);
+  CHECK(at(2)->props.adj == "Curves" && same(at(2)->props, curves));
+  CHECK(at(3)->kind == Kind::Fill && !at(3)->pixels && at(3)->mask == drawn && at(3)->props.content == color.content);
+  CHECK(at(4)->kind == Kind::Text && at(4)->pixels == text && !at(4)->mask && at(4)->props.source == title.source);
+  CHECK(at(5)->kind == Kind::Shape && at(5)->pixels && at(5)->pixels->tiles().empty() && at(5)->pixels->format() == f);
+  CHECK(at(6)->kind == Kind::Group && !at(6)->pixels && at(6)->mask == drawn && !at(1)->mask);
+  // Adjustment and fill layers hold no pixels; masks are of the document's depth, one channel, white or black where
+  // empty; no such kind.
+  CHECK(rejects(base, AddLayer{0, 0, Kind::Adj, curves, painted(f, 2)}));
+  CHECK(rejects(base, AddLayer{0, 0, Kind::Fill, color, solid(f, 3)}));
+  const auto in = [&](Format g, uint16_t fill) { return std::make_shared<const TileGrid>(g, Pixel{fill}); };
+  for (const auto& bad : {in({Depth::U16, 1}, 65535), in({Depth::U8, 2}, 0), in({Depth::U8, 4}, 0),
+                          in({Depth::U8, 1}, 128), in({Depth::U8, 1}, 1)}) {
+    CHECK(rejects(base, AddLayer{0, 0, Kind::Pixel, named("x"), nullptr, bad}));
+    CHECK(rejects(base, SetMask{1, bad}));
+    CHECK(rejects(base, ReplaceLayer{4, Kind::Pixel, named("x"), nullptr, bad}));
+  }
+  CHECK(rejects(base, AddLayer{0, 0, Kind(40), named("x"), nullptr}));
+  CHECK(!rejects(base, AddLayer{0, 0, Kind::Pixel, named("x"), nullptr, in({Depth::U8, 1}, 0)}));
+
+  // A mask added, replaced, deleted: a new node for the layer and the root, the rest shared.
+  DocPtr r = run(*base, SetMask{1, drawn});
+  CHECK(find_layer(*r, 1)->mask == drawn && find_layer(*r, 1)->pixels == at(1)->pixels && unshared(*base, *r) == 2);
+  CHECK(same(find_layer(*r, 1)->props, at(1)->props) && r->selected == base->selected && shape(r) == shape(base));
+  r = run(*r, SetMask{1, reveal});
+  CHECK(find_layer(*r, 1)->mask == reveal);
+  r = run(*r, SetMask{1, nullptr});
+  CHECK(!find_layer(*r, 1)->mask && find_layer(*r, 1)->pixels == at(1)->pixels);
+  CHECK(!find_layer(*run(*base, SetMask{6, nullptr}), 6)->mask && find_layer(*run(*base, SetMask{7, drawn}), 7)->mask);
+  CHECK(rejects(base, SetMask{0, drawn}) && rejects(base, SetMask{9, drawn}));
+
+  // A text layer rasterized: a pixel layer of its id in its place, nothing of the old one kept but what is given.
+  const auto flat = painted(f, 5);
+  r = run(*base, ReplaceLayer{4, Kind::Pixel, named("Xin chào"), flat, nullptr});
+  const Layer* t = find_layer(*r, 4);
+  CHECK(t->kind == Kind::Pixel && t->pixels == flat && !t->mask && !t->props.source && !t->props.fx);
+  CHECK(shape(r) == shape(base) && r->root->children[3].get() == t && r->selected == base->selected);
+  CHECK(r->next_id == base->next_id && unshared(*base, *r) == 2);
+  r = run(*base, ReplaceLayer{4, Kind::Text, title, flat, drawn});  // drawn again, with a mask
+  CHECK(find_layer(*r, 4)->kind == Kind::Text && find_layer(*r, 4)->pixels == flat && find_layer(*r, 4)->mask == drawn);
+  r = run(*base, ReplaceLayer{2, Kind::Pixel, named("Curves 1"), nullptr, reveal});  // no pixels given: empty
+  CHECK(find_layer(*r, 2)->pixels->tiles().empty() && find_layer(*r, 2)->mask == reveal);
+  // A group replaced: what it held goes with it, out of the selection too.
+  r = run(*run(*base, SelectLayers{{7, 6, 1}}), ReplaceLayer{6, Kind::Pixel, named("g"), flat, drawn});
+  CHECK(shape(r) == "1 2 3 4 5 6" && r->selected == (Ids{6, 1}) && !find_layer(*r, 7) && r->next_id == 8);
+  CHECK(find_layer(*r, 6)->kind == Kind::Pixel && find_layer(*r, 6)->pixels == flat);
+  validate(*r);
+  CHECK(rejects(base, ReplaceLayer{4, Kind::Group, named("g"), nullptr}));
+  CHECK(rejects(base, ReplaceLayer{4, Kind::Adj, curves, flat}));
+  CHECK(rejects(base, ReplaceLayer{4, Kind::Fill, color, flat}));
+  CHECK(rejects(base, ReplaceLayer{4, Kind::Pixel, named("x", Blend::PassThrough), flat}));
+  CHECK(rejects(base, ReplaceLayer{4, Kind::Pixel, named("x"), painted({Depth::U16, 4}, 1)}));
+  CHECK(rejects(base, ReplaceLayer{0, Kind::Pixel, named("x"), flat}));
+  CHECK(rejects(base, ReplaceLayer{9, Kind::Pixel, named("x"), flat}));
+  // Pixels are a pixel layer's to set: text, shape, adjustment and fill layers and groups refuse them.
+  for (const LayerId id : {2, 3, 4, 5, 6}) CHECK(rejects(base, SetPixels{id, flat}));
+
+  // Props: the JSON objects kept as given, shared, checked whole when new, not again when kept.
+  LayerProps renamed = at(2)->props;
+  renamed.name = "Curves 2";
+  r = run(*base, SetProps{2, renamed});
+  CHECK(find_layer(*r, 2)->props.vals == curves.vals && find_layer(*r, 2)->props.name == "Curves 2");
+  for (const char* broken : {"{broken", "[1]", "", "\"x\"", "{} {}", "null", " "}) {
+    LayerProps b = renamed;
+    b.vals = json_of(broken);
+    CHECK(rejects(base, SetProps{2, b}) && rejects(base, AddLayer{0, 0, Kind::Adj, b, nullptr}));
+    b = renamed;
+    b.fx = json_of(broken);
+    CHECK(rejects(base, SetProps{2, b}) && rejects(base, GroupLayers{{1}, b}));
+  }
+  LayerProps spaced = renamed;
+  spaced.content = json_of(R"( { "color" : "#000000" } )");  // whole, if not as props_from_json() writes it
+  CHECK(!rejects(base, SetProps{2, spaced}));
+  LayerProps off = renamed;
+  off.mask_density = 1.5f;
+  CHECK(rejects(base, SetProps{2, off}));
+  off = renamed, off.mask_feather = 1001;
+  CHECK(rejects(base, SetProps{2, off}));
+  off = renamed, off.blend_if[1].under = {0, 200, 100, 255};
+  CHECK(rejects(base, SetProps{2, off}));
+  off = renamed, off.clip = true, off.mask_off = true, off.mask_linked = false, off.channels.g = false;
+  CHECK(!rejects(base, SetProps{2, off}));
+
+  // Copies share the masks and the props' JSON (the same pointers), and the tiles; what a group holds copied too.
+  r = run(*base, DuplicateLayers{{2, 3, 4, 6}});
+  CHECK(shape(r) == "1 2 8 3 9 4 10 5 6(7) 11(12)" && r->selected == (Ids{8, 9, 10, 11}));
+  const std::pair<LayerId, LayerId> copies[] = {{2, 8}, {3, 9}, {4, 10}, {6, 11}, {7, 12}};
+  for (const auto& [a, b] : copies) {
+    const Layer *x = find_layer(*r, a), *y = find_layer(*r, b);
+    CHECK(x->kind == y->kind && x->mask == y->mask && x->pixels == y->pixels && same(x->props, y->props));
+    CHECK(x->props.vals == y->props.vals && x->props.fx == y->props.fx && x->props.content == y->props.content);
+    CHECK(x->props.source == y->props.source);
+  }
+  CHECK(find_layer(*r, 8)->props.vals == curves.vals && find_layer(*r, 9)->mask == drawn);
+
+  // Through the history: each command a step, undo the state before it (the very one), redo the one after.
+  Document doc(base, "Open");
+  const Command steps[] = {AddLayer{0, 6, Kind::Adj, curves, nullptr, reveal},
+                           AddLayer{0, 0, Kind::Fill, color, nullptr},
+                           AddLayer{6, 1, Kind::Text, title, text},
+                           AddLayer{0, 2, Kind::Shape, named("Ellipse 1"), painted(f, 6)},
+                           SetMask{1, drawn},
+                           SetMask{3, nullptr},
+                           ReplaceLayer{4, Kind::Pixel, named("Xin chào"), flat, nullptr}};
+  for (const Command& c : steps) {
+    const DocPtr before = doc.state();
+    const std::string held = dump(*before);
+    doc.run(c, "x");
+    const DocPtr after = doc.state();
+    CHECK(after != before && dump(*after) != held);
+    validate(*after);
+    CHECK(doc.undo() && doc.state() == before && dump(*before) == held);
+    CHECK(doc.redo() && doc.state() == after);
+  }
+  CHECK(dump(*base) == was);
+}
+
 void check_invariants(const DocState& d) {
   const Format f = pixel_format(d);
   CHECK(d.root && d.root->id == 0 && d.root->kind == Kind::Group && !d.root->pixels);
@@ -412,11 +689,15 @@ void check_invariants(const DocState& d) {
       CHECK(l->id != 0 && l->id < d.next_id);
       CHECK((l->kind == Kind::Group || p.blend != Blend::PassThrough) && size_t(p.blend) < std::size(kBlendNames));
       CHECK(p.opacity >= 0 && p.opacity <= 1 && p.fill >= 0 && p.fill <= 1);
-      if (l->kind == Kind::Pixel)
+      CHECK(p.mask_density >= 0 && p.mask_density <= 1 && size_t(l->kind) < std::size(kKindNames));
+      if (has_pixels(l->kind))
         CHECK(l->pixels && l->pixels->format() == f && l->pixels->fill()[size_t(f.channels - 1)] == 0 &&
               l->children.empty());
       else
-        CHECK(!l->pixels);
+        CHECK(!l->pixels && (l->kind == Kind::Group || l->children.empty()));
+      if (l->mask)
+        CHECK(l->mask->format() == mask_format(d) &&
+              (l->mask->fill()[0] == 0 || l->mask->fill()[0] == max_value(d.depth)));
       walk(*l);
     }
   };
@@ -458,6 +739,15 @@ void check_effect(const Command& cmd, const DocState& a, const DocState& b) {
   } else if (const auto* c = std::get_if<SetPixels>(&cmd)) {
     const auto& now = find_layer(b, c->layer)->pixels;
     CHECK(kept && (c->pixels ? now == c->pixels : now->tiles().empty()));
+  } else if (const auto* c = std::get_if<SetMask>(&cmd)) {
+    CHECK(kept && find_layer(b, c->layer)->mask == c->mask);
+  } else if (const auto* c = std::get_if<ReplaceLayer>(&cmd)) {
+    const Layer* l = find_layer(b, c->layer);
+    Ids held;  // what the layer replaced held, gone with it
+    collect(*find_layer(a, c->layer), held);
+    std::sort(held.begin(), held.end());
+    CHECK(added.empty() && removed == held && l->kind == c->kind && same(l->props, c->props) && l->mask == c->mask);
+    CHECK(l->children.empty() && (c->pixels ? l->pixels == c->pixels : !l->pixels || l->pixels->tiles().empty()));
   } else {
     CHECK(x == y);
   }
@@ -476,10 +766,13 @@ Command random_command(const DocState& d, std::mt19937& rng) {
     const Layer* l = find_layer(d, g);
     return int(rng() % ((l ? l->children.size() : 0) + 3)) - 1;
   };
+  static const JsonPtr kVals[] = {json_of(R"({"s":-30})"), json_of("{broken")};
   const auto props = [&] {
     LayerProps p = named("x", Blend(rng() % std::size(kBlendNames)));
     p.opacity = rng() % 8 ? float(rng() % 11) / 10 : 1.5f;
     p.visible = rng() % 2;
+    p.clip = rng() % 2;
+    if (rng() % 4 == 0) p.vals = kVals[rng() % 8 ? 0 : 1];
     return p;
   };
   const auto grid = [&]() -> std::shared_ptr<const TileGrid> {
@@ -487,14 +780,25 @@ Command random_command(const DocState& d, std::mt19937& rng) {
     if (rng() % 8 == 0) f.channels = f.channels == 4 ? 2 : 4;
     return rng() % 3 ? solid(f, rng()) : nullptr;
   };
+  const auto mask = [&]() -> std::shared_ptr<const TileGrid> {  // of the document's depth but one in eight
+    if (rng() % 3 == 0) return nullptr;
+    const Depth depth = rng() % 8 ? d.depth : d.depth == Depth::U8 ? Depth::U16 : Depth::U8;
+    auto m = std::make_shared<TileGrid>(Format{depth, 1}, Pixel{uint16_t(rng() % 2 ? max_value(depth) : 0)});
+    if (rng() % 2) m->set(int(rng() % 3), 0, Tile::solid(m->format(), {uint16_t(rng() % 200)}));
+    return m;
+  };
+  const auto kind = [&] {  // a pixel layer half the time, else one of P1's kinds; groups as often as in P0
+    const Kind k = Kind(rng() % std::size(kKindNames));
+    return rng() % 4 == 0 ? Kind::Group : (rng() % 2 || k == Kind::Group) ? Kind::Pixel : k;
+  };
   if (all.size() > 200) return DeleteLayers{some()};
-  switch (rng() % 12) {
+  switch (rng() % 14) {
     case 0:
     case 1:
     case 2: {
       const LayerId g = pick();
-      const Kind kind = rng() % 4 ? Kind::Pixel : Kind::Group;
-      return AddLayer{g, index(g), kind, props(), rng() % 2 ? grid() : nullptr};
+      const Kind k = kind();
+      return AddLayer{g, index(g), k, props(), has_pixels(k) || rng() % 4 == 0 ? grid() : nullptr, mask()};
     }
     case 3: return DeleteLayers{some()};
     case 4: return DuplicateLayers{some()};
@@ -507,11 +811,17 @@ Command random_command(const DocState& d, std::mt19937& rng) {
     case 8:
     case 9: return SetProps{pick(), props()};
     case 10: return SetPixels{pick(), grid()};
+    case 11: return SetMask{pick(), mask()};
+    case 12: {
+      const Kind k = kind();  // a group a fourth of the time: refused
+      return ReplaceLayer{pick(), k, props(), has_pixels(k) || rng() % 4 == 0 ? grid() : nullptr, mask()};
+    }
     default: return SelectLayers{some()};
   }
 }
 
-// Random commands, a tenth or so refused: the invariants hold, each does what it says, no state changes after.
+// Random commands, about half refused (small trees: deletions, groups replaced): the invariants hold, each does what it
+// says, no state changes after.
 void check_random() {
   for (const Mode mode : {Mode::Rgb, Mode::Gray}) {
     std::mt19937 rng(mode == Mode::Rgb ? 11 : 12);
@@ -537,6 +847,10 @@ void check_random() {
       d = next;
     }
     for (const auto& [s, held] : left) CHECK(dump(*s) == held);
+    std::printf("test_doc: %s, 3000 random commands, %d refused; done by command:", mode == Mode::Rgb ? "RGB" : "grey",
+                rejected);
+    for (const int n : done) std::printf(" %d", n);
+    std::printf("\n");
     for (const int n : done) CHECK(n >= 20);
     CHECK(rejected >= 200);
   }
@@ -618,6 +932,43 @@ void check_validate() {
   const DocPtr full = std::make_shared<const DocState>(changed([](DocState& s) { s.next_id = UINT32_MAX; }));
   CHECK(!invalid(*full) && rejects(full, AddLayer{0, 0, Kind::Pixel, named("x"), nullptr}));
   CHECK(rejects(full, DuplicateLayers{{1}}) && rejects(full, GroupLayers{{1}, named("x")}));
+
+  // P1 (A30). Masks: one channel at the document's depth, white or black where empty, on any layer but the root.
+  const auto mask = [](Format f, uint16_t fill) { return std::make_shared<const TileGrid>(f, Pixel{fill}); };
+  const auto masked = [&](const LayerPtr& l, std::shared_ptr<const TileGrid> m) {
+    return with(l, [&](Layer& x) { x.mask = m; });
+  };
+  const Format m8{Depth::U8, 1};
+  CHECK(!invalid(tree({masked(g, mask(m8, 255))})) && !invalid(tree({masked(p, mask(m8, 0))})));
+  CHECK(invalid(tree({masked(p, mask({Depth::U16, 1}, 65535))})));  // another depth
+  CHECK(invalid(tree({masked(p, mask({Depth::U8, 2}, 0))})));       // with alpha
+  CHECK(invalid(tree({masked(p, mask(m8, 128))})));                 // grey where empty
+  CHECK(invalid(changed([&](DocState& s) { s.root = masked(s.root, mask(m8, 255)); })));
+  // Kinds: text and shape layers hold pixels as pixel layers do; adjustment and fill layers neither pixels nor layers.
+  for (const Kind k : {Kind::Text, Kind::Shape}) {
+    CHECK(!invalid(tree({with(p, [&](Layer& l) { l.kind = k; })})));
+    CHECK(invalid(tree({with(p, [&](Layer& l) { l.kind = k, l.pixels = nullptr; })})));
+    CHECK(invalid(tree({with(p, [&](Layer& l) { l.kind = k, l.children = {empty_g}; })})));
+  }
+  for (const Kind k : {Kind::Adj, Kind::Fill}) {
+    CHECK(invalid(tree({with(p, [&](Layer& l) { l.kind = k; })})));  // with pixels
+    CHECK(!invalid(tree({with(p, [&](Layer& l) { l.kind = k, l.pixels = nullptr; })})));
+    CHECK(invalid(tree({with(p, [&](Layer& l) { l.kind = k, l.pixels = nullptr, l.children = {empty_g}; })})));
+  }
+  // Props: in range, Blend If's sliders in order, the JSON objects whole; a clip with nothing below in its group
+  // stands, without effect.
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.mask_density = 1.5f; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.mask_feather = 1000.5f; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.mask_feather = -1; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.props.blend_if[1].under = {0, 200, 100, 255}; })})));
+  CHECK(!invalid(tree({with(p, [](Layer& l) { l.props.blend_if[1].under = {0, 100, 100, 100}; })})));
+  for (JsonPtr LayerProps::*field : {&LayerProps::vals, &LayerProps::fx, &LayerProps::content, &LayerProps::source}) {
+    CHECK(!invalid(tree({with(p, [&](Layer& l) { l.props.*field = json_of(R"({"a":[1,{"b":null}]})"); })})));
+    for (const char* broken : {"{", "[]", "", "1", R"({"a":1}x)", R"({"a":})"})
+      CHECK(invalid(tree({with(p, [&](Layer& l) { l.props.*field = json_of(broken); })})));
+  }
+  CHECK(!invalid(tree({with(g, [&](Layer& l) { l.children = {with(p, [](Layer& c) { c.props.clip = true; })}; })})));
+  CHECK(invalid(tree({with(p, [](Layer& l) { l.kind = Kind(40); })})));
 }
 
 double median_ms(const DocState& d, const Command& cmd) {
@@ -669,6 +1020,8 @@ void check_d4() {
       {"setProps", SetProps{leaf, named("renamed")}},
       {"setPixels", SetPixels{leaf, painted(pixel_format(*d), 5)}},
       {"select1000", SelectLayers{all}},
+      {"setMask", SetMask{leaf, mask_of(*d, true)}},
+      {"replaceLayer", ReplaceLayer{leaf, Kind::Text, named("text"), painted(pixel_format(*d), 6)}},
   };
   std::printf("test_doc: %zu layers, groups 6 deep; ms per command (median of 21):", all.size());
   double worst = 0;
@@ -692,6 +1045,7 @@ void check_d4() {
 TEST(test_doc) {
   check_json();
   check_commands();
+  check_p1_commands();
   check_random();
   check_validate();
   check_d4();
