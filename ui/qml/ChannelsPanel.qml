@@ -13,12 +13,15 @@ Item {
     readonly property Doc doc: Docs.current
     readonly property var colours: !doc ? [] : doc.mode === "Gray" ? ["Gray"] : ["RGB", "Red", "Green", "Blue"]
     readonly property bool alphaShown: !!doc && doc.alphas.indexOf(doc.channel) >= 0
+    // Decision 4: the core has no channels yet (the real canvas shows the composite alone), so on a real document the
+    // panel and its menu are greyed (DocModel.can()).
+    enabled: !doc || doc.supports("panel:Channels")
     property var menu: [
-        { l: qsTr("Kênh mới"), act: () => panel.run({ op: "newChannel" }) },
-        { l: qsTr("Xóa kênh"), disabled: !alphaShown, act: () => panel.run({ op: "deleteChannel", channel: panel.doc.channel }) },
+        { l: qsTr("Kênh mới"), disabled: !enabled, act: () => panel.run({ op: "newChannel" }) },
+        { l: qsTr("Xóa kênh"), disabled: !enabled || !alphaShown, act: () => panel.run({ op: "deleteChannel", channel: panel.doc.channel }) },
         { t: "sep" },
-        { l: qsTr("Lưu vùng chọn thành kênh"), disabled: !doc || !doc.selection, act: () => panel.run({ op: "saveSelection" }) },
-        { l: qsTr("Nạp kênh làm vùng chọn"), act: () => panel.load() }
+        { l: qsTr("Lưu vùng chọn thành kênh"), disabled: !enabled || !doc || !doc.selection, act: () => panel.run({ op: "saveSelection" }) },
+        { l: qsTr("Nạp kênh làm vùng chọn"), disabled: !enabled, act: () => panel.load() }
     ]
     implicitWidth: 308
     implicitHeight: list.contentHeight + 32
@@ -30,6 +33,7 @@ Item {
         id: list
         width: parent.width
         height: parent.height - 32
+        opacity: enabled ? 1 : 0.4  // its rows have no greyed look of their own (decision 4)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}

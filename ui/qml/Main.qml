@@ -19,6 +19,7 @@ ApplicationWindow {
     property string startTheme: ""  // --theme: "dark" or "light", over Thiết lập's for this run; "" without it
     // main.cpp: keep Prefs between starts; tests and screenshots start from the defaults.
     property bool persist: false
+    property var startFiles: []  // main.cpp: the files on the command line, opened once the window is up (N1)
     readonly property bool hasDoc: Docs.docs.length > 0
     readonly property int screenMode: hasDoc ? Tools.screen : 0  // 0 chuẩn, 1 toàn màn hình có menu, 2 toàn màn hình
     property bool panelsHidden: false  // Tab: toolbar, options bar, icon column and dock
@@ -45,6 +46,10 @@ ApplicationWindow {
         TitleBar.use(win)
         if (startState)
             start(startState)
+        // the command line's files, then PB_CANVAS's (V1, V2b: a file to paint and measure on), as if given there too
+        const files = startFiles.concat(CanvasEnv.document ? [CanvasEnv.document] : [])
+        if (files.length)
+            openFiles(files)
     }
     function start(state) {
         const at = state.indexOf(":"), name = at < 0 ? state : state.slice(0, at), arg = at < 0 ? "" : state.slice(at + 1)
@@ -72,6 +77,8 @@ ApplicationWindow {
         if (!item || item.t === "sep" || item.disabled || !(item.free || Docs.current))
             return false
         if (item.dialog ? !hasDialog(item.dialog) : item.space ? !hasSpace(item.space) : false)
+            return false
+        if (Docs.current && !Docs.current.supports(item))  // a real document: what the core has (decision 4)
             return false
         return Docs.can(item.req || item.act || "")
     }
@@ -177,13 +184,11 @@ ApplicationWindow {
         close.accepted = false
         openDialog("SaveChanges", { docs: dirty, done: () => { win.leaving = true; win.close() } })
     }
-    // Files dropped on the window or picked in Mở…, each its tab: the mock opens a document by the file's name (Docs.open).
+    // Files dropped on the window, picked in Mở…, given on the command line (paths or file: URLs), each its tab: JPEG,
+    // PNG, TIFF and .pbd read for real, the rest as the mock opens them, by name (Docs.openFile()).
     function openFiles(urls) {
-        for (const u of urls) {
-            const file = decodeURIComponent(String(u).replace(/[?#].*$/, "")).replace(/^.*[\/\\]/, "")
-            if (file)
-                Docs.open(file)
-        }
+        for (const u of urls)
+            Docs.openFile(u)
     }
     FileDialog {
         id: files
@@ -303,6 +308,21 @@ ApplicationWindow {
         sequence: "Tab"
         enabled: win.hasDoc && !win.space && !(win.activeFocusItem instanceof T.Control) && !(win.activeFocusItem instanceof TextInput)
         onActivated: win.panelsHidden = !win.panelsHidden
+    }
+
+    // A file that did not open (Docs.error): why, in a toast made for it (as BugReportDialog's) at the foot of the window.
+    Connections {
+        target: Docs
+        function onErrorChanged() {
+            const t = Docs.error ? win.type("Toast")?.createObject(win.contentItem, { text: Docs.error, err: true }) : null
+            if (!t)
+                return
+            t.done.connect(() => {
+                t.destroy()
+                Docs.error = ""
+            })
+            t.restart()
+        }
     }
 
     FocusRing {}

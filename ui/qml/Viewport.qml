@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "View.js" as View
 import "MenuSpec.js" as MenuSpec
-import "ToolSpec.js" as ToolSpec
 
 // The canvas area (docs/ui-tasks.md, U6; artboard Main): rulers, then in the frame the canvas (MockCanvas; V1's Canvas
 // in its place), the overlays (U7) and the pointer, on the grey Thiết lập picks for the screen mode. Pan: the Hand tool
@@ -20,8 +19,8 @@ Rectangle {
     // What the canvas, the overlays and the rulers show: Doc.view moved into bounds (View.constrain), and written back,
     // so the menus' zoom go on from what is seen.
     readonly property var view: doc && doc.view ? (sized ? View.constrain(doc.view, size, docSize.width, docSize.height) : doc.view) : null
-    // The canvas's document while it shows a file (PB_CANVAS=<path>; N1 gives Doc the real size), else Doc's.
-    readonly property size docSize: canvas.docSize.width > 0 ? canvas.docSize : Qt.size(doc ? doc.w : 0, doc ? doc.h : 0)
+    // The document's: a real one's is the core's (N1), the header's while the file is read.
+    readonly property size docSize: Qt.size(doc ? doc.w : 0, doc ? doc.h : 0)
     property var origins: ({})  // the rulers' 0 of each document by file (the corner dragged), document pixels
     readonly property var origin: (doc && origins[doc.file]) || ({ x: 0, y: 0 })
     readonly property var unitNames: Prefs.panes.units[0].options  // Thiết lập › Thước: Pixels … Percent
@@ -271,25 +270,14 @@ Rectangle {
             anchors.fill: parent
             visible: (CanvasEnv.pattern || Tools.real) && !!vp.view
             view: vp.view ?? ({})
-            source: CanvasEnv.document
+            // The document in front, a real one (N1): its history, which strokes go into as steps ("Brush", "Eraser") and
+            // Edit › Undo, History's clicks move; the canvas follows it (DocModel's changed()).
+            model: vp.doc && vp.doc.real ? vp.doc.model : null
             pasteboard: vp.color
-            onDocSizeChanged: if (docSize.width > 0) vp.show({ x: docSize.width / 2, y: docSize.height / 2, zoom: View.fit(docSize.width, docSize.height, vp.size, 0), angle: 0 })
             // Brush or Eraser and their options (N3): the bar's size, hardness, Opacity, Flow, its pen buttons, Brush
             // Settings' Spacing, the foreground colour (Tools.brushOf())
             tool: vp.paints ? Tools.tool : ""
             brush: Tools.brushOf(Tools.tool)
-            // The mock document's History has the step too, as CanvasClicks' click made it (Ctrl Z goes by it).
-            onPainted: step => { if (vp.doc) vp.doc.run({ op: "step", name: step, icon: ToolSpec.tool(step === "Eraser" ? "eraser" : "brush").icn }) }
-        }
-        Connections {  // Edit › Undo, Redo (menus, keys) on the canvas's history too. ponytail: two histories, one in step, until N1
-            target: canvas.docSize.width > 0 ? vp.Window.window as Main : null
-            function onActed(item) {
-                const n = MenuSpec.name(item.act)
-                if (n === "undo")
-                    canvas.undo()
-                else if (n === "redo")
-                    canvas.redo()
-            }
         }
         MouseArea {
             id: input

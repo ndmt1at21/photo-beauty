@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <locale>
 #include <map>
 #include <sstream>
@@ -56,11 +57,12 @@ std::string to_json(const LayerProps& p) {
   return s.str();
 }
 
+namespace {
+
 // Numbers are clamped to 0..1; extra gets the keys it does not know, members sorted, so what to_json() wrote reads
 // back and writes the same bytes.
-std::optional<LayerProps> props_from_json(const std::string& text) {
+std::optional<LayerProps> props_from(const nlohmann::json& j) {
   using nlohmann::json;
-  const json j = json::parse(text, nullptr, false);  // discarded, not an object, when malformed
   const auto version = j.is_object() ? j.find("version") : j.end();
   if (!j.is_object() || version == j.end() || !version->is_number() ||
       !(*version >= 1 && *version <= kLayerSchemaVersion))
@@ -91,6 +93,12 @@ std::optional<LayerProps> props_from_json(const std::string& text) {
   }
   if (!extra.empty()) p.extra = dump(extra);
   return p;
+}
+
+}  // namespace
+
+std::optional<LayerProps> props_from_json(const std::string& text) {
+  return props_from(nlohmann::json::parse(text, nullptr, false));  // discarded, not an object, when malformed
 }
 
 namespace {
@@ -452,6 +460,82 @@ std::string to_json(const Command& cmd) {
       cmd);
   s << '}';
   return s.str();
+}
+
+namespace {
+
+// JSON fields as command members: false when missing or of another type, or an integer out of the member's range.
+template <class T>
+bool integer(const nlohmann::json& j, const char* key, T& to) {
+  const auto it = j.find(key);
+  if (it == j.end() || !it->is_number_integer()) return false;
+  if (it->is_number_unsigned()) {
+    const auto v = it->get<uint64_t>();
+    if (v > uint64_t(std::numeric_limits<T>::max())) return false;
+    to = T(v);
+    return true;
+  }
+  const auto v = it->get<int64_t>();
+  if (v < int64_t(std::numeric_limits<T>::min()) || v > int64_t(std::numeric_limits<T>::max())) return false;
+  to = T(v);
+  return true;
+}
+bool ids(const nlohmann::json& j, std::vector<LayerId>& to) {
+  const auto it = j.find("layers");
+  if (it == j.end() || !it->is_array()) return false;
+  to.clear();
+  for (const auto& v : *it) {
+    if (!v.is_number_unsigned() || v.get<uint64_t>() > std::numeric_limits<LayerId>::max()) return false;
+    to.push_back(LayerId(v.get<uint64_t>()));
+  }
+  return true;
+}
+bool props(const nlohmann::json& j, LayerProps& to) {
+  const auto it = j.find("props");
+  if (it == j.end()) return false;
+  std::optional<LayerProps> p = props_from(*it);
+  if (!p) return false;
+  to = std::move(*p);
+  return true;
+}
+
+}  // namespace
+
+std::optional<Command> command_from_json(const std::string& text) {
+  using nlohmann::json;
+  const json j = json::parse(text, nullptr, false);
+  const auto op = j.is_object() ? j.find("op") : j.end();
+  if (op == j.end() || !op->is_string()) return std::nullopt;
+  const std::string& name = op->get_ref<const std::string&>();
+  if (name == "addLayer") {
+    AddLayer c;
+    const auto kind = j.find("kind");
+    if (kind == j.end() || !kind->is_string() || !(*kind == "pixel" || *kind == "group")) return std::nullopt;
+    c.kind = *kind == "group" ? Kind::Group : Kind::Pixel;
+    if (integer(j, "parent", c.parent) && integer(j, "index", c.index) && props(j, c.props)) return c;
+  } else if (name == "deleteLayers") {
+    DeleteLayers c;
+    if (ids(j, c.layers)) return c;
+  } else if (name == "duplicateLayers") {
+    DuplicateLayers c;
+    if (ids(j, c.layers)) return c;
+  } else if (name == "moveLayer") {
+    MoveLayer c;
+    if (integer(j, "layer", c.layer) && integer(j, "parent", c.parent) && integer(j, "index", c.index)) return c;
+  } else if (name == "groupLayers") {
+    GroupLayers c;
+    if (ids(j, c.layers) && props(j, c.props)) return c;
+  } else if (name == "ungroup") {
+    Ungroup c;
+    if (integer(j, "group", c.group)) return c;
+  } else if (name == "setProps") {
+    SetProps c;
+    if (integer(j, "layer", c.layer) && props(j, c.props)) return c;
+  } else if (name == "selectLayers") {
+    SelectLayers c;
+    if (ids(j, c.layers)) return c;
+  }
+  return std::nullopt;  // setPixels too: its JSON lacks the pixels
 }
 
 }  // namespace pb

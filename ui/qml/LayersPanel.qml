@@ -101,7 +101,7 @@ Item {
         if (i >= 0)
             list.positionViewAtIndex(i, ListView.Contain)
     }
-    function thumbUrl(l) { return Mock.photoUrl(l.props.photo) }  // the photo of a pixel layer or smart object
+    function thumbUrl(l) { return doc ? doc.thumbUrl(l) : "" }  // the photo of a pixel layer or smart object; a real one's pixels
 
     // ---- commands -----------------------------------------------------------------------------------------------------
     function run(c) { return !!doc && doc.run(c) }
@@ -536,7 +536,7 @@ Item {
                 }
             }
             ToolToggle {
-                enabled: !!panel.active
+                enabled: !!panel.active && panel.doc.supports("mask")  // greyed on a real document until the core has masks
                 icon.name: "mask"
                 ToolTip.text: qsTr("Thêm Layer Mask · Add layer mask")
                 Accessible.name: qsTr("Thêm Layer Mask")

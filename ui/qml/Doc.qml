@@ -1,17 +1,33 @@
 import QtQuick
 import "Mock.js" as Mock
 
-// One open document (docs/ui-tasks.md, U3), made by Docs: the face of Mock.makeDoc(), whose commands are T1's (core/doc.h)
-// and Photoshop's; N1's DocModel has the same API for files opened for real. The properties are for reading (the
-// functions change them); each is replaced when it changes, never edited in place, so bindings on it follow. A binding
-// that calls a function (can(), layer()) re-runs on rev.
+// One open document (docs/ui-tasks.md, U3, N1), made by Docs: the face of Mock.makeDoc(), whose commands are T1's
+// (core/doc.h) and Photoshop's, or of a DocModel (ui/docmodel.h, C++), a file opened for real, with the same API: the
+// panels cannot tell them apart. On a real document what the core cannot do yet can() says no to and run() refuses
+// (decision 4: greyed, not hidden). The properties are for reading (the functions change them); each is replaced when it
+// changes, never edited in place, so bindings on it follow. A binding that calls a function (can(), layer()) re-runs on
+// rev.
 QtObject {
     id: doc
-    // Mock.makeDoc(), set once made: createObject() would copy it as an initial property, and its functions change the
-    // original.
+    // Mock.makeDoc() or the DocModel, set once made: createObject() would copy a JS object given as an initial property,
+    // and its functions change the original.
     property var core: null
     onCoreChanged: sync()
     property int rev: 0  // bumped by every change
+    // A file opened for real (Session, N1): its DocModel, which is the core; null for a mock document.
+    property var model: null
+    onModelChanged: if (model) core = model
+    readonly property bool real: !!model  // N3 locks the tools the core lacks by it
+    // For CanvasBar (Overlays): the notice bar's text, what runs in the background and its share done (0..1; below 0,
+    // none). A mock document has none.
+    readonly property string notice: model ? model.notice : ""
+    readonly property string task: model ? model.task : ""
+    readonly property real progress: model ? model.progress : -1
+    property int seen: -1  // the model's version synced
+    property Connections changes: Connections {  // what changes in the model outside these functions: a stroke, the file read
+        target: doc.model
+        function onChanged() { doc.sync() }
+    }
 
     property string file
     property string mem  // the status bar's Tài liệu, "148 MB / 1,02 GB"
@@ -55,8 +71,9 @@ QtObject {
     property int snapshot  // the snapshot shown, -1 for none
 
     function sync() {
-        if (!core)
+        if (!core || model && model.version === seen)
             return
+        seen = model ? model.version : -1
         for (const k of Mock.FIELDS)
             if (doc[k] !== core[k])
                 doc[k] = core[k]
@@ -70,8 +87,23 @@ QtObject {
             sync()
         return ok
     }
-    // A menu requirement ("sel", "!bgl") or action ("delLayer", "@merge:down"), as the prototype's REQ and cx.
-    function can(name) { return rev >= 0 && core.can(name) }
+    // A menu requirement ("sel", "!bgl") or action ("delLayer", "@merge:down"), as the prototype's REQ and cx; on a real
+    // document, one the core has.
+    function can(name) { return rev >= 0 && (model ? model.can(name) && Mock.can(doc, name) : core.can(name)) }
+    // Whether this document takes `what`: an op of run() ("mask"), a menu action, "panel:<name>" (a panel greyed whole), a
+    // MenuSpec item (by its act, dialog or space; free ones always). A mock document takes all; a real one what the core
+    // has (DocModel.can()).
+    // Re-runs on rev as can() does: the core's answer changes once the file is read.
+    function supports(what) {
+        if (!model || !what)
+            return true
+        if (typeof what === "string")
+            return rev >= 0 && model.can(what)
+        return !!what.free || rev >= 0 && model.can(what.dialog ? "dialog:" + what.dialog : what.space ? "space:" + what.space : what.act || "")
+    }
+    // A layer's thumbnail: the mock's sample photo, a real layer's pixels (image://pb, its `photo`).
+    function thumbUrl(l) { return model ? l.props.photo || "" : Mock.photoUrl(l.props.photo) }
+    function dismissNotice() { if (model) model.setNotice("") }
     function undo() { core.undo(); sync() }
     function redo() { core.redo(); sync() }
     function jumpTo(i) { core.jumpTo(i); sync() }  // History step i

@@ -21,6 +21,8 @@ Item {
     id: panel
     property var menu: []  // the items of the … of its tab strip (PopupMenu's): none, as the prototype's
     readonly property Doc doc: Docs.current
+    // Decision 4: what its pages change the core does not have yet, so a real document's are greyed (DocModel.can()).
+    enabled: !doc || doc.supports("panel:Properties")
     readonly property string page: !doc ? "none" : !doc.active ? "doc" : doc.editMask && active.props.mask ? "mask"
                                  : ["adj", "text", "shape", "fill", "so"].indexOf(active.kind) >= 0 ? active.kind : "px"
     // The active layer and the document, stand-ins without them: a page's bindings may run once more as it goes.

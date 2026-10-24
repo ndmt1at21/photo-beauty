@@ -241,10 +241,11 @@ Item {
         size: ov.size
         diameter: Tools.value(ov.brushBar + ":size", ov.brushDef.size)
         hardness: Tools.value(ov.brushBar + ":hard", ov.brushDef.hard)
-        // Brush Settings' Roundness, Angle (the bar's too; anticlockwise, the tip's own not set), mirrored by one flip
-        roundness: Math.round(Tools.value(ov.brushBar + ":roundness", ov.tipOf[4] * 100)) / 100  // whole %, as its field
-        tipAngle: (Tools.value(ov.brushBar + ":flipX", false) !== Tools.value(ov.brushBar + ":flipY", false) ? 1 : -1) * Tools.value(ov.brushBar + ":angle", -ov.tipOf[3])
-        square: ov.tipOf[2] !== "50%"
+        // Brush Settings' Roundness, Angle (the bar's too; anticlockwise, the tip's own not set), mirrored by one flip; on a
+        // real document the core's tip, round (N3)
+        roundness: Tools.real ? 1 : Math.round(Tools.value(ov.brushBar + ":roundness", ov.tipOf[4] * 100)) / 100  // whole %, as its field
+        tipAngle: Tools.real ? 0 : (Tools.value(ov.brushBar + ":flipX", false) !== Tools.value(ov.brushBar + ":flipY", false) ? 1 : -1) * Tools.value(ov.brushBar + ":angle", -ov.tipOf[3])
+        square: !Tools.real && ov.tipOf[2] !== "50%"
         tip: ov.picking ? 0 : Prefs.value("paintCursor") ?? 3  // the Eyedropper for a moment: its own pointer
         crosshair: Prefs.value("crosshair") ?? true
         crosshairWhilePainting: !!Prefs.value("crosshairWhilePainting")
@@ -252,12 +253,21 @@ Item {
         pointerArea: ov.pointerArea
         onAdjusted: (d, h) => Tools.setValues({ [ov.brushBar + ":size"]: d, [ov.brushBar + ":hard"]: h })
     }
+    // The document's notice, what it runs in the background and its share done (Doc.notice, task, progress: a file
+    // being read, P1's tasks), else the faint selection's notice.
     CanvasBar {
-        // ponytail: only the faint selection's notice and no progress yet: the mock opens no PSD it cannot show and runs
-        // no filter in the background (N's tasks set notice, task, progress).
         property var letGo: null  // the selection whose notice was let go
         anchors.fill: parent
-        notice: ants.faint && ants.ok && letGo !== ov.doc.selection ? qsTr("Không có điểm ảnh nào được chọn quá 50%, nên viền vùng chọn không hiện.") : ""
-        onDismissed: letGo = ov.doc.selection
+        notice: ov.doc && ov.doc.notice ? ov.doc.notice
+            : ants.faint && ants.ok && letGo !== ov.doc.selection ? qsTr("Không có điểm ảnh nào được chọn quá 50%, nên viền vùng chọn không hiện.") : ""
+        task: ov.doc ? ov.doc.task : ""
+        progress: ov.doc ? ov.doc.progress : -1
+        onDismissed: {
+            if (ov.doc && ov.doc.notice)
+                ov.doc.dismissNotice()
+            else
+                letGo = ov.doc.selection
+        }
+        onCanceled: Docs.cancelTask(ov.doc)
     }
 }

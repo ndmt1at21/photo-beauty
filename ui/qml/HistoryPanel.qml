@@ -46,10 +46,21 @@ Item {
                 contentItem: Row {
                     spacing: 10
                     Thumb {
+                        visible: !snap.modelData.url
                         anchors.verticalCenter: parent.verticalCenter
                         photo: panel.doc ? panel.doc.photo : null
                         look: snap.modelData.look
                         fill: panel.fill
+                    }
+                    Image {  // a real document's: the snapshot's own state (image://pb, N1)
+                        visible: !!snap.modelData.url
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 26
+                        height: 32
+                        source: snap.modelData.url || ""
+                        sourceSize: Qt.size(52, 64)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
                     }
                     Text {
                         width: parent.width - 36
@@ -146,8 +157,8 @@ Item {
 
     // A snapshot's thumbnail, 26 × 32: the document's photo cropped to fill it (object-fit: cover), its CSS look applied
     // (the prototype's saturate()); without a photo, fill.
-    // ponytail: the photo, not the snapshot's own state (the mock's photo stays as it is, decision 3); a mip of the
-    // snapshot once N1 has them.
+    // A mock document's: the photo, not the snapshot's own state (the mock's photo stays as it is, decision 3); a real
+    // one's snapshots show their own state (the Image beside it, image://pb).
     component Thumb: Canvas {
         required property var photo  // a Mock.PHOTOS index, null for none
         required property string look

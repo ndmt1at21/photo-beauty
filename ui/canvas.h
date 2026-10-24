@@ -22,6 +22,7 @@
 #include <optional>
 #include <vector>
 
+#include "docmodel.h"
 #include "present.h"
 #include "render.h"
 #include "stroke.h"
@@ -46,8 +47,8 @@ struct CanvasState;  // what a canvas shares with its frame job and the scene gr
 // layer: each event as Qt hands it over (none dropped or coalesced: AA_CompressHighFrequencyEvents off), its point
 // through current().to_doc(), its time on std::chrono::steady_clock as it comes, the pen's pressure and tilt (Qt
 // Quick gives tablet events to pointer handlers only: the canvas reads them off its window and paints with the mouse
-// events Qt makes of those no handler took). Pen up makes a step "Brush" or "Eraser" of the canvas's own history, a
-// Document made of what setDocument() hands over, until N1's Session hands its own.
+// events Qt makes of those no handler took). Pen up makes a step "Brush" or "Eraser" of the history it shows: the
+// document's (`model`, N1), or one of its own made of what setDocument() hands over.
 class Canvas : public QQuickItem {
   Q_OBJECT
   QML_NAMED_ELEMENT(DocCanvas)
@@ -56,8 +57,11 @@ class Canvas : public QQuickItem {
   Q_PROPERTY(QVariantMap view READ view WRITE setView NOTIFY viewChanged)
   // A file it opens in a Background job and shows: .pbd (open_pbd(); its preview up until the tiles composite), JPEG,
   // PNG, TIFF (open_image()); a path or a file: URL. What is up stays while it opens. Viewport's is PB_CANVAS=<path>.
-  // ponytail: a flag's way in, until N1's Session hands documents over with setDocument().
+  // ponytail: PB_CANVAS's way in (V2b); a file opened for real is a DocModel, `model`.
   Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
+  // The document it shows and paints into (N1): a DocModel's history, its current state up as it changes; strokes are
+  // its steps, and its commands end the stroke being painted first. Null: setDocument()'s, source's, the test card.
+  Q_PROPERTY(DocModel* model READ model WRITE setModel NOTIFY modelChanged)
   Q_PROPERTY(QString error READ error NOTIFY documentChanged)    // why source did not open; "" when it did
   Q_PROPERTY(QSize docSize READ docSize NOTIFY documentChanged)  // the document's, pixels; 0 x 0 without one
   Q_PROPERTY(QColor pasteboard READ pasteboard WRITE setPasteboard NOTIFY pasteboardChanged)  // past the canvas
@@ -95,6 +99,11 @@ class Canvas : public QQuickItem {
   void setTool(const QString&);
   QVariantMap brush() const { return brushMap_; }
   void setBrush(const QVariantMap&);
+  DocModel* model() const { return model_; }
+  void setModel(DocModel*);
+  // The history it shows and paints into, not its own (N1: a DocModel's; kept alive by the caller while set); null: none.
+  // A stroke not committed goes into the history before; the canvas asks for a frame when polished.
+  void setHistory(pb::Document*);
 
   // What it shows (UI thread): a document state, a snapshot, and its .pbd's preview if any; null: V1's test card, or
   // nothing new while source opens. A history of its own begins there (a stroke not committed is dropped): strokes,
@@ -147,6 +156,7 @@ class Canvas : public QQuickItem {
   void framed();
   void toolChanged();
   void brushChanged();
+  void modelChanged();
   void painted(const QString& step);  // a stroke became a step of the history: "Brush", "Eraser"
 
  protected:
@@ -181,7 +191,10 @@ class Canvas : public QQuickItem {
   pb::View view_;  // x, y, zoom, angle of viewMap_
   QString source_, error_;
   uint64_t opens_ = 0;  // setSource()'s: the open its result belongs to
-  std::unique_ptr<pb::Document> history_;
+  std::unique_ptr<pb::Document> own_;  // setDocument()'s history
+  pb::Document* history_ = nullptr;     // what it shows: own_'s, or a DocModel's
+  QPointer<DocModel> model_;
+  std::vector<QMetaObject::Connection> heard_;  // model_'s signals
   std::unique_ptr<pb::Painting> painting_;  // of history_, after it; made on the first frame, again on another route
   bool paintingGpu_ = false;                // painting_'s route
   std::shared_ptr<const pb::Preview> preview_;  // up before the document's first frame, then dropped

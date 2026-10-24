@@ -26,7 +26,7 @@ Item {
                 required property string modelData
                 width: (panel.width - 22) / 4
                 height: 58
-                enabled: !!panel.doc
+                enabled: !!panel.doc && panel.doc.supports("newAdjustmentLayer")  // greyed on a real document (decision 4)
                 hoverEnabled: true
                 ToolTip.visible: hovered
                 ToolTip.delay: 600

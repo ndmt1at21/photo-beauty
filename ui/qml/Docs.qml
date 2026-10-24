@@ -5,7 +5,8 @@ import "View.js" as View
 
 // The open documents, recent files, files to recover and the background job (docs/ui-tasks.md, U3), as the prototype
 // opens (build/proto/Main.dc.html): three documents, "Đang lưu chân dung.psd" at 64 %. exec() runs the menus' actions
-// (the prototype's exec). Session (N1, N2) takes over opening and saving for real files.
+// (the prototype's exec). Files opened for real (N1: JPEG, PNG, TIFF, .pbd through Session) are Docs whose core is a
+// DocModel (C++), beside the mock ones; the rest still opens as the mock's, by name. Session (N2) saves for real.
 QtObject {
     id: ds
     property var docs: []  // Doc, in tab order
@@ -17,6 +18,7 @@ QtObject {
     // more when it is done), wait (ticks shown done), label ("Đang lưu chân dung.psd") }.
     property var job: ({ on: false })
     property var viewport: ({ w: 1034, h: 750 })  // the canvas frame, px: what Vừa màn hình fits (U6 sets it)
+    property string error: ""  // why the last file did not open, "" once Main has shown it
 
     readonly property Component docC: Component { Doc {} }
     readonly property Timer ticker: Timer { interval: 250; repeat: true; running: !!ds.job.on; onTriggered: ds.tick() }
@@ -25,6 +27,9 @@ QtObject {
 
     // As the prototype opens: "Main" (also no name), "Retouch" (Retouch.dc.html's INIT), "Start" (nothing open).
     function reset(artboard) {
+        for (const d of docs)
+            if (d.real)
+                Session.close(d.model)
         const p = Mock.portrait()
         const list = [make(p), make(Mock.opened(recentOf("san-pham.webp"), viewport.w, viewport.h)),
             make(Object.assign(Mock.opened(recentOf("hoang-hon.tif"), viewport.w, viewport.h), { dirty: true }))]
@@ -62,7 +67,7 @@ QtObject {
         Tools.warp = false
     }
 
-    // A file by name: switched to when open, else opened (from recent, or a mock of it: a drop on the window).
+    // A file by name: switched to when open, else opened (from recent: for real when it was, or a mock of it).
     function open(file) {
         const at = docs.findIndex((d) => d.file === file)
         if (at >= 0) {
@@ -70,7 +75,56 @@ QtObject {
             return docs[at]
         }
         const r = recentOf(file)
+        if (r && r.path)
+            return openFile(r.path)
         return add(make(file === "chân dung.psd" ? Object.assign(Mock.portrait(), { dirty: false }) : Mock.opened(r || Mock.guess(file), viewport.w, viewport.h)))
+    }
+    // A file by its path or file: URL (Mở…, a drop, the command line): a JPEG, PNG, TIFF or .pbd opened for real in the
+    // background (Session), switched to when open already; any other by its name, as the mock opens it (open()).
+    function openFile(file) {
+        const path = Session.localPath(String(file))
+        const at = path ? docs.findIndex((d) => d.real && d.model.path === path) : -1
+        if (at >= 0) {
+            select(at)
+            return docs[at]
+        }
+        const m = path ? Session.open(path, viewport.w, viewport.h) : null
+        if (m)
+            return add(adopt(m))
+        const name = (path || decodeURIComponent(String(file).replace(/[?#].*$/, ""))).replace(/^.*[\/\\]/, "")
+        return name ? open(name) : null
+    }
+    // A DocModel's Doc. Read: first in Gần đây; not read: closed, `error` saying why (Main shows it).
+    function adopt(m) {
+        const d = docC.createObject(ds)
+        d.model = m
+        let known = false
+        m.changed.connect(() => {
+            if (known || m.loading)
+                return
+            known = true
+            if (m.error) {
+                error = qsTr("Không mở được %1: %2").arg(m.file).arg(m.error)
+                close(d)
+            } else if (m.path) {
+                listed(d)
+            }
+        })
+        return d
+    }
+    function listed(d) {
+        const info = Session.fileInfo(d.model.path), mb = (info.bytes || 0) / 1e6
+        const size = mb >= 1000 ? Mock.vn(mb / 1000, 1) + " GB" : mb >= 1 ? Mock.vn(mb, mb >= 10 ? 0 : 1) + " MB" : Mock.vn(mb * 1000, 0) + " KB"
+        const r = { file: d.file, path: d.model.path, photo: null, w: d.w, h: d.h, ppi: d.ppi, bits: d.bits, mem: d.mem, size: size, mb: mb,
+            when: qsTr("Hôm nay, %1").arg(Qt.formatTime(new Date(), "HH:mm")), order: Date.now() }
+        recent = [r].concat(recent.filter((x) => x.path !== r.path))
+    }
+    // CanvasBar's cancel: a file being read closes; P1's tasks hear DocModel.canceled().
+    function cancelTask(d) {
+        if (d && d.real && d.model.loading)
+            close(d)
+        else if (d && d.real)
+            d.model.cancelTask()
     }
     function openRecent(i) { return recent[i] ? open(recent[i].file) : null }
     function forgetRecent(file) { recent = recent.filter((r) => r.file !== file) }
@@ -93,13 +147,26 @@ QtObject {
         setDocs(docs.slice(0, i).concat(docs.slice(i + 1)), index > i ? index - 1 : index)
         Tools.xf = false
         Tools.warp = false
+        if (d.real)
+            Session.close(d.model)
     }
     function closeAll() {
+        const gone = docs
         setDocs([], 0)
         Tools.xf = false
         Tools.warp = false
+        for (const d of gone)
+            if (d.real)
+                Session.close(d.model)
     }
-    function duplicate(d) { return d ? add(make(Mock.duplicated(d.core))) : null }  // Image › Nhân bản, History's new document
+    function duplicate(d) {  // Image › Nhân bản, History's new document
+        if (!d)
+            return null
+        if (!d.real)
+            return add(make(Mock.duplicated(d.core)))
+        const m = Session.duplicate(d.model, Mock.duplicated(d).file)
+        return m ? add(adopt(m)) : null
+    }
     function recover(i) {  // a recovered file, open and unsaved
         const r = recovery[i]
         if (!r)
@@ -244,7 +311,7 @@ QtObject {
             const b = Tools.cropBox(d.w, d.h)
             return run({ op: "crop", w: Math.round(b.w), h: Math.round(b.h) })
         }
-        default: return false
+        default: return run({ op: n, arg: arg })  // a command of the core (P1's N tasks): only MenuSpec names it
         }
     }
 }

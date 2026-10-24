@@ -84,6 +84,7 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption imports("import", "QML import folder searched first, as pb-ui-tests' (build/ui/ui/live: QML from the sources).", "dir");
   const QCommandLineOption startScreen("start-screen", "Save the start screen as PNG at --size (else 560x340), then quit.", "file");
   args.addOptions({shot, settle, size, theme, state, imports, startScreen});
+  args.addPositionalArgument("files", "Files to open: JPEG, PNG, TIFF (N1).", "[files...]");
   args.addHelpOption();
   args.addVersionOption();
   args.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);  // -import as pb-ui-tests takes it
@@ -128,6 +129,7 @@ int main(int argc, char* argv[]) {
   QVariantMap start{{"startState", args.value(state)},
                     {"startTheme", args.value(theme)},  // "" without --theme
                     {"persist", !args.isSet(shot)},     // screenshots start from the defaults
+                    {"startFiles", args.positionalArguments()},  // opened once the window is up
                     {"visible", false}};                // shown once set up
   if (args.isSet(size)) {
     start["width"] = w;

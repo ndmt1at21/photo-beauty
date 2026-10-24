@@ -13,6 +13,10 @@ import "Mock.js" as Mock
 Item {
     id: panel
     readonly property Doc doc: Docs.current
+    // Decision 4: the core has none of its commands yet, so on a real document it is greyed (DocModel.can()), dimmed as a
+    // whole, as its chips and switches have no greyed look of their own.
+    enabled: !doc || doc.supports("panel:Retouch")
+    opacity: enabled ? 1 : 0.4
     readonly property var rt: Tools.retouch
     readonly property bool faces: !!doc && doc.faces
     // The prototype's done: a group Tách tần số; a layer whose name starts with Dodge & Burn.

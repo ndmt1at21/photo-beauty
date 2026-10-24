@@ -667,8 +667,9 @@ Canvas::Canvas(QQuickItem* parent) : QQuickItem(parent), s_(std::make_shared<Can
 
 Canvas::~Canvas() {
   player_.reset();
+  for (const auto& c : heard_) disconnect(c);
   painting_.reset();  // first: it waits for its frame, whose hooks use s_; never under GpuWindow::lock (api/c3a.md)
-  history_.reset();
+  own_.reset();
   const std::lock_guard l(s_->m);
   s_->canvas = nullptr;
 }
@@ -723,9 +724,11 @@ void Canvas::setSource(const QString& source) {
 }
 
 void Canvas::setDocument(pb::DocPtr doc, std::shared_ptr<const pb::Preview> preview) {
+  if (model_) setModel(nullptr);
   painting_.reset();  // before the history it paints into
   stroking_ = false;
-  history_ = doc ? std::make_unique<pb::Document>(std::move(doc), "Open") : nullptr;
+  own_ = doc ? std::make_unique<pb::Document>(std::move(doc), "Open") : nullptr;
+  history_ = own_.get();
   preview_ = std::move(preview);
   reference_.clear();
   accepts();
@@ -734,6 +737,49 @@ void Canvas::setDocument(pb::DocPtr doc, std::shared_ptr<const pb::Preview> prev
 }
 
 pb::DocPtr Canvas::document() const { return history_ ? history_->state() : nullptr; }
+
+void Canvas::setHistory(pb::Document* h) {
+  if (h == history_) return;
+  settle();             // the stroke into the history it was painted on
+  painting_.reset();    // before the history it paints into
+  stroking_ = false;
+  own_.reset();
+  history_ = h;
+  preview_.reset();
+  reference_.clear();
+  accepts();
+  polish();
+  emit documentChanged();
+}
+
+void Canvas::setModel(DocModel* m) {
+  if (m == model_) return;
+  for (const auto& c : heard_) disconnect(c);
+  heard_.clear();
+  if (m && !source_.isEmpty()) {  // the model's document, not the file
+    source_.clear();
+    opens_++;
+    emit sourceChanged();
+  }
+  model_ = m;
+  if (m) {
+    // its commands end the stroke first (Painting: nothing between begin() and commit()); its history in place once read
+    heard_.push_back(connect(m, &DocModel::aboutToChange, this, &Canvas::settle, Qt::DirectConnection));
+    heard_.push_back(connect(m, &DocModel::changed, this, [this] {
+      if (model_ && model_->document() != history_) {  // read: a .pbd's composite up first
+        setHistory(model_->document());
+        preview_ = model_->takePreview();
+        return;
+      }
+      reference_.clear();
+      polish();
+    }, Qt::DirectConnection));
+    heard_.push_back(connect(m, &DocModel::closing, this, [this] { setModel(nullptr); }, Qt::DirectConnection));
+  }
+  setHistory(m ? m->document() : nullptr);
+  if (m && m->document()) preview_ = m->takePreview();
+  emit modelChanged();
+}
 
 QSize Canvas::docSize() const {
   const pb::DocPtr d = document();
@@ -952,11 +998,17 @@ void Canvas::commit() {
   if (history_->state() == before) return;  // nothing ended, or the stroke failed
   reference_.clear();
   if (asked_) asked_->doc = history_->state();  // commit() asked for its frame
+  if (model_) model_->touched();               // History, the unsaved dot
   emit painted(QString::fromStdString(history_->step(history_->current()).name));
 }
 
 bool Canvas::undo() {
   if (!history_) return false;
+  if (model_) {  // its history: what the panels show follows
+    const size_t at = history_->current();
+    model_->undo();
+    return history_->current() != at;
+  }
   settle();
   if (!history_->undo()) return false;
   reference_.clear();
@@ -966,6 +1018,11 @@ bool Canvas::undo() {
 
 bool Canvas::redo() {
   if (!history_) return false;
+  if (model_) {
+    const size_t at = history_->current();
+    model_->redo();
+    return history_->current() != at;
+  }
   settle();
   if (!history_->redo()) return false;
   reference_.clear();
@@ -1176,7 +1233,8 @@ void Canvas::readScreen() {
 void Canvas::updatePolish() {
   const pb::View v = current();
   const pb::DocPtr doc = document();
-  if (!window() || !isVisible() || v.pixels().width == 0 || (!doc && !source_.isEmpty()) || previewing_) return;
+  // nothing new while a file is read (source, a DocModel's)
+  if (!window() || !isVisible() || v.pixels().width == 0 || (!doc && (!source_.isEmpty() || model_)) || previewing_) return;
   const GpuWindow& g = gpuWindow();
   const Ask a{v, doc, looks_, ready_, g.win && window() == g.win && !g.broken};
   if (asked_ && *asked_ == a) return;

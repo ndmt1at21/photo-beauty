@@ -358,12 +358,17 @@ Item {
             }
         }
 
-        // Viewport with PB_CANVAS=<file>: DocCanvas in the mock canvas's place, the file fit.
+        // Viewport with PB_CANVAS=<file>, opened for real as the command line opens it (Session, N1): DocCanvas in the mock
+        // canvas's place on its document, the file fit to the frame.
         function test_file_viewport() {
             if (CanvasEnv.document === "")
                 skip("PB_CANVAS=<file> runs this")
             Docs.reset()
             const vp = createTemporaryObject(vpC, root, { width: root.width, height: root.height })
+            tryVerify(() => vp.sized && Docs.viewport.w === Math.round(vp.size.w * vp.dpr) && Docs.viewport.h === Math.round(vp.size.h * vp.dpr),
+                      5000, "the frame a file opened fits")
+            const d = Docs.openFile(CanvasEnv.document)
+            verify(d && d.real, "opened for real: " + CanvasEnv.document)
             const find = item => {
                 for (const ch of item.children) {
                     const f = ch instanceof DocCanvas ? ch : find(ch)
@@ -373,7 +378,7 @@ Item {
                 return null
             }
             const dc = find(vp)
-            verify(dc && dc.visible && dc.source === CanvasEnv.document)
+            verify(dc && dc.visible && dc.model === d.model)
             tryVerify(() => dc.docSize.width > 0 && dc.frames > 0 && !dc.shown.pending && !dc.shown.preview, 60000)
             compare(vp.docSize, dc.docSize)
             compare(vp.view.zoom, View.fit(dc.docSize.width, dc.docSize.height, vp.size, 0))

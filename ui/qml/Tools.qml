@@ -15,11 +15,10 @@ QtObject {
     // The document in front is a real one, the core's (decision 4 of docs/ui-tasks.md, N3): the canvas shows it, Brush
     // and Eraser paint on it, and what the core has nothing for yet is dimmed and locked: the tools but coreTools', the
     // options no BrushParams takes (OptionsBar, Brush Settings). The one place that says so: a document that says it is
-    // (N1's DocModel has real: true; the mock Doc no such property), or every one while PB_CANVAS names a file (each
-    // Viewport shows it). Tests set it; reset() binds it again. (isReal() takes the document untyped: the mock Doc type
-    // has no real for qmllint to find.)
+    // (Doc.real: a file Session opened, N1, PB_CANVAS's too). Tests set it; reset() binds it again. (isReal() takes the
+    // document untyped, as it did when the mock Doc had no real.)
     property bool real: isReal(Docs.current)
-    function isReal(doc) { return doc?.real === true || CanvasEnv.document !== "" }
+    function isReal(doc) { return doc?.real === true }
     // The tools a real document has; N tasks add theirs as the core gets them.
     readonly property var coreTools: ({ brush: 1, eraser: 1, hand: 1, rot: 1, zoom: 1 })
     function usable(id) { return !real || !!coreTools[id] }

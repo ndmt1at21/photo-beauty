@@ -131,6 +131,12 @@ using Command = std::variant<AddLayer, DeleteLayers, DuplicateLayers, MoveLayer,
 // group inside itself, the root kept, the rest of what validate() checks. Any thread.
 DocPtr run(const DocState& doc, const Command& cmd);
 std::string to_json(const Command&);
+// The command to_json() wrote, read back: the same op, layers, ids, indexes and props, so command_from_json(to_json(c))
+// writes the JSON c does. Keys it does not use are skipped. nullopt for JSON that is malformed, an unknown op, a field
+// missing or of the wrong type (ids and indexes are integers in range, props as props_from_json() reads them), and for
+// commands that carry pixels, which their JSON leaves out: SetPixels. AddLayer comes back without pixels (an empty
+// layer), as its JSON says nothing of them. For Actions (P2) and the UI's commands (DocModel, N1). Any thread.
+std::optional<Command> command_from_json(const std::string&);
 
 // Throws std::invalid_argument unless d keeps what run() keeps: a canvas of at least a pixel, a known mode and depth;
 // the root a group of id 0 without pixels; layer ids unique, from 1 to below next_id; Pass Through on groups only,

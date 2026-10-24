@@ -6,8 +6,8 @@ import QtTest
 import PhotoBeauty
 import "../qml/ToolSpec.js" as ToolSpec
 
-// N3: Brush and Eraser on the real canvas. On a real document (Tools.real; here a white test file opened into Main's
-// DocCanvas, as PB_CANVAS opens D1 in pb-ui): the tool keys, held keys and the toolbar set DocCanvas.tool; each key and
+// N3: Brush and Eraser on the real canvas. On a real document (Tools.real; here a white test file opened for real,
+// Session's, as PB_CANVAS opens D1 in pb-ui): the tool keys, held keys and the toolbar set DocCanvas.tool; each key and
 // cell of the options bar, the brush picker and Brush Settings' Spacing set DocCanvas.brush as BrushParams takes them,
 // Eraser by its own bar; strokes paint by them (the brush pointer as wide as the stroke on screen), each a step "Brush"
 // or "Eraser" in History, undone and redone by Ctrl Z, Ctrl Shift Z; what the core lacks is dimmed and locked (the tools
@@ -77,8 +77,8 @@ Item {
             Prefs.reset()
         }
 
-        // Main on a real document (the test file in its canvas, Tools.real) or, real false, on the mock one:
-        // { w, dc (DocCanvas), vp (Viewport), cursor (BrushCursor) }.
+        // Main on a real document (the test file opened for real, Tools.real) or, real false, on the mock one (in front of
+        // PB_CANVAS's file): { w, dc (DocCanvas), vp (Viewport), cursor (BrushCursor) }.
         function open(real) {
             Docs.reset()
             Tools.reset()
@@ -89,10 +89,13 @@ Item {
             tryVerify(() => w.active)
             const m = { w: w, dc: region(w, DocCanvas), vp: region(w, Viewport), cursor: region(w, BrushCursor) }
             if (Tools.real) {
-                m.dc.source = png
-                tryVerify(() => m.dc.docSize.width > 0 || m.dc.error !== "", 20000, "open")
-                compare(m.dc.error, "")
-                tryVerify(() => m.dc.frames > 0 && !m.dc.shown.pending, 20000, "a frame")
+                const d = Docs.openFile(png)
+                verify(d && d.real, "opened for real")
+                tryVerify(() => !d.model.loading, 20000, "open")
+                compare(d.model.error, "")
+                tryVerify(() => m.dc.docSize.width > 0 && m.dc.frames > 0 && !m.dc.shown.pending, 20000, "a frame")
+            } else {
+                Docs.select(0)
             }
             waitForRendering(w.contentItem)
             w.contentItem.forceActiveFocus()
@@ -481,7 +484,7 @@ Item {
         // The mock document (Tools.real false): the mock canvas, no DocCanvas, which takes no tool; the brush still mapped.
         function test_mock() {
             verify(Tools.isReal({ real: true }), "a document that says real: true (N1's DocModel)")
-            compare(Tools.isReal(Docs.current), CanvasEnv.document !== "", "the mock Doc: by PB_CANVAS alone")
+            verify(!Tools.isReal(Docs.current), "the mock Doc (PB_CANVAS's file is a document of its own, N1)")
             const m = open(false)
             verify(!Tools.real)
             verify(!m.dc.visible && root.find(m.vp, o => o instanceof MockCanvas).visible)
@@ -509,10 +512,10 @@ Item {
                 skip("PB_CANVAS=<file> runs this")
             Docs.reset()
             Tools.reset()
-            verify(Tools.real)
-            const w = createTemporaryObject(mainC, root)
+            const w = createTemporaryObject(mainC, root)  // opens PB_CANVAS's file in front, as the command line's (N1)
             w.requestActivate()
             tryVerify(() => w.active)
+            verify(Tools.real)
             const dc = region(w, DocCanvas)
             tryVerify(() => dc.docSize.width > 0 && dc.frames > 0 && !dc.shown.pending && !dc.shown.preview, 120000, "open")
             const m = { w: w, dc: dc, vp: region(w, Viewport), cursor: region(w, BrushCursor) }
