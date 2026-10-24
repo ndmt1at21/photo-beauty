@@ -7,6 +7,7 @@
 // pair of levels), and the 256 x 256 ramp.png, shapes.png, alpha.png; photo.png and cube.png only come back as
 // Photoshop read them (in-*). 174 images, about 8 minutes.
 #target photoshop
+var HERE = typeof app != 'undefined' ? File($.fileName).parent : null;  // this script's folder (none in jscheck)
 #include "lib.jsx"
 
 // The 27 modes of a layer (kBlendNames but passThrough), in Photoshop's menu order.
@@ -24,8 +25,9 @@ var TALL = [256, 384], SQUARE = [256, 256];
 
 function pixel(src, props, more) {  // a pixel layer of an input; more: rotate, mask
   var l = {kind: 'pixel', src: src, props: props || {}};
-  for (var k in more)
-    if (more.hasOwnProperty(k)) l[k] = more[k];
+  if (more)
+    for (var k in more)
+      if (more.hasOwnProperty(k)) l[k] = more[k];
   return l;
 }
 function group(props, children, mask) {
@@ -146,4 +148,4 @@ function cases() {
   return c;
 }
 
-if (typeof app != 'undefined') PB.run('blend', cases(), {bits: 8});  // jscheck runs it without Photoshop
+if (typeof app != 'undefined') PB.run('blend', cases(), {bits: 8, dir: HERE});  // jscheck runs it without Photoshop

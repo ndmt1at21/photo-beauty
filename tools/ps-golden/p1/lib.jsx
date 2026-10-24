@@ -1,7 +1,7 @@
-// What tools/ps-golden/p1/*.jsx share (B30): a script #includes this, lists its cases and calls PB.run(); the README
-// next to the scripts' folder has the steps. ExtendScript (ECMAScript 3: no JSON, no Array indexOf, no let), Photoshop
-// 2025 (26) on Windows; CC 2019 (20) on should run it too. Not run in Photoshop yet: what it is unsure of is in
-// README.md, section P1.
+// What tools/ps-golden/p1/*.jsx share (B30): a script #includes this, lists its cases and calls PB.run() with its own
+// folder (PB.options' dir); the README next to the scripts' folder has the steps. ExtendScript (ECMAScript 3: no
+// JSON, no Array indexOf, no let), Photoshop 2025 (26) on Windows; CC 2019 (20) on should run it too. Not run in
+// Photoshop yet: what it is unsure of is in README.md, section P1.
 //
 // A case is a scene in photo-beauty's terms, written into index.json as it is (tests/golden.h reads it):
 //   {name: 'multiply-50', canvas: [256, 384], bits: 16, layers: [  // bottom first, as DocState's children
@@ -242,12 +242,14 @@ PB.indexText = function (info, entries, failed) {
   return '{' + head.join(', ') + ', "failed": ' + PB.json(failed) + ',\n"images": [\n' + lines.join(',\n') + '\n]}\n';
 };
 
-// PB.run()'s options: a number is bits. bits: of the PNGs, 16 or 8 (a case may say otherwise); inputs: the inputs'
-// folder next to the script; repoInputs: where they are in the repo from the folder of the images (index.json's
+// PB.run()'s options: a number is bits. bits: of the PNGs, 16 or 8 (a case may say otherwise); dir: the calling
+// script's folder, where its inputs and out/ are (each script's first line: var HERE = File($.fileName).parent; then
+// dir: HERE): $.fileName read here may name lib.jsx, not the script, so without it they are next to lib.jsx; inputs:
+// the inputs' folder in dir; repoInputs: where they are in the repo from the folder of the images (index.json's
 // "inputs": p1's are tests/golden/ps/p1/in, the images tests/golden/ps/p1/<script>).
 PB.options = function (o) {
   if (typeof o == 'number' || o === undefined) o = {bits: o};
-  return {bits: o.bits || 16, inputs: o.inputs || 'in', repoInputs: o.repoInputs || '../in'};
+  return {bits: o.bits || 16, dir: o.dir, inputs: o.inputs || 'in', repoInputs: o.repoInputs || '../in'};
 };
 
 // What PB.run() would write as index.json, without Photoshop (a check of the cases: build/jscheck).
@@ -660,7 +662,7 @@ PB.save = function (doc, name, bits) {
 // PB.options() reads them.
 PB.run = function (script, cases, options) {
   var o = PB.options(options), bits = o.bits;
-  var dir = new File($.fileName).parent;
+  var dir = o.dir || new File($.fileName).parent;
   PB.inDir = new Folder(dir + '/' + o.inputs);
   if (!PB.inDir.exists) {
     PB.inDir = Folder.selectDialog('The folder with the inputs of ' + script + '.jsx (README.md)');
