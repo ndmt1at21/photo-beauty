@@ -754,14 +754,14 @@ Item {
         function test_thousand() {
             const w = open()
             const slow = Math.max(1, thousand(w) / 2000)
-            const l = list(w)
+            const p = panel(w), l = list(w)  // found before the steps: find() walks all of Main's items
             compare(l.count, 1000)
             let best = Infinity
             for (let t = 0; t < 3 && best >= 16 * slow; t++) {
                 const steps = []
                 for (let k = 0; k < 60; k++) {
                     const t0 = Date.now()
-                    l.contentY += panel(w).rowHeight
+                    l.contentY += p.rowHeight
                     l.forceLayout()
                     steps.push(Date.now() - t0)
                     if (k % 10 === 0)
@@ -772,7 +772,7 @@ Item {
                 best = Math.min(best, steps[30])
             }
             verify(best < 16 * slow, "under a frame, " + slow.toFixed(1) + " × the idle laptop's")
-            verify(all(panel(w), o => o instanceof LayerRow).length < 40, "only the rows in view")
+            verify(all(p, o => o instanceof LayerRow).length < 40, "only the rows in view")
         }
         // A change keeps the view where it is, though the count changes; a new layer comes into view.
         function test_view_kept() {

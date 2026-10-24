@@ -8,9 +8,10 @@ import "MenuSpec.js" as MenuSpec
 // The Layers panel (docs/ui-tasks.md, U9; PanelsA, the LayerRow card of Controls, the lay and rows parts of
 // Main.dc.html), the first tab of the dock's group Layers, Channels. At the head: the filter by name and kind, Blend,
 // Opacity, Fill (greyed without a layer or on the Background) and the four locks, for the layers picked. The rows
-// (LayerRow), a ListView that makes only those in view: a click picks a layer (Ctrl adds, Shift a run), a drag moves the
-// picked ones (held at the list's edge, it scrolls), into a group too (Alt: copies), a double click on the name renames
-// it (Enter, Esc; Layer › Đổi tên layer… as well), elsewhere opens Layer Style; the right button, the Layer menu's items.
+// (LayerRow), a ListView that makes only those in view, its model following Doc's rows row by row (a command makes
+// the rows it adds, not the others again): a click picks a layer (Ctrl adds, Shift a run), a drag moves the picked ones
+// (held at the list's edge, it scrolls), into a group too (Alt: copies), a double click on the name renames it (Enter,
+// Esc; Layer › Đổi tên layer… as well), elsewhere opens Layer Style; the right button, the Layer menu's items.
 // At the foot: Link, fx (Layer Style), a mask, fill and adjustment layers, a group, a layer, delete; in the panel's menu,
 // seven Layer commands and the thumbnail sizes. Every change is a Doc.run() command, a History step;
 // a drag on Opacity or Fill is one. What lasts while the panel is made again (it is, on every tab change) is Tools'.
@@ -19,6 +20,8 @@ Item {
     readonly property Doc doc: Docs.current
     readonly property var active: doc ? doc.active : null
     readonly property bool off: !active || !!active.props.background  // Blend, Opacity, Fill greyed
+    readonly property bool activeGroup: !!active && active.kind === "group"
+    readonly property var blends: Mock.BLENDS.map((b, i) => [b, Mock.BLEND_LABELS[i]])
     readonly property Main main: Window.window as Main
     // Kept in Tools: the name filter, the kinds shown { pixel: true… }, the layers whose effects are not listed
     // { id: true }, the thumbnail size (0–2: Nhỏ, Vừa, Lớn).
@@ -30,6 +33,10 @@ Item {
     readonly property int rowHeight: thumbSize + 8
     property var shown: []  // the rows: { l: a Doc layers entry, fx: "" the layer, "effects" or an effect's key }
     property Doc shownOf: null  // the document they are of
+    // The rows by key (layer id "/" fx), which a delegate shows by its key: the list's model holds just the keys.
+    property var byKey: ({})
+    readonly property var none: ({ l: null, fx: "" })
+    property var listed: []  // the keys in the list's model, top first, as it has them
     property int renaming: 0  // the layer whose name is being typed
     property var drop: null  // where a drag would put the layers: { id, mode "above" | "below" | "into", at (row) }
     property real dragY  // the pointer's y in the list then
@@ -71,26 +78,124 @@ Item {
     onKindsChanged: refresh()
     onFxShutChanged: refresh()
     Component.onCompleted: refresh()
-    onActiveChanged: Qt.callLater(reveal)
+    // Another layer active, another document: its row in view. Not on every change of the entry (a mock document makes
+    // them all again on any command): the eye of a layer far from the active one does not take the view back there.
+    readonly property int activeId: active ? active.id : 0
+    onActiveIdChanged: Qt.callLater(reveal)
 
-    // Doc's rows that pass the filter, each with its effects' rows under it unless shut. The list is a count, so a
-    // change keeping it updates the rows in place; a new count starts the view at the top, so it goes back where it was.
+    // Doc's rows that pass the filter, each with its effects' rows under it unless shut. The list's model follows them
+    // row by row (follow()), so a row kept keeps its delegate, and the view stays where it is; another document's rows
+    // start the list again, at the top.
     function refresh() {
-        const y = list.contentY, n = shown.length, same = shownOf === doc
-        const q = fold(query), want = Object.keys(kinds).filter(k => kinds[k]), out = []
+        const q = fold(query), want = Object.keys(kinds).filter(k => kinds[k])
+        const was = byKey, out = [], keys = [], by = {}
+        const add = (l, fx) => {
+            const k = l.id + "/" + fx, o = was[k], r = o && o.l === l ? o : { l: l, fx: fx }  // unchanged: the same row
+            out.push(r)
+            keys.push(k)
+            by[k] = r
+        }
         for (const l of doc ? doc.rows : []) {
             if (q && fold(l.props.name).indexOf(q) < 0 || want.length && want.indexOf(l.kind === "fill" ? "adj" : l.kind) < 0)
                 continue
-            out.push({ l: l, fx: "" })
+            add(l, "")
             const fx = effectsOf(l)
             if (fx.length && !fxShut[l.id])
                 for (const k of ["effects"].concat(fx))
-                    out.push({ l: l, fx: k })
+                    add(l, k)
         }
+        if (shownOf !== doc) {
+            rowKeys.clear()
+            if (keys.length)
+                rowKeys.append(keys.map(k => ({ key: k })))
+            listed = keys
+        } else {
+            for (const k of follow(keys))  // rows going: theirs as they were until the list lets their delegates go
+                by[k] = was[k]
+        }
+        byKey = by
         shown = out
-        shownOf = doc
-        if (same && out.length !== n)
-            list.contentY = Math.max(0, Math.min(y, out.length * rowHeight + 40 - list.height))
+        if (shownOf !== doc) {
+            if (shownOf)  // another document (one made with the panel starts at the top)
+                Qt.callLater(reveal)
+            shownOf = doc
+            list.positionViewAtBeginning()
+        }
+    }
+    // The list's model made `next` (keys, top first) with the fewest changes: rows gone removed, new ones inserted, and
+    // of those in both, the longest run already in order stays while the others move; runs at once. The keys gone.
+    function follow(next) {
+        const m = listed, n = next.length
+        let a = 0, b = 0  // the head and tail they share stay
+        while (a < m.length && a < n && m[a] === next[a])
+            a++
+        while (b < m.length - a && b < n - a && m[m.length - 1 - b] === next[n - 1 - b])
+            b++
+        if (a === m.length && a === n)
+            return []
+        const want = {}, gone = []
+        for (let i = a; i < n - b; i++)
+            want[next[i]] = i
+        const mid = m.slice(a, m.length - b)  // the model's rows between them, kept in step with it
+        for (let i = mid.length - 1; i >= 0; i--) {
+            if (want[mid[i]] !== undefined)
+                continue
+            let j = i
+            while (j > 0 && want[mid[j - 1]] === undefined)
+                j--
+            rowKeys.remove(a + j, i - j + 1)
+            Array.prototype.push.apply(gone, mid.splice(j, i - j + 1))
+            i = j
+        }
+        const stay = inOrder(mid, want), had = {}
+        for (const k of mid)
+            had[k] = true
+        for (let i = n - b - 1; i >= a; i--) {  // from the end: each row goes right before the one after it
+            if (stay[next[i]])
+                continue
+            const before = i + 1 < n - b ? mid.indexOf(next[i + 1]) : mid.length  // where the row after it is
+            const j = had[next[i]] ? mid.indexOf(next[i]) : -1
+            let s = i  // the run ending at i that goes at once: new rows, or rows next to each other already
+            if (j < 0) {
+                while (s > a && !had[next[s - 1]])
+                    s--
+                const run = next.slice(s, i + 1)
+                rowKeys.insert(a + before, run.map(k => ({ key: k })))
+                Array.prototype.splice.apply(mid, [before, 0].concat(run))
+            } else {
+                while (s > a && !stay[next[s - 1]] && j - (i - s) - 1 >= 0 && mid[j - (i - s) - 1] === next[s - 1])
+                    s--
+                const c = i - s + 1, from = j - c + 1, to = from < before ? before - c : before
+                if (from !== to) {
+                    rowKeys.move(a + from, a + to, c)
+                    Array.prototype.splice.apply(mid, [to, 0].concat(mid.splice(from, c)))
+                }
+            }
+            i = s
+        }
+        listed = next
+        return gone
+    }
+    // The keys of mid that stay: the longest run of them already in want's order (O(n log n)).
+    function inOrder(mid, want) {
+        const tails = [], prev = []  // tails[k]: where in mid the run of k + 1 with the lowest end ends
+        for (let i = 0; i < mid.length; i++) {
+            const v = want[mid[i]]
+            let lo = 0, hi = tails.length
+            while (lo < hi) {
+                const h = (lo + hi) >> 1
+                if (want[mid[tails[h]]] < v)
+                    lo = h + 1
+                else
+                    hi = h
+            }
+            prev[i] = lo > 0 ? tails[lo - 1] : -1
+            tails[lo] = i
+        }
+        const out = {}
+        for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i])
+            out[mid[i]] = true
+        return out
     }
     function fold(t) { return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d") }  // the prototype's
     function effectsOf(l) { return l.props.fx ? effects.map(e => e[0]).filter(k => !!l.props.fx[k]) : [] }
@@ -217,7 +322,7 @@ Item {
         place()
     }
     function place() {  // the drop at dragY, as the list is scrolled now
-        const at = (dragY + list.contentY) / rowHeight, i = Math.max(0, Math.min(shown.length - 1, Math.floor(at)))
+        const at = (dragY + list.contentY - list.originY) / rowHeight, i = Math.max(0, Math.min(shown.length - 1, Math.floor(at)))
         if (i < 0 || !shown[i])
             return
         const t = shown[i], f = at - i, group = t.l.kind === "group" && !t.fx
@@ -353,7 +458,7 @@ Item {
             id: blend
             Layout.fillWidth: true
             enabled: !panel.off
-            options: Mock.BLENDS.map((b, i) => [b, Mock.BLEND_LABELS[i]]).slice(panel.active && panel.active.kind === "group" ? 0 : 1)
+            options: panel.blends.slice(panel.activeGroup ? 0 : 1)
             value: panel.active ? panel.active.props.blend : "normal"
             Accessible.name: qsTr("Blend mode: %1").arg(displayText)
             popup.modal: true  // as the menus: a press outside goes no further
@@ -430,11 +535,15 @@ Item {
         acceptedButtons: Qt.NoButton  // the wheel and the scroll bar; drags are the rows'
         Accessible.name: qsTr("Danh sách layer")
         ScrollBar.vertical: ScrollBar {}
-        model: panel.shown.length
+        model: ListModel { id: rowKeys }  // shown's keys (refresh(), follow())
         delegate: LayerRow {
             id: r
             required property int index
-            readonly property var item: panel.shown[index] || { l: null, fx: "" }
+            required property string key
+            readonly property var item: panel.byKey[key] || panel.none
+            // Kept for reuse, it still shows the row of its key, maybe one in view too: hidden (the view only culls it)
+            // and not renaming (its field would take the focus), till the list gives it another row.
+            property bool pooled
             width: ListView.view.width
             height: panel.rowHeight
             size: panel.thumbSize
@@ -448,7 +557,7 @@ Item {
             src: item.l ? panel.thumbUrl(item.l) : ""
             selected: !!item.l && !!panel.doc && panel.doc.selected.indexOf(item.l.id) >= 0
             editMask: !!item.l && !!panel.doc && panel.doc.editMask && !!panel.active && panel.active.id === item.l.id
-            renaming: !!item.l && !item.fx && panel.renaming === item.l.id
+            renaming: !pooled && !!item.l && !item.fx && panel.renaming === item.l.id
             onEyeClicked: mods => panel.eye(r.item, mods)
             onTwistClicked: panel.doc.toggleOpen(r.item.l.id)
             onFxClicked: panel.toggleFx(r.item.l.id)
@@ -460,6 +569,14 @@ Item {
                 panel.dragTo(r.item, r.mapToItem(list, x, y).y)
             }
             ListView.delayRemove: panel.held === r  // scrolled off while dragged: kept, not pooled (a resize destroys pooled rows, the press with them)
+            ListView.onPooled: {
+                pooled = true
+                visible = false
+            }
+            ListView.onReused: {
+                pooled = false
+                visible = true
+            }
             onDropped: mods => panel.dropAt(mods)
             onRenamed: (name, ok) => panel.rename(r.item.l, name, ok)
         }
@@ -494,7 +611,7 @@ Item {
         visible: !!d && y + height > list.y && y < list.y + list.height
         x: 30
         width: list.width - 30
-        y: !d ? 0 : list.y - list.contentY + (d.mode === "into" ? d.at : d.mode === "below" ? d.at + 1 : d.at) * panel.rowHeight - (d.mode === "into" ? 0 : 1)
+        y: !d ? 0 : list.y - list.contentY + list.originY + (d.mode === "into" ? d.at : d.mode === "below" ? d.at + 1 : d.at) * panel.rowHeight - (d.mode === "into" ? 0 : 1)
         height: !d || d.mode !== "into" ? 2 : panel.rowHeight
         color: !d || d.mode !== "into" ? Theme.accent : "transparent"
         border.width: !d || d.mode !== "into" ? 0 : 2

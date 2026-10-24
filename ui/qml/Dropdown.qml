@@ -27,6 +27,7 @@ ComboBox {
     // currentIndex is not bound: ComboBox overwrites it on every pick.
     Component.onCompleted: currentIndex = valueIndex
     onValueIndexChanged: currentIndex = valueIndex
+    onModelChanged: currentIndex = valueIndex  // new options: ComboBox put it at the top, ↑ ↓ went from there
     onActivated: i => c.picked(pairs[i][0])
     onHighlightedIndexChanged: if (popup.opened) moved = true
 
@@ -104,6 +105,9 @@ ComboBox {
         id: pop
         property bool up  // no room under the box
         property real wide  // the longest option's row
+        // Open (from aboutToShow): only then has the list rows. A shut one made them again on every change of options,
+        // ~10 ms (the Layers panel's Blend, U27).
+        property bool shown
         popupType: Popup.Item
         y: up ? -height - 4 : c.height + 4
         width: Math.max(c.width, wide)
@@ -117,17 +121,20 @@ ComboBox {
         leftInset: -1
         rightInset: -1
         onAboutToShow: {
+            shown = true
+            list.forceLayout()  // its rows made now in their order (as a shut list had them), the height theirs for up
             c.moved = false
             up = c.sceneHeight > 0 && c.mapToItem(null, 0, c.height).y + 4 + height > c.sceneHeight
             // Main's .mi: 6 + tick 16 + 6 + the text + 10; Start's: 12 + the text + 24 + tick 16 + 12
             wide = Math.ceil(c.pairs.reduce((m, o) => Math.max(m, fm.advanceWidth(o[1])), 0)) + (c.plain ? 64 : 38)
             list.positionViewAtIndex(Math.max(0, c.valueIndex), ListView.Contain)
         }
+        onClosed: shown = false
         FontMetrics { id: fm; font.pointSize: Theme.pt(12.5) }
         contentItem: ListView {
             id: list
             implicitHeight: contentHeight
-            model: c.delegateModel
+            model: pop.shown ? c.delegateModel : null
             currentIndex: c.highlightedIndex
             clip: true
             boundsBehavior: Flickable.StopAtBounds
