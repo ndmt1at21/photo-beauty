@@ -22,7 +22,7 @@ Lập 17/10/2026 từ [canvas thiết kế](https://claude.ai/artifact/43K8Nn8RY
 | Không gian, hộp thoại, Thiết lập | U15–U21 | Select and Mask, Liquify, màn hình bắt đầu, 20 hộp thoại | Xong (18/10) |
 | Windows, soát, CI | U22–U24 | | U22 xong phần agent, chờ bạn thử bằng chuột (17/10); U23: các phần sửa đã vào, trang soát v3 chờ bạn duyệt (19/10) |
 | Bổ sung | U25, U26 | hộp thoại prototype không vẽ; Độ trễ thấp (G1) | Xong (20/10); thử Iris Xe ở đợt tích hợp đầu |
-| Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | Chưa làm |
+| Nối lõi | N1–N3 | mở, Layers, lịch sử, lưu, Brush | N3 xong (24/10); N1 đang làm; N2 sau N1 |
 
 ## Cách làm
 
@@ -226,7 +226,7 @@ Trong ngoặc sau tên: phần; cỡ (Nhỏ là vài trăm dòng, Vừa khoảng
 - [ ] **N2 · Lưu `.pbd`, việc nền, thanh trạng thái, Hiệu năng** (giao diện; Nhỏ; cần N1, M2, M3, K1, U20, U21; file `ui/session.*`, `ui/qml/Docs.qml`, `ui/qml/Doc.qml`, `ui/tests/tst_n2.qml`): Lưu (Ctrl S: `.pbd` lưu tăng dần; lần đầu thành Lưu thành), Lưu thành; mở `.pbd` (M2); chấm chưa lưu theo bước của T2; đóng khi chưa lưu ra hộp thoại của U20; việc lưu hiện ở chỉ báo việc nền (tiến độ, hủy), không hộp thoại chờ; thanh trạng thái: RAM, nén, scratch từ `stats()` (K1), cỡ tài liệu thật; Thiết lập › Hiệu năng đặt ngân sách và thư mục scratch của K1.
 
   **Xong khi:** test: mở PNG → lưu `.pbd` → mở lại cùng điểm ảnh; lưu D2-mini hiện tiến độ trong khi vẫn đổi được layer; số trên thanh trạng thái khớp `stats()`.
-- [ ] **N3 · Brush, Eraser trên canvas thật** (giao diện; Nhỏ; cần U5, C3; file `ui/qml/Tools.qml`, `ui/qml/Viewport.qml`, `ui/tests/tst_n3.qml`): Brush, Eraser và phím của U5 đặt `Canvas.tool`; ô của thanh tùy chọn (cỡ, độ cứng, opacity, flow, nút lực nhấn cho cỡ, opacity, flow, spacing trong bảng cọ) và màu trước đổi `Canvas.brush` (`BrushParams`: phần trăm thành 0–1, spacing là phần của cỡ); con trỏ cọ của U7 theo cỡ thật; nhả bút là một bước "Brush", "Eraser" trong History; công cụ vẽ khác mờ trên tài liệu thật (quyết định 4). Thay U3 cũ của p0-tasks.md.
+- [x] **N3 · Brush, Eraser trên canvas thật** (24/10/2026, 5bd5e90: cỡ, độ cứng, Opacity, Flow, ba nút lực nhấn, Spacing của Brush Settings và màu trước vào `DocCanvas.brush` (`Tools.brushOf()`); con trỏ cọ đúng cỡ ở 50–200 %; vẽ trên D1 theo thanh, undo, redo; trên tài liệu thật (`Tools.real`) chỉ Brush, Eraser, Hand, Rotate View, Zoom dùng được, ô cọ lõi chưa có mờ (Mode, Airbrush, Smoothing, góc, đầu cọ không tròn, dynamics), công cụ bị khóa về Brush; tst_n3 8/8 với D1, một lượt cả bộ 849 s, đột biến 19/19; API `build/orch/api/n3.md`; giao diện; Nhỏ; cần U5, C3; file `ui/qml/Tools.qml`, `ui/qml/Viewport.qml`, `ui/tests/tst_n3.qml`): Brush, Eraser và phím của U5 đặt `Canvas.tool`; ô của thanh tùy chọn (cỡ, độ cứng, opacity, flow, nút lực nhấn cho cỡ, opacity, flow, spacing trong bảng cọ) và màu trước đổi `Canvas.brush` (`BrushParams`: phần trăm thành 0–1, spacing là phần của cỡ); con trỏ cọ của U7 theo cỡ thật; nhả bút là một bước "Brush", "Eraser" trong History; công cụ vẽ khác mờ trên tài liệu thật (quyết định 4). Thay U3 cũ của p0-tasks.md.
 
   **Xong khi:** test QML: mỗi phím, mỗi ô đổi đúng `Canvas.tool`, `Canvas.brush`; trong `pb-ui`, vẽ trên D1 theo giá trị trên thanh, undo, redo được; ảnh chụp cạnh artboard `OptionsBars`.
 
