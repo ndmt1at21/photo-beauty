@@ -25,6 +25,7 @@ fi
 shift
 export VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}" VCPKG_MAX_CONCURRENCY="${VCPKG_MAX_CONCURRENCY:-4}"
 export QT_WIN_DIR="${QT_WIN_DIR:-$HOME/Qt-win/6.11.3/llvm-mingw_64}"
+export QT_ROOT_DIR="${QT_ROOT_DIR:-$HOME/Qt/6.11.3/gcc_64}"  # aqt's, when ~/.profile does not say
 mingw=$HOME/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin
 nasm=$HOME/.local/opt/nasm-2.14.02/usr/bin  # libjpeg-turbo's SIMD; 24.04 has it among the debs unpacked in sysroot/
 [ $distro = 20.04 ] || nasm=$HOME/.local/opt/sysroot/usr/bin

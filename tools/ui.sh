@@ -6,6 +6,11 @@
 # Usage: tools/ui.sh <command> [arguments], e.g. tools/ui.sh ctest --test-dir build/ui -R '^ui$'
 set -e
 [ $# -gt 0 ] || { echo 'usage: tools/ui.sh <command> [arguments]' >&2; exit 2; }
+# Already on 24.04 (the dev machine since 22/10/2026, Qt from aqt in ~/Qt): run it here, no mount.
+if [ "$WSL_DISTRO_NAME" = Ubuntu-24.04 ]; then
+  export QT_ROOT_DIR="${QT_ROOT_DIR:-$HOME/Qt/6.11.3/gcc_64}"
+  exec "$@"
+fi
 main=$(cd "$(dirname "$0")" && cd "$(git rev-parse --git-common-dir)/.." && pwd)
 share=/mnt/wsl/${main##*/}
 mountpoint -q "$share" ||
