@@ -53,7 +53,8 @@
         "CMAKE_C_COMPILER": "x86_64-w64-mingw32-clang",
         "CMAKE_CXX_COMPILER": "x86_64-w64-mingw32-clang++",
         "CMAKE_EXE_LINKER_FLAGS": "-static",
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "VCPKG_HOST_TRIPLET": "x64-linux"
       }
     },
     {
