@@ -169,6 +169,14 @@ bool unsqueeze(const uint8_t* frame, size_t size, uint8_t* raw, size_t n) {
   ZSTD_DCtx* d = zstd().d;
   return d && ZSTD_decompressDCtx(d, raw, n, frame, size) == n;
 }
+// The same for a frame of predict()'s bytes (a .pbd's from format 2 on), undone into raw.
+bool unsqueeze_predicted(const uint8_t* frame, size_t size, Format f, uint8_t* raw, size_t n) {
+  std::vector<uint8_t>& in = zstd().frame;
+  in.resize(n);
+  if (!unsqueeze(frame, size, in.data(), n)) return false;
+  unpredict(f, in.data(), raw);
+  return true;
+}
 
 #ifdef _WIN32
 using File = HANDLE;
@@ -546,8 +554,10 @@ Pin Tile::pin() const {
         ok = true;
         break;
       case Packed::Ram:
-      case Packed::Elsewhere:
         ok = unsqueeze(bytes_, size_, raw, n);
+        break;
+      case Packed::Elsewhere:
+        ok = predicted_ ? unsqueeze_predicted(bytes_, size_, format_, raw, n) : unsqueeze(bytes_, size_, raw, n);
         break;
       case Packed::Scratch: {
         if (!zstd_) {
@@ -622,14 +632,15 @@ WritePin Tile::write_copy(const uint8_t* from) {
   return WritePin(this, raw);
 }
 
-void Tile::also_elsewhere(std::shared_ptr<const void> owner, const void* zstd, size_t size) const {
-  if (solid_ || !zstd || !size || size > UINT32_MAX) throw std::invalid_argument("pb: Tile::also_elsewhere");
+void Tile::also_elsewhere(std::shared_ptr<const void> owner, const void* zstd, size_t size, bool predicted) const {
+  if (solid_ || !zstd || !size || size > UINT32_MAX || (predicted && format_.depth != Depth::U16))
+    throw std::invalid_argument("pb: Tile::also_elsewhere");
   TileStore& s = store();
   Garbage g;
   std::unique_lock l(s.m);
   while (busy_) s.cv.wait(l);
   s.drop_packed(this, g);
-  packed_ = Packed::Elsewhere, zstd_ = true, size_ = uint32_t(size);
+  packed_ = Packed::Elsewhere, zstd_ = true, predicted_ = predicted, size_ = uint32_t(size);
   bytes_ = static_cast<const uint8_t*>(zstd);
   owner_ = std::move(owner);
 }

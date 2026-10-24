@@ -599,10 +599,13 @@ void check_damage() {
     std::vector<uint8_t> b = f;
     b[i] ^= uint8_t(1 + rng() % 255);
     put(p = fresh(), b);
-    CHECK(fails(p, i >= 8 && i < 12 && u32(&b[8]) > 1 ? DecodeError::Kind::Codec : DecodeError::Kind::Corrupt));
+    if (i >= 8 && i < 12 && u32(&b[8]) == 1)  // format 1, which frames 8-bit tiles as 2 does
+      CHECK(same_doc(*d, *open_pbd(p).doc));
+    else
+      CHECK(fails(p, i >= 8 && i < 12 && u32(&b[8]) > 2 ? DecodeError::Kind::Codec : DecodeError::Kind::Corrupt));
   }
   std::vector<uint8_t> newer = f;
-  newer[8] = 2;
+  newer[8] = 3;
   put(p = fresh(), newer);
   CHECK(fails(p, DecodeError::Kind::Codec));
 

@@ -348,8 +348,9 @@ void check_append() {
   put(torn / "flip.pbd", fc2);
   CHECK(same_doc(*c, *open_pbd(torn / "flip.pbd").doc));
 
-  // D: a tile anew, its save cancelled once its tiles are written: the file still opens to C2, nothing beside it.
-  // Opened so, the file's first save, past those bytes, is a full one.
+  // D: a tile anew, its save cancelled once its tiles are on their way: the file still opens to C2, nothing beside it,
+  // past its footer at most what reached it (here nothing: the writer's 8 MB block never filled). With a torn tail
+  // (bytes past the footer, as a save killed leaves), the file's first save once opened is a full one.
   const DocPtr d = with_tile(c2, changed, 0, 0, 6, true);
   SaveOptions o;
   o.cancel = make_token();
@@ -360,7 +361,13 @@ void check_append() {
   } catch (const Cancelled&) {
     threw = true;
   }
-  CHECK(threw && fs::file_size(f) > fc2.size() && dir.files() == 2);  // a.pbd, y.pbd
+  CHECK(threw && fs::file_size(f) >= fc2.size() && dir.files() == 2);  // a.pbd, y.pbd
+  CHECK(same_doc(*c2, *open_pbd(f).doc));
+  {
+    OutputFile tail(f, true);  // as the file is mapped: Windows lets it grow, not be cut
+    tail.write(fb.data() + fa.size(), 1000);
+    tail.close();
+  }
   const DocPtr reopened = open_pbd(f).doc;
   CHECK(same_doc(*c2, *reopened));
   const DocPtr d2 = with_tile(reopened, changed, 2, 0, 7, false);

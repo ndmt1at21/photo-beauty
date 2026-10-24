@@ -80,6 +80,15 @@ class WritePin : public Pin {
   WritePin(const Tile* t, uint8_t* data) : Pin(t, data) {}
 };
 
+// A U16 data tile's pixels as a .pbd keeps them before zstd from format 2 on (M3b): each channel apart, each sample
+// less a prediction (the left one plus the one above less the one above-left, mod 2^16; along the top row the left one,
+// down the left column the one above, 0 for the first), the sign folded into the lowest bit (zigzag), then the high
+// bytes of all of them, then the low bytes: smooth 16-bit pixels give zstd long runs of small high bytes. `raw` as pin()
+// gives them, `out` as many bytes (kTileSize² * bytes()); unpredict() gives them back exactly. U16 formats only; any
+// thread.
+void predict(Format, const uint8_t* raw, uint8_t* out);
+void unpredict(Format, const uint8_t* in, uint8_t* raw);
+
 // A tile: solid (one value, no pixels allocated) or data (kTileSize² pixels). An empty tile is no Tile at all: its
 // grid stores nothing there and reads fill(). Read-only once shared: grids, caches and threads hold it through
 // TilePtr, and the last holder frees it.
@@ -90,9 +99,11 @@ class Tile {
   static std::shared_ptr<Tile> make(Format, Pixel fill = {});
   static TilePtr solid(Format, Pixel value);  // any thread
   // A data tile whose pixels lie elsewhere, compressed: `size` bytes at `zstd`, one zstd frame of the raw pixels as
-  // pin() gives them, kept alive by `owner` (M2: a .pbd's read-only mapping). Nothing is read before the first pin,
-  // and dropping its raw pixels later costs nothing. Throws std::invalid_argument as make(). Any thread.
-  static TilePtr elsewhere(Format, std::shared_ptr<const void> owner, const void* zstd, size_t size);
+  // pin() gives them (`predicted`: of predict()'s bytes, a U16 format's), kept alive by `owner` (M2: a .pbd's
+  // read-only mapping). Nothing is read before the first pin, and dropping its raw pixels later costs nothing. Throws
+  // std::invalid_argument as make(), and for `predicted` in U8. Any thread.
+  static TilePtr elsewhere(Format, std::shared_ptr<const void> owner, const void* zstd, size_t size,
+                           bool predicted = false);
   ~Tile();
   Tile(const Tile&) = delete;
   Tile& operator=(const Tile&) = delete;
@@ -112,7 +123,7 @@ class Tile {
   // The same pixels lie elsewhere too, as elsewhere() takes them (M3: a save just wrote them into a .pbd): the store
   // frees its own copy (zstd in RAM, scratch) for this one and drops the raw pixels for free from then on. A data
   // tile's; same id; any thread.
-  void also_elsewhere(std::shared_ptr<const void> owner, const void* zstd, size_t size) const;
+  void also_elsewhere(std::shared_ptr<const void> owner, const void* zstd, size_t size, bool predicted = false) const;
 
  private:
   friend class TileGrid;
@@ -140,6 +151,7 @@ class Tile {
   mutable uint8_t* raw_ = nullptr;
   mutable Packed packed_ = Packed::None;
   mutable bool zstd_ = false;  // the packed bytes are a zstd frame, else raw pixels
+  mutable bool predicted_ = false;  // Elsewhere ones: a zstd frame of predict()'s bytes
   mutable bool busy_ = false;  // a thread loads, packs or spills it without the lock: others wait
   mutable uint32_t pins_ = 0;
   mutable uint32_t size_ = 0;                  // of the packed bytes

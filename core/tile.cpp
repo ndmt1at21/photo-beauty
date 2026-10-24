@@ -8,6 +8,10 @@
 #include <new>
 #include <stdexcept>
 
+#ifdef __SSE2__
+#include <emmintrin.h>
+#endif
+
 #include "profile.h"
 
 namespace pb {
@@ -65,12 +69,14 @@ TilePtr Tile::solid(Format f, Pixel value) {
   return TilePtr(new Tile(f, value, false));
 }
 
-TilePtr Tile::elsewhere(Format f, std::shared_ptr<const void> owner, const void* zstd, size_t size) {
+TilePtr Tile::elsewhere(Format f, std::shared_ptr<const void> owner, const void* zstd, size_t size, bool predicted) {
   validate(f);
   if (!zstd || !size || size > UINT32_MAX) throw std::invalid_argument("pb: Tile::elsewhere: no frame");
+  if (predicted && f.depth != Depth::U16) throw std::invalid_argument("pb: Tile::elsewhere: predicted U8");
   std::shared_ptr<Tile> t(new Tile(f, {}, true));
   t->packed_ = Packed::Elsewhere;
   t->zstd_ = true;
+  t->predicted_ = predicted;
   t->bytes_ = static_cast<const uint8_t*>(zstd);
   t->size_ = uint32_t(size);
   t->owner_ = std::move(owner);
@@ -78,6 +84,120 @@ TilePtr Tile::elsewhere(Format f, std::shared_ptr<const void> owner, const void*
 }
 
 void Tile::fill(uint8_t* raw) const { repeat(format_, value_, raw, kPixels); }
+
+namespace {
+
+// predict()'s zigzag: a residual mod 2^16 read as signed, its sign moved to the lowest bit, and back.
+uint16_t fold(uint16_t r) { return uint16_t(r << 1 ^ -(r >> 15)); }
+[[maybe_unused]] uint16_t unfold(uint16_t z) { return uint16_t(z >> 1 ^ -(z & 1)); }  // SSE2 has its own
+
+// predict() and unpredict() for C channels, a row at a time, the channels side by side. Above the top row lies a row
+// of zeros, which makes the prediction there the left sample, and left of the left column a column of zeros, which
+// makes it the one above. Channel c's high bytes of row y lie at hi + c * kPixels + y * kTileSize, its low bytes as
+// far on from lo. unpredict() chains one sample to the next only in its sums along a row, a pass of their own.
+template <int C>
+void predict_tile(const uint16_t* __restrict s, uint8_t* __restrict hi, uint8_t* __restrict lo) {
+  constexpr size_t kRow = size_t(kTileSize) * C;
+  static const uint16_t zero[kRow] = {};
+  for (size_t y = 0; y < size_t(kTileSize); y++) {
+    const uint16_t* r = s + y * kRow;
+    const uint16_t* u = y ? r - kRow : zero;
+    uint8_t* h = hi + y * kTileSize;
+    uint8_t* l = lo + y * kTileSize;
+    for (int c = 0; c < C; c++) {
+      const uint16_t z = fold(uint16_t(r[c] - u[c]));
+      h[size_t(c) * kPixels] = uint8_t(z >> 8), l[size_t(c) * kPixels] = uint8_t(z);
+    }
+    for (size_t x = 1; x < size_t(kTileSize); x++)
+      for (int c = 0; c < C; c++) {
+        const size_t i = x * C + size_t(c), o = size_t(c) * kPixels + x;
+        const uint16_t z = fold(uint16_t(r[i] - r[i - C] - u[i] + u[i - C]));
+        h[o] = uint8_t(z >> 8), l[o] = uint8_t(z);
+      }
+  }
+}
+
+// A row's residuals from its high and low bytes (h, l: channel 0's), interleaved as its samples are, into d. SSE2 takes
+// 8 pixels at a time: compilers gather the bytes one by one.
+template <int C>
+void residuals(const uint8_t* __restrict h, const uint8_t* __restrict l, uint16_t* __restrict d) {
+#ifdef __SSE2__
+  const __m128i zero = _mm_setzero_si128(), one = _mm_set1_epi16(1);
+  for (size_t x = 0; x < size_t(kTileSize); x += 8) {
+    __m128i z[C];  // channel c's 8 samples
+    for (int c = 0; c < C; c++) {
+      const size_t o = size_t(c) * kPixels + x;
+      const __m128i v = _mm_unpacklo_epi8(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(l + o)),
+                                          _mm_loadl_epi64(reinterpret_cast<const __m128i*>(h + o)));
+      z[c] = _mm_xor_si128(_mm_srli_epi16(v, 1), _mm_sub_epi16(zero, _mm_and_si128(v, one)));  // unfold()
+    }
+    auto* out = reinterpret_cast<__m128i*>(d + x * C);
+    if constexpr (C == 1) {
+      _mm_storeu_si128(out, z[0]);
+    } else if constexpr (C == 2) {
+      _mm_storeu_si128(out, _mm_unpacklo_epi16(z[0], z[1]));
+      _mm_storeu_si128(out + 1, _mm_unpackhi_epi16(z[0], z[1]));
+    } else {
+      const __m128i a = _mm_unpacklo_epi16(z[0], z[1]), b = _mm_unpacklo_epi16(z[2], z[3]);
+      const __m128i e = _mm_unpackhi_epi16(z[0], z[1]), f = _mm_unpackhi_epi16(z[2], z[3]);
+      _mm_storeu_si128(out, _mm_unpacklo_epi32(a, b));
+      _mm_storeu_si128(out + 1, _mm_unpackhi_epi32(a, b));
+      _mm_storeu_si128(out + 2, _mm_unpacklo_epi32(e, f));
+      _mm_storeu_si128(out + 3, _mm_unpackhi_epi32(e, f));
+    }
+  }
+#else
+  for (size_t x = 0; x < size_t(kTileSize); x++)
+    for (int c = 0; c < C; c++) {
+      const size_t o = size_t(c) * kPixels + x;
+      d[x * C + size_t(c)] = unfold(uint16_t(h[o] << 8 | l[o]));
+    }
+#endif
+}
+
+template <int C>
+void unpredict_tile(const uint8_t* __restrict hi, const uint8_t* __restrict lo, uint16_t* __restrict s) {
+  constexpr size_t kRow = size_t(kTileSize) * C;
+  alignas(16) uint16_t d[kRow];
+  for (size_t y = 0; y < size_t(kTileSize); y++) {
+    residuals<C>(hi + y * kTileSize, lo + y * kTileSize, d);
+    // Each sample less the one above it is the running sum of the residuals along the row.
+    uint16_t* r = s + y * kRow;
+    uint16_t sum[C] = {};
+    if (y == 0) {
+      for (size_t x = 0; x < size_t(kTileSize); x++)
+        for (int c = 0; c < C; c++) r[x * C + size_t(c)] = sum[c] = uint16_t(sum[c] + d[x * C + size_t(c)]);
+    } else {
+      const uint16_t* u = r - kRow;
+      for (size_t x = 0; x < size_t(kTileSize); x++)
+        for (int c = 0; c < C; c++) {
+          const size_t i = x * C + size_t(c);
+          sum[c] = uint16_t(sum[c] + d[i]);
+          r[i] = uint16_t(u[i] + sum[c]);
+        }
+    }
+  }
+}
+
+}  // namespace
+
+void predict(Format f, const uint8_t* raw, uint8_t* out) {
+  PROFILE_ZONE("tile_predict");
+  const auto* s = reinterpret_cast<const uint16_t*>(raw);
+  uint8_t* lo = out + kPixels * size_t(f.channels);
+  f.channels == 4   ? predict_tile<4>(s, out, lo)
+  : f.channels == 2 ? predict_tile<2>(s, out, lo)
+                    : predict_tile<1>(s, out, lo);
+}
+
+void unpredict(Format f, const uint8_t* in, uint8_t* raw) {
+  PROFILE_ZONE("tile_unpredict");
+  auto* s = reinterpret_cast<uint16_t*>(raw);
+  const uint8_t* lo = in + kPixels * size_t(f.channels);
+  f.channels == 4   ? unpredict_tile<4>(in, lo, s)
+  : f.channels == 2 ? unpredict_tile<2>(in, lo, s)
+                    : unpredict_tile<1>(in, lo, s);
+}
 
 WritePin Tile::write() {
   WritePin w = writable();
