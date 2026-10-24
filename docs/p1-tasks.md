@@ -42,14 +42,14 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | F31 xong (25/10) |
 | C · Cọ, vẽ, tô, tẩy, gradient | C30–C41 | Lõi (CPU, GPU) | Chưa làm |
-| S · Vùng chọn, Quick Mask, Select and Mask | S30–S39 | Lõi | S30 xong (25/10) |
+| S · Vùng chọn, Quick Mask, Select and Mask | S30–S39 | Lõi | S30 xong (25/10); đang làm S39 |
 | H · Retouch | H30–H39 | Lõi | Chưa làm |
 | X · Biến đổi | X30–X37 | Lõi (CPU, GPU) | Chưa làm |
 | O · AI | O30–O32 | Lõi (ONNX Runtime) | Chưa làm |
 | T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | Đang làm T30 (25/10) |
 | V · View, canvas | V30–V33 | Lõi, GPU, giao diện | Chưa làm |
 | K · Kho ô, hiệu năng lõi | K30–K34 | Lõi, GPU | Đang làm K30 (25/10) |
-| M · File | M30–M51 | Lõi, build | M39 xong (25/10); đang làm M30 |
+| M · File | M30–M51 | Lõi, build | M39, M30 xong (25/10) |
 | U · Giao diện | U30–U35 | Giao diện | Chưa làm |
 | N · Nối lõi | N30–N39, N42–N53 | Giao diện | Chưa làm |
 | I · Bút | I30–I32 | Giao diện | Chưa làm |
@@ -460,7 +460,7 @@ Vùng chọn là lưới một kênh của A40 (Kiến trúc của plan.md: mọ
 - [ ] **S38 · Guided filter theo ô** (lõi; Nhỏ; cần —; file `core/guided.h`, `core/guided.cpp`, `tests/test_guided.cpp`): chép `box_means()` và guided filter (He, Sun; bản nhanh lấy mẫu thưa) của `guided.cpp` snapone (ghi commit nguồn), sang lưới ô: hướng dẫn xám hay màu (hiệp phương sai 3 × 3), lề theo bán kính, `parallel_for`; nâng mặt nạ thô (1024 px của model) lên mức 0 theo ảnh hướng dẫn. Dùng cho Select Subject (O31), Select and Mask (S35), mặt nạ da (H37), làm mịn da (H38).
 
   **Xong khi:** test: ε → 0 với hướng dẫn là chính ảnh vào trả lại ảnh vào; hướng dẫn hằng ra trung bình hộp; bậc thang tổng hợp giữ mép (lệch ≤ 1 điểm ảnh); nâng mặt nạ 1024 lên 8256 theo mép của hướng dẫn: biên lệch ≤ 1 điểm ảnh; không phụ thuộc chia ô.
-- [ ] **S39 · Ảnh mẫu Photoshop cho lệnh vùng chọn** (bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/select.jsx`, `tools/ps-golden/README-select.md`, `bench/ps_select.cpp`, `tests/test_ps_select.cpp`, `tests/golden/ps/select/*`): như B4: ảnh vào và vùng chọn vào; script làm Feather (1, 5, 20, 100 px), Expand, Contract (5, 50 px), Border (10 px), Smooth (10 px), Magic Wand (Tolerance 0, 32, 100; Contiguous bật, tắt; Anti-alias bật, tắt) ở điểm cho trước, Grow, Similar, Color Range (Fuzziness 40, 100; Highlights; Skin Tones), Lasso ngôi sao tự cắt, elip anti-alias, Add, Subtract, Intersect của hai vùng chọn mềm; lưu vùng chọn thành kênh, xuất PNG 16 bit. Test so S30–S34 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
+- [ ] **S39 · Ảnh mẫu Photoshop cho lệnh vùng chọn** (đang làm: worktree `s39`, 25/10; bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/select.jsx`, `tools/ps-golden/README-select.md`, `bench/ps_select.cpp`, `tests/test_ps_select.cpp`, `tests/golden/ps/select/*`): như B4: ảnh vào và vùng chọn vào; script làm Feather (1, 5, 20, 100 px), Expand, Contract (5, 50 px), Border (10 px), Smooth (10 px), Magic Wand (Tolerance 0, 32, 100; Contiguous bật, tắt; Anti-alias bật, tắt) ở điểm cho trước, Grow, Similar, Color Range (Fuzziness 40, 100; Highlights; Skin Tones), Lasso ngôi sao tự cắt, elip anti-alias, Add, Subtract, Intersect của hai vùng chọn mềm; lưu vùng chọn thành kênh, xuất PNG 16 bit. Test so S30–S34 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
 
   **Xong khi:** script, ảnh vào, test có sẵn, bỏ qua khi thiếu ảnh; bạn chạy ở B33; sau đó độ lệch ghi vào dòng task, vượt 2 mức 8 bit thì kèm task chỉnh hằng số.
 
@@ -613,7 +613,7 @@ Việc K, V ở mục Để sau của p0-tasks.md (ngân sách tự co, `VK_EXT_
 
 ### M · File
 
-- [ ] **M30 · Thư viện của P1 vào build** (đang làm: worktree `m30`, 25/10; build; Nhỏ; cần —; file `vcpkg.json`, `CMakeLists.txt`): thêm `libwebp` (cả demux, mux: ICC, EXIF, XMP), `libraw` (tính năng `dng-lossy` như snapone), `pugixml` (XMP; có trong bảng Công nghệ); `pb_core` link chúng, thêm `windowscodecs`, `ole32` trên Windows (WIC cho HEIC), `-framework ImageIO CoreGraphics CoreFoundation` trên macOS; cùng baseline với P0. Một lần cho mọi task định dạng sau khỏi sửa CMake, như R1 làm cho P0.
+- [x] **M30 · Thư viện của P1 vào build** (25/10/2026, e9d80b0: vcpkg.json thêm `libraw[dng-lossy]` (kéo `libjpeg-turbo[jpeg8]`, jasper), `libwebp` (demux, mux), `pugixml`; `pb_core` link chúng, Windows thêm `windowscodecs`, `ole32` (WIC; `test_libs_p1` xanh trên Windows cả CoCreateInstance), macOS `-framework ImageIO CoreGraphics CoreFoundation` (chưa thử: không có máy Mac); `tools/configure.sh` đặt thư mục `vcpkg_installed` chung theo 8 ký tự sha256 của vcpkg.json (thư mục cũ giữ nguyên cho build dir đang trỏ tới; worktree rebase qua M30 phải chạy lại configure); ctest default 151 s; build/orch/api/m30.md; build; Nhỏ; cần —; file `vcpkg.json`, `CMakeLists.txt`): thêm `libwebp` (cả demux, mux: ICC, EXIF, XMP), `libraw` (tính năng `dng-lossy` như snapone), `pugixml` (XMP; có trong bảng Công nghệ); `pb_core` link chúng, thêm `windowscodecs`, `ole32` trên Windows (WIC cho HEIC), `-framework ImageIO CoreGraphics CoreFoundation` trên macOS; cùng baseline với P0. Một lần cho mọi task định dạng sau khỏi sửa CMake, như R1 làm cho P0.
   **Xong khi:** `tools/configure.sh default` và `mingw` dựng được, ctest default qua; `vcpkg_installed` dùng chung chỉ cài thêm các gói trên.
 - [ ] **M31 · `.pbd`: mip chồng lúc ghi, nén gọn, metadata** (lõi; Vừa; cần A40, A31 (cùng `core/pbd.cpp`), M3b (P0: lưu đầy đủ D1 < 5 s, G1); file `core/pbd.h`, `core/pbd.cpp`, `tests/test_pbd.cpp`, `tests/data/pbd/v1-*.pbd` (vài file v1 nhỏ, ghi bằng main trước khi sửa), `bench/pbd.cpp`, `docs/architecture.md` mục `.pbd`): việc `.pbd` của mục Để sau trong p0-tasks.md, trừ phần M3b đã làm cho G1 (cfef523: định dạng 2 với ô U16 dự đoán theo kênh và tách byte trước zstd, đường ghi song song, một lần sync):
   - Lưu đầy đủ dựng mip từ mức 3 chồng lên lúc nén, ghi mức 0, thay vì dựng hết rồi mới ghi (M3: CPU 2,0–2,7 s, trong đó mip 0,5–0,9 s).
