@@ -69,6 +69,14 @@ Item {
             return d
         }
         function core(d) { return JSON.parse(d.model.dump()) }  // the core's DocState: layers bottom first, tile ids
+        // The tab of `file`, chosen: every Main opens PB_CANVAS's file after the rest (N1), so the one in front is not
+        // always the one a test means.
+        function pick(file) {
+            const i = Docs.docs.findIndex(d => d.file === file)
+            verify(i >= 0, file + " open")
+            Docs.select(i)
+            return Docs.current
+        }
         function open(o) {
             const w = createTemporaryObject(mainC, root, Object.assign({ startState: "Main" }, o || {}))
             Tools.dockMin = Object.assign({}, Tools.dockMin, { p: true })  // Properties folded: Layers taller (tst_u9)
@@ -151,10 +159,16 @@ Item {
 
         // Mở…, a drop, the command line, Gần đây: the same way in; what is not an image here the mock opens by name.
         function test_ways_in() {
-            const p = file("vao.png", "png", 200, 100), q = file("dong-lenh.tif", "tif", 120, 80)
+            // a name its file: URL escapes: "file://" + the path is not its URL (nor any on Windows, C: its host)
+            const p = file("vao #1.png", "png", 200, 100), q = file("dong-lenh.tif", "tif", 120, 80)
             const w = open({ startFiles: [q] })
-            tryVerify(() => Docs.current.real && Docs.current.file === "dong-lenh.tif", 5000, "the command line's")
-            w.openFiles(["file://" + p])  // dropped, picked in Mở…: a file: URL
+            // the command line's, for real; in front unless PB_CANVAS names a file, which Main opens after it (N1)
+            tryVerify(() => Docs.docs.some(d => d.real && d.model.path === q), 5000, "the command line's")
+            const given = Docs.docs.find(d => d.real && d.model.path === q)
+            compare(given.file, "dong-lenh.tif")
+            compare(Docs.docs.indexOf(given), Docs.docs.length - (CanvasEnv.document ? 2 : 1), "the last tab, or the one before PB_CANVAS's")
+            compare(Docs.docs.indexOf(Docs.current), Docs.docs.length - 1, "the last file given in front")
+            w.openFiles([fixtures.url(p)])  // dropped, picked in Mở…: a file: URL, as Qt makes it
             const d = Docs.current
             verify(d.real)
             compare(d.model.path, p)
@@ -172,7 +186,7 @@ Item {
             const again = Docs.openRecent(i)
             verify(again.real && again.model.path === path)
             tryVerify(() => !again.model.loading, 20000)
-            compare(Docs.open("vao.png"), again, "by name, as the start screen opens it")
+            compare(Docs.open("vao #1.png"), again, "by name, as the start screen opens it")
             verify(Docs.recent.filter(r => r.path === path).length === 1, "once in the list")
         }
 
@@ -418,6 +432,7 @@ Item {
         // document as before.
         function test_greyed() {
             const w = open()
+            verify(!pick("chân dung.psd").real)
             const all = items(MenuSpec.MENUS)
             const before = it => {  // Main.can() before N1
                 if (!it || it.t === "sep" || it.disabled || !(it.free || Docs.current))

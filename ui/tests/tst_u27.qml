@@ -293,6 +293,8 @@ Item {
         // have the same ids): hidden, and renaming in the row shown only.
         function test_pooled() {
             const w = open()
+            // the portrait chosen: Main opens PB_CANVAS's file last (N1), so that one is in front when it is set
+            Docs.select(Docs.docs.findIndex(x => x.file === "chân dung.psd"))
             const p = find(w.contentItem, o => o instanceof LayersPanel && o.visible), l = list(p)
             compare(p.shown.length, 9)
             const d = Docs.create({ name: "ba-layer.psd", w: 800, h: 600, ppi: 72, mode: "RGB", bits: 8, background: "white" })
