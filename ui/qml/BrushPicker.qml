@@ -11,7 +11,8 @@ import "Fmt.js" as Fmt
 // the size and a chevron, which opens the brush picker under it: Size 1–5.000 px, Hardness, the six tips of Presets.TIPS
 // (a tip brings its hardness), the first six of Brushes' presets (size and hardness); Spacing is Brush Settings'. Values go
 // to Tools by "<bar>:size", ":hard", ":tip". The picker closes at a press outside, which stops there and does not reach
-// the canvas. Tip draws a tip as the prototype's CSS does.
+// the canvas. Tip draws a tip as the prototype's CSS does. On a real document the tips the core lacks are dimmed
+// (Tools.tipUsable()).
 AbstractButton {
     id: bp
     property string bar: "brush"  // ToolSpec.brushBar()
@@ -115,6 +116,8 @@ AbstractButton {
                         ToolTip.text: modelData[0]
                         Accessible.name: qsTr("Đầu cọ %1").arg(modelData[0])
                         Accessible.checked: on
+                        enabled: Tools.tipUsable(index)
+                        opacity: enabled ? 1 : 0.4
                         onClicked: Tools.setValues({ [bp.bar + ":tip"]: index, [bp.bar + ":hard"]: modelData[1] })
                         background: Rectangle {
                             radius: 4

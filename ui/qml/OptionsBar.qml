@@ -26,13 +26,25 @@ Rectangle {
     clip: true
     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.ln }
 
-    // Cells the prototype dims by state: Elliptical Marquee's Anti-alias is on, W, H and their swap wait for a Style.
+    // Cells the prototype dims by state: Elliptical Marquee's Anti-alias is on, W, H and their swap wait for a Style. On
+    // a real document (decision 4), a painting bar's cells that no BrushParams takes.
     function dimmed(i, c) {
+        if (Tools.real && ToolSpec.PAINT_T[Tools.tool] && !Tools.xf && lacks(i))
+            return true
         if (bar === "marquee" && i === 5)
             return Tools.tool !== "ellip"
         if (bar === "marquee" && i >= 9 && i <= 11)
             return Tools.value("marquee:8", ToolSpec.def("marquee", 8)) === "Normal"
         return c.dis
+    }
+    // Cell i of a painting bar is none of what Tools.brushOf() reads (brushCells()), the brush (BP) and Brush Settings
+    // aside: Mode and its label, Airbrush, Smoothing and its settings, the tip's angle.
+    function lacks(i) {
+        const c = ToolSpec.cell(bar, i), k = Tools.brushCells(bar)
+        if (c.kind === "L")
+            return i + 1 < ToolSpec.BARS[bar].length && lacks(i + 1)
+        return ["ic", "|", "SP", "BP"].indexOf(c.kind) < 0 && c.act !== "@side:Brush Settings" &&
+               [k.opacity, k.flow, k.pressureOpacity, k.pressureFlow, k.pressureSize].indexOf(i) < 0
     }
     // An action of a cell: "=Name" a space or dialog by name, "@side:Panel" a panel, "@…" the prototype's (Docs.exec()).
     function run(act) {

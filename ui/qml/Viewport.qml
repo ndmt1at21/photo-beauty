@@ -25,8 +25,9 @@ Rectangle {
     property var origins: ({})  // the rulers' 0 of each document by file (the corner dragged), document pixels
     readonly property var origin: (doc && origins[doc.file]) || ({ x: 0, y: 0 })
     readonly property var unitNames: Prefs.panes.units[0].options  // Thiết lập › Thước: Pixels … Percent
-    // Brush and Eraser paint on the document PB_CANVAS opened (C3b): input lets the left button through to the canvas.
-    readonly property bool paints: canvas.docSize.width > 0 && (Tools.tool === "brush" || Tools.tool === "eraser") && !Tools.xf
+    // Brush and Eraser paint on a real document (C3b, N3: Tools.real): input lets the left button through to the canvas,
+    // which takes it once its document is up; the mock's clicks (CanvasClicks) make no step then.
+    readonly property bool paints: Tools.real && (Tools.tool === "brush" || Tools.tool === "eraser") && !Tools.xf
     readonly property int cursor: {
         if (!doc)
             return Qt.ArrowCursor
@@ -260,23 +261,23 @@ Rectangle {
         clip: true
         MockCanvas {
             anchors.fill: parent
-            visible: CanvasEnv.document === ""
+            visible: !Tools.real
             doc: vp.doc
             view: vp.view
             size: vp.size
         }
-        DocCanvas {  // V1, V2b: the test card with PB_CANVAS=pattern, over the mock canvas; the file PB_CANVAS names in its place
+        DocCanvas {  // V1, V2b: the test card with PB_CANVAS=pattern, over the mock canvas; a real document in its place
             id: canvas
             anchors.fill: parent
-            visible: (CanvasEnv.pattern || CanvasEnv.document !== "") && !!vp.view
+            visible: (CanvasEnv.pattern || Tools.real) && !!vp.view
             view: vp.view ?? ({})
             source: CanvasEnv.document
             pasteboard: vp.color
             onDocSizeChanged: if (docSize.width > 0) vp.show({ x: docSize.width / 2, y: docSize.height / 2, zoom: View.fit(docSize.width, docSize.height, vp.size, 0), angle: 0 })
-            // C3b, the least to paint in pb-ui: the tool, the bar's size and hardness, the foreground colour; N3 the rest
+            // Brush or Eraser and their options (N3): the bar's size, hardness, Opacity, Flow, its pen buttons, Brush
+            // Settings' Spacing, the foreground colour (Tools.brushOf())
             tool: vp.paints ? Tools.tool : ""
-            readonly property string bar: ToolSpec.brushBar(Tools.tool, false)
-            brush: ({ size: Tools.value(bar + ":size", ToolSpec.brush(bar).size), hardness: Tools.value(bar + ":hard", ToolSpec.brush(bar).hard) / 100, color: Tools.fg })
+            brush: Tools.brushOf(Tools.tool)
             // The mock document's History has the step too, as CanvasClicks' click made it (Ctrl Z goes by it).
             onPainted: step => { if (vp.doc) vp.doc.run({ op: "step", name: step, icon: ToolSpec.tool(step === "Eraser" ? "eraser" : "brush").icn }) }
         }

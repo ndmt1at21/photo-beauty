@@ -10,7 +10,8 @@ import "MenuSpec.js" as MenuSpec
 // flyout opens at a long press or the right button; double-click Hand fits the view, Zoom goes to 100%. Then the
 // foreground and background colours (a click opens the Color Picker), Quick Mask, the screen mode. It runs the keys of
 // ToolSpec.KEYS but Main's (F, Q), Shift and a tool's key, 0 … 9 and Shift 0 … 9 (Opacity, Flow), and Space, Alt, Ctrl
-// held: Hand, Eyedropper while painting, Move, the tool back on release.
+// held: Hand, Eyedropper while painting, Move, the tool back on release. On a real document the tools the core lacks
+// (Tools.usable()) are dimmed and locked: their buttons, flyout rows, keys and held keys.
 Rectangle {
     id: tb
     readonly property bool two: Prefs.value("twoColumnTools") === true
@@ -26,10 +27,11 @@ Rectangle {
     color: Theme.p1
     Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.ln }
 
-    // A group's flyout, at the toolbar's right edge: its tools, the one on top marked.
+    // A group's flyout, at the toolbar's right edge: its tools, the one on top marked, those a real document locks greyed.
     function openFlyout(btn, gid) {
         const top = Tools.top[gid] || ToolSpec.TOP0[gid], ts = ToolSpec.members(gid)
-        fly.show(ts.map(t => ({ l: t.n, k: t.k, icon: t.icn, mark: t.id === top, act: () => Tools.setTool(t.id, gid) })), btn, tb.width - btn.mapToItem(tb, 0, 0).x, 0)
+        fly.show(ts.map(t => ({ l: t.n, k: t.k, icon: t.icn, mark: t.id === top, disabled: !Tools.usable(t.id), act: () => Tools.setTool(t.id, gid) })),
+                 btn, tb.width - btn.mapToItem(tb, 0, 0).x, 0)
         fly.currentIndex = ts.findIndex(t => t.id === top)  // lit as the artboard's, and where ↑ ↓ start
     }
     function pickColor(front) {
@@ -77,7 +79,10 @@ Rectangle {
                             ToolBtn {
                                 id: gb
                                 readonly property string gid: slot.modelData[0]
-                                readonly property string topId: Tools.top[gid] || ToolSpec.TOP0[gid]
+                                // on top, or the first a real document does not lock (Tools.usable()); none: dimmed
+                                readonly property string first: Tools.top[gid] || ToolSpec.TOP0[gid]
+                                readonly property string topId: Tools.usable(first) ? first : (ToolSpec.members(gid).find(t => Tools.usable(t.id)) ?? ToolSpec.tool(first)).id
+                                enabled: Tools.usable(topId)
                                 checked: ToolSpec.tool(Tools.tool).g === gid
                                 many: slot.modelData[1].length > 1
                                 corner: many && !tb.two
@@ -163,7 +168,9 @@ Rectangle {
         switch (a[0]) {
         case "tool":
         case "next": {
-            const id = ToolSpec.keyTool(a[1], Tools.tool, Tools.top, a[0] === "next" || Prefs.value("shiftCycle") === false)
+            let id = ToolSpec.keyTool(a[1], Tools.tool, Tools.top, a[0] === "next" || Prefs.value("shiftCycle") === false)
+            for (let n = 0; n < 5 && id && !Tools.usable(id); n++)  // locked on a real document: the next with the key (5 share U)
+                id = ToolSpec.keyTool(a[1], id, Tools.top, true)
             if (id)
                 Tools.setTool(id, ToolSpec.tool(id).g)
             return
@@ -233,7 +240,7 @@ Rectangle {
         pending = ""
         armed.stop()
         const temp = k === "space" ? "hand" : k === "alt" ? "eyedrop" : "move"
-        if (held || Tools.tool === temp || !canHold() || (k === "alt" ? !ToolSpec.ALT_PICK[Tools.tool] : k === "ctrl" && ToolSpec.VIEW_T[Tools.tool]))
+        if (held || Tools.tool === temp || !Tools.usable(temp) || !canHold() || (k === "alt" ? !ToolSpec.ALT_PICK[Tools.tool] : k === "ctrl" && ToolSpec.VIEW_T[Tools.tool]))
             return
         held = k
         heldBase = Tools.tool

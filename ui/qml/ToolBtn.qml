@@ -6,7 +6,8 @@ import QtQuick.Controls.Basic
 // icon 20 in t2. checked: the tool in use (p3, t1); lit: a mode that is on (Quick Mask: acc2, the accent); hover: sel
 // under the mouse (the screen mode's .hv). many: a group of tools, a small triangle in the corner; a long press (350 ms)
 // or the right button emits menu() for its flyout, and the release ending that long press is no click. picked() is a
-// click; a click does not take the keyboard focus, so the tools' keys and Space, Alt, Ctrl go on working.
+// click; a click does not take the keyboard focus, so the tools' keys and Space, Alt, Ctrl go on working. Disabled (a tool
+// a real document locks), it fades as the options bar's dimmed cells.
 AbstractButton {
     id: b
     property bool many
@@ -19,6 +20,7 @@ AbstractButton {
 
     implicitWidth: 32
     implicitHeight: 32
+    opacity: enabled ? 1 : 0.4
     focusPolicy: Qt.TabFocus
     hoverEnabled: true
     icon.width: 20

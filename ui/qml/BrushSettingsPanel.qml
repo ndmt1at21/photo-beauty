@@ -11,7 +11,9 @@ import "Fmt.js" as Fmt
 // Spacing; Shape Dynamics and Transfer (jitters, their Control, minimums), Smoothing, Build-up, Noise, Wet Edges, each
 // with its box; the stroke the brush draws (StrokePreview); the brush saved as a preset. Values in Tools, by
 // "<bar>:<key>" of DEF: size, hard, spacing, tip as BrushPicker's (ToolSpec.brush()); the rest this panel's, where angle
-// and roundness not set are the tip's (a tip picked takes them back). The sections open: "bset:open".
+// and roundness not set are the tip's (a tip picked takes them back). The sections open: "bset:open". On a real document
+// (Tools.real, decision 4) what no BrushParams takes is dimmed: the tips but the round ones, Flip, angle and roundness,
+// Spacing's box (the dabs by the stroke's speed), the sections' boxes and values; the preview draws what the core paints.
 Item {
     id: panel
     readonly property string bar: ToolSpec.brushBar(Tools.tool, Tools.xf)
@@ -95,6 +97,8 @@ Item {
                         Accessible.name: qsTr("Đầu cọ %1").arg(modelData[0])
                         Accessible.checkable: true
                         Accessible.checked: on
+                        enabled: Tools.tipUsable(index)
+                        opacity: enabled ? 1 : 0.4
                         onClicked: panel.pickTip(index)
                         background: Rectangle {
                             radius: 4
@@ -135,12 +139,15 @@ Item {
             }
             Row {
                 spacing: 14
+                enabled: !Tools.real
                 CheckRow { text: qsTr("Flip X"); checked: panel.value("flipX"); onClicked: panel.set("flipX", !checked) }
                 CheckRow { text: qsTr("Flip Y"); checked: panel.value("flipY"); onClicked: panel.set("flipY", !checked) }
             }
             Row {
                 spacing: 12
+                enabled: !Tools.real
                 TipShape {
+                    opacity: enabled ? 1 : 0.4
                     angle: panel.value("angle")
                     roundness: panel.value("roundness")
                     onMoved: (a, r) => Tools.setValues({ [panel.bar + ":angle"]: a, [panel.bar + ":roundness"]: r })
@@ -184,6 +191,7 @@ Item {
                 CheckRow {
                     height: 16
                     text: qsTr("Spacing")
+                    enabled: !Tools.real
                     checked: panel.value("spacingOn")
                     onClicked: panel.set("spacingOn", !checked)
                 }
@@ -198,7 +206,7 @@ Item {
                     id: spacing
                     y: 22  // the track of a labelled row
                     width: parent.width
-                    enabled: panel.value("spacingOn")
+                    enabled: Tools.real || panel.value("spacingOn")
                     min: 1
                     max: 1000
                     unit: "%"
@@ -226,6 +234,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: sec.modelData[1]
                         font.weight: sec.rows.length > 0 ? Font.Medium : Font.Normal  // the sections that open, as the artboard
+                        enabled: !Tools.real
                         checked: panel.value(sec.key)
                         Accessible.name: qsTr("Bật %1").arg(sec.modelData[1])
                         onClicked: panel.set(sec.key, !checked)
@@ -242,6 +251,7 @@ Item {
                 }
                 Column {
                     visible: sec.open
+                    enabled: !Tools.real
                     x: 12
                     width: parent.width - 24
                     topPadding: 8
@@ -304,12 +314,12 @@ Item {
                     height: 40
                     size: panel.value("size")
                     hardness: panel.value("hard")
-                    spacing: panel.value("spacingOn") ? panel.value("spacing") : 25
-                    angle: panel.value("flipX") !== panel.value("flipY") ? -panel.value("angle") : panel.value("angle")
-                    roundness: panel.value("roundness")
-                    square: panel.tipRow[2] !== "50%"
-                    minSize: panel.value("shape") && panel.value("sizeControl") === "Pen Pressure" ? panel.value("minDiameter") / 100 : 1
-                    minOpacity: panel.value("transfer") && panel.value("opacityControl") === "Pen Pressure" ? panel.value("opacityMin") / 100 : 1
+                    spacing: Tools.real || panel.value("spacingOn") ? panel.value("spacing") : 25
+                    angle: Tools.real ? 0 : panel.value("flipX") !== panel.value("flipY") ? -panel.value("angle") : panel.value("angle")
+                    roundness: Tools.real ? 100 : panel.value("roundness")
+                    square: !Tools.real && panel.tipRow[2] !== "50%"
+                    minSize: !Tools.real && panel.value("shape") && panel.value("sizeControl") === "Pen Pressure" ? panel.value("minDiameter") / 100 : 1
+                    minOpacity: !Tools.real && panel.value("transfer") && panel.value("opacityControl") === "Pen Pressure" ? panel.value("opacityMin") / 100 : 1
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("Nét xem trước")
                 }

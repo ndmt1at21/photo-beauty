@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import "Presets.js" as Presets
+import "ToolSpec.js" as ToolSpec
 
 // Tools, the options bar's values, colours, Quick Mask, screen mode, the switches of View and Window, the dock and
 // Retouch (docs/ui-tasks.md, U3), as the prototype's state (build/proto/Main.dc.html). Objects are replaced, never
@@ -11,6 +12,33 @@ QtObject {
     // The tool, and the one shown first in each toolbar group (GROUPS' first).
     property string tool: "brush"
     property var top: ({})
+    // The document in front is a real one, the core's (decision 4 of docs/ui-tasks.md, N3): the canvas shows it, Brush
+    // and Eraser paint on it, and what the core has nothing for yet is dimmed and locked: the tools but coreTools', the
+    // options no BrushParams takes (OptionsBar, Brush Settings). The one place that says so: a document that says it is
+    // (N1's DocModel has real: true; the mock Doc no such property), or every one while PB_CANVAS names a file (each
+    // Viewport shows it). Tests set it; reset() binds it again. (isReal() takes the document untyped: the mock Doc type
+    // has no real for qmllint to find.)
+    property bool real: isReal(Docs.current)
+    function isReal(doc) { return doc?.real === true || CanvasEnv.document !== "" }
+    // The tools a real document has; N tasks add theirs as the core gets them.
+    readonly property var coreTools: ({ brush: 1, eraser: 1, hand: 1, rot: 1, zoom: 1 })
+    function usable(id) { return !real || !!coreTools[id] }
+    // Its brush tips, of Presets.TIPS: the round ones (Tròn mềm, cứng, vừa), as the core's dabs go by hardness alone.
+    readonly property var coreTips: [0, 1, 2]
+    function tipUsable(i) { return !real || coreTips.indexOf(i) >= 0 }
+    // Real now: a tool locked gives way to Brush, a tip the core lacks to the round one nearest its hardness.
+    onRealChanged: {
+        if (!usable(tool))
+            setTool("brush", "brush")
+        const o = {}
+        for (const k in values)
+            if (/:tip$/.test(k) && values[k] !== null && !tipUsable(values[k])) {
+                const bar = k.slice(0, -4), h = value(bar + ":hard", ToolSpec.brush(bar).hard)
+                Object.assign(o, { [k]: h < 25 ? 0 : h > 75 ? 1 : 2, [bar + ":angle"]: null, [bar + ":roundness"]: null })
+            }
+        if (Object.keys(o).length)
+            setValues(o)
+    }
     // Free Transform (Edit › Free Transform, Ctrl T) is on, as Warp.
     property bool xf: false
     property bool warp: false
@@ -68,6 +96,7 @@ QtObject {
 
     // As the prototype opens: "Main"; "Retouch" as Retouch.dc.html's INIT has it.
     function reset(artboard) {
+        real = Qt.binding(() => isReal(Docs.current))
         tool = "brush"
         top = { move: "move", marquee: "rect", lasso: "lasso", wand: "wand", crop: "crop", eye: "eyedrop", heal: "spot", brush: "brush", stamp: "clone", eraser: "eraser",
             grad: "gradient", dodge: "dodge", type: "type", shape: "rectS", hand: "hand", zoom: "zoom" }
@@ -108,15 +137,17 @@ QtObject {
         retouch = { open: { fs: false, mask: true, smooth: true, db: false, eyes: false }, chips: { skin: true, eyes: false, lips: false, teeth: false }, overlay: true,
             feather: 4, out: 1, amount: 35, texture: 60, fsView: 0, dbm: 0, eyeW: 20, eyeB: 30, teeth: 25 }
         if (artboard === "Retouch") {
-            tool = "spot"
+            tool = usable("spot") ? "spot" : "brush"
             rulers = false
             dockTab = { c: "Color", p: "Retouch", l: "Layers" }
             dockMin = { c: true, p: false, l: false }
         }
     }
 
-    // A tool picked; with its toolbar group, that group shows it first from then on.
+    // A tool picked; with its toolbar group, that group shows it first from then on. One a real document locks: nothing.
     function setTool(id, group) {
+        if (!usable(id))
+            return
         tool = id
         if (group)
             top = Object.assign({}, top, { [group]: id })
@@ -129,6 +160,35 @@ QtObject {
     }
     function setValue(key, v) { values = Object.assign({}, values, { [key]: v }) }
     function setValues(o) { values = Object.assign({}, values, o) }
+
+    // The brush a tool paints with, as DocCanvas.brush takes it (BrushParams of core/stroke.h), from its bar
+    // (ToolSpec.brushBar(): Brush's for a tool that paints nothing): size (document px), hardness, Opacity, Flow (0..1;
+    // 1 where the bar has none), the pen's pressure on the size, Opacity, Flow (the bar's buttons), Brush Settings'
+    // Spacing (a fraction of the size; its box, the dabs by the stroke's speed when off, is the core's to come), the
+    // foreground colour. The rest of the options the core has none of: brushCells() says which cells these are.
+    function brushOf(id) {
+        const bar = ToolSpec.brushBar(id, false), b = ToolSpec.brush(bar), c = brushCells(bar)
+        const cell = i => i < 0 ? undefined : value(bar + ":" + i, ToolSpec.def(bar, i))
+        return {
+            size: value(bar + ":size", b.size),
+            hardness: value(bar + ":hard", b.hard) / 100,
+            opacity: c.opacity < 0 ? 1 : cell(c.opacity) / 100,
+            flow: c.flow < 0 ? 1 : cell(c.flow) / 100,
+            spacing: value(bar + ":spacing", b.spacing) / 100,
+            pressureSize: !!cell(c.pressureSize),
+            pressureOpacity: !!cell(c.pressureOpacity),
+            pressureFlow: !!cell(c.pressureFlow),
+            color: fg
+        }
+    }
+    // The cells of a painting bar brushOf() reads, by index in its BARS row (-1: none): the brush (BP, its size and
+    // hardness), opacity (OPACITY's), flow (FLOW's), the pen's buttons beside them, the one for the size.
+    function brushCells(bar) {
+        const row = ToolSpec.BARS[bar] || [], at = (re, from) => from >= 0 && re.test(row[from + 1]) ? from + 1 : -1
+        const op = ToolSpec.OPACITY[bar] ?? -1, fl = ToolSpec.FLOW[bar] ?? -1
+        return { brush: row.findIndex(x => /^BP~/.test(x)), opacity: op, flow: fl, pressureOpacity: at(/^T~stylus~/, op), pressureFlow: at(/^T~stylus~/, fl),
+            pressureSize: row.findIndex(x => /^T~line_weight~/.test(x)) }
+    }
 
     // The foreground colour, "#rrggbb"; hue: the H to keep for it (else its own unless it is grey); addRecent: to the
     // swatches' recent row too.
