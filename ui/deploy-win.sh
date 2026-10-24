@@ -2,7 +2,7 @@
 # Gathers the Windows build of the UI (preset ui-mingw) into a folder Windows runs as is (docs/ui-tasks.md, U22):
 # the stripped .exe files, the Qt DLLs, plugins and QML modules they load, llvm-mingw's C++ runtime, a fallback font
 # for offscreen, and ui/tests/*.qml in tests\ (ui/qml/*.js beside, as in the sources) for `pb-ui-tests.exe -input tests`.
-# Run in Ubuntu-24.04, from 20.04 through tools/ui.sh:
+# Run through tools/ui.sh (QT_ROOT_DIR's qmlimportscanner):
 #   tools/ui.sh ui/deploy-win.sh /mnt/c/Users/<you>/AppData/Local/Temp/pb-<task>
 # copied from snapone 6bdb5c8 (ui/deploy-win.sh), without its TLS plugin, FTP tests and crash handler.
 set -euo pipefail

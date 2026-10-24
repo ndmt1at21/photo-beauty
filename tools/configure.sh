@@ -1,24 +1,21 @@
 #!/bin/sh
-# Configures build/<preset> of the worktree this script is in, on the dev machine (WSL2, Ubuntu 20.04, GCC 9),
-# under tools/heavy.sh:
+# Configures build/<preset> of the worktree this script is in, on the dev machine (WSL2, Ubuntu 24.04, GCC 13; it was
+# 20.04 with GCC 9 until 22/10/2026), under tools/heavy.sh:
 # - one vcpkg_installed per triplet for every worktree (build/vcpkg_installed of the main checkout, -mingw for
 #   Windows), linked from the build dir so include paths read alike in each worktree and ccache hits; installed only
 #   when a package is missing, as manifest mode removes what the manifest lacks (another worktree's packages);
-# - ccache with photo-beauty's cache, a slangc that runs on glibc 2.31, samples/ linked to the main checkout's;
-# - TSan: GCC 9 lacks libtsan_preinit.o, made here.
-# The ui presets (Qt 6.11) run on Ubuntu-24.04 instead, through tools/ui.sh, with their own vcpkg_installed-ui
-# (GCC 13): one distro's packages would be rebuilt by the other's compiler and break its builds. So has ui-mingw,
-# the Windows UI, its vcpkg_installed-ui-mingw; Windows' Qt is ~/Qt-win/6.11.3/llvm-mingw_64 unless QT_WIN_DIR says.
+# - ccache with photo-beauty's cache, vcpkg's slangc (or ~/.local/opt/slang-2026.19's), samples/ linked to the main
+#   checkout's;
+# - TSan: libtsan_preinit.o made here when the compiler lacks it (GCC 9 did).
+# The ui presets (Qt 6.11 from QT_ROOT_DIR, aqt's ~/Qt/6.11.3/gcc_64 unless set) keep their own vcpkg_installed-ui,
+# from when they ran on another distro than the core's; so has ui-mingw, the Windows UI, its vcpkg_installed-ui-mingw;
+# Windows' Qt is ~/Qt-win/6.11.3/llvm-mingw_64 unless QT_WIN_DIR says.
 # Its preset names the compilers by full path: a build that configures again (a new file) has tools/ui.sh's PATH.
 # Usage: tools/configure.sh <preset> [more cmake arguments]
 set -e
 preset=${1:?usage: tools/configure.sh <preset> [cmake arguments]}
-case $preset in
-  ui*) distro=24.04 hint="; from 20.04: tools/ui.sh tools/configure.sh $preset" ;;
-  *) distro=20.04 hint= ;;
-esac
-if [ "$(. /etc/os-release && echo "$VERSION_ID")" != $distro ]; then
-  echo "tools/configure.sh: preset $preset is for Ubuntu $distro$hint" >&2
+if [ "$(. /etc/os-release && echo "$VERSION_ID")" != 24.04 ]; then
+  echo "tools/configure.sh: the dev machine is Ubuntu 24.04 since 22/10/2026" >&2
   exit 2
 fi
 [ -n "$PB_HEAVY_LOCKED" ] || exec "$(dirname "$0")/heavy.sh" "$0" "$@"
@@ -27,8 +24,7 @@ export VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}" VCPKG_MAX_CONCURRENCY="${VCPKG_MA
 export QT_WIN_DIR="${QT_WIN_DIR:-$HOME/Qt-win/6.11.3/llvm-mingw_64}"
 export QT_ROOT_DIR="${QT_ROOT_DIR:-$HOME/Qt/6.11.3/gcc_64}"  # aqt's, when ~/.profile does not say
 mingw=$HOME/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin
-nasm=$HOME/.local/opt/nasm-2.14.02/usr/bin  # libjpeg-turbo's SIMD; 24.04 has it among the debs unpacked in sysroot/
-[ $distro = 20.04 ] || nasm=$HOME/.local/opt/sysroot/usr/bin
+nasm=$HOME/.local/opt/sysroot/usr/bin  # libjpeg-turbo's SIMD before apt's nasm; kept, as the mingw ABI hashes PATH
 case :$PATH: in  # once: the mingw triplet's ABI hashes PATH, so binary cache hits need it alike
   *:"$mingw":*) ;;
   *) export PATH="$HOME/.local/bin:$mingw:$nasm:$PATH" ;;
