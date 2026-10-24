@@ -24,6 +24,7 @@ printf '[Paths]\nPrefix = .\nPlugins = plugins\nQmlImports = qml\n' >"$dest/qt.c
 mkdir -p "$dest/lib/fonts"
 cp /usr/share/fonts/truetype/dejavu/DejaVuSans{,-Bold}.ttf "$dest/lib/fonts/"
 cp "$root"/ui/tests/*.qml "$dest/tests/"
+cp "$root"/tests/data/strokes/rgb8-paint.jsonl "$dest/tests/"  # tst_c3b's test_queue reads it beside itself
 mkdir -p "$dest/qml"
 cp "$root"/ui/qml/*.js "$dest/qml/"  # tests import "../qml/<name>.js" from the source tree
 
