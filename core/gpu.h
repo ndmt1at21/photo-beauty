@@ -56,6 +56,10 @@ class Device {
   // Into dst from byte `offset`, through staging; one that would take more than 32 MB of it since the last submit()
   // submits what was recorded first, so that the GPU starts on it.
   void upload(Buffer& dst, const void* src, size_t bytes, size_t offset = 0);
+  // upload() of bytes the caller writes, from any thread, where this returns, before the next submit(): uploads filled
+  // in parallel. It never submits: the caller keeps what it stages between submit()s to some 32 MB, as upload() does.
+  // Uploads into a buffer one after the other at places apart go as one copy, without a barrier between them.
+  void* stage(Buffer& dst, size_t bytes, size_t offset = 0);
   void fill(Buffer& dst, uint32_t value);
   void dispatch(Kernel&, std::initializer_list<Buffer*> buffers, const void* push, size_t push_bytes,
                 uint32_t groups_x, uint32_t groups_y);
@@ -67,6 +71,11 @@ class Device {
   uint64_t submit();
   void wait(uint64_t submission);  // until it and every earlier one finished; their downloads are then in place
   void flush();  // submit and wait
+  // The GPU's progress, for budgets of its time: mark() records a timestamp once the commands recorded before it are
+  // done, which marked() gives, ms on the GPU's clock, once its submission was waited for: NaN before then, past the
+  // 64th mark of a submission, some 1,000 marks later, or where the queue keeps no time.
+  uint64_t mark();
+  double marked(uint64_t mark) const;
 
   // An RGBA8 image another device can import (Shared), or null when this one cannot export memory.
   TexturePtr texture(int width, int height);

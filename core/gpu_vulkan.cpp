@@ -18,6 +18,7 @@
 #include <cstring>
 #include <deque>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <mutex>
 #include <stdexcept>
@@ -275,7 +276,10 @@ struct Device::Impl {
     std::vector<Readback> readbacks;
     Buffer* chunk = nullptr;        // the staging uploads fill, in used
     size_t filled = 0, staged = 0;  // bytes of chunk taken; of staging held
+    VkQueryPool query = VK_NULL_HANDLE;  // its marks' timestamps, kMarks, where the queue keeps time
+    std::vector<uint64_t> marks;         // in it, in order
   };
+  static constexpr uint32_t kMarks = 64;
   // Uploads copy through staging chunks of kChunk bytes that they fill in turn (a larger one through a buffer its
   // size), which their batch holds until it is waited for: a ring of staging buffers (plan.md). Before a batch holds
   // more than kStaging of them it is submitted, so that staging holds two batches' worth rather than a frame's
@@ -286,7 +290,21 @@ struct Device::Impl {
   VkCommandBuffer cmd = VK_NULL_HANDLE;  // batch's
   bool recording = false;
   uint64_t submitted = 0;
+  // Uploads into one buffer at places apart, one after the other, need no barrier between them: those since the last
+  // barrier (`since`, into copy_dst) go as one vkCmdCopyBuffer of their regions a staging chunk (`copies`, from
+  // copy_src), recorded once another command comes (record()), the chunk is full or the batch goes, rather than a copy
+  // and a barrier each (an atlas's tiles, V2d).
+  static constexpr size_t kCopies = 256;
+  VkBuffer copy_src = VK_NULL_HANDLE, copy_dst = VK_NULL_HANDLE;
+  std::vector<VkBufferCopy> copies, since;
   std::shared_ptr<Spare> spare = std::make_shared<Spare>();  // outlives the buffers it hands out
+  // Marks (mark()): the last number given; ns a timestamp tick, the bits that count; the times of those waited for,
+  // ms, oldest first, the last kKept.
+  static constexpr size_t kKept = 1024;
+  uint64_t marks = 0;
+  double tick = 0;
+  uint64_t valid = 0;
+  std::deque<std::pair<uint64_t, double>> times;
 #ifdef PB_TRACY
   tracy::VkCtx* tracy = nullptr;  // GPU zones, when the queue has timestamps
 #endif
@@ -304,6 +322,7 @@ struct Device::Impl {
 #endif
       for (Batch& b : batches) {
         for (VkDescriptorPool p : b.pools) vkDestroyDescriptorPool(dev, p, nullptr);
+        if (b.query) vkDestroyQueryPool(dev, b.query, nullptr);
         vkDestroyFence(dev, b.fence, nullptr);
       }
       vkDestroyCommandPool(dev, pool, nullptr);
@@ -362,6 +381,13 @@ struct Device::Impl {
     }
     vkResetFences(dev, 1, &b.fence);
     for (VkDescriptorPool p : b.pools) vkResetDescriptorPool(dev, p, 0);
+    if (!b.marks.empty()) {
+      std::vector<uint64_t> t(b.marks.size());
+      vkGetQueryPoolResults(dev, b.query, 0, uint32_t(t.size()), t.size() * 8, t.data(), 8, VK_QUERY_RESULT_64_BIT);
+      for (size_t i = 0; i < t.size(); i++) times.emplace_back(b.marks[i], double(t[i] & valid) * tick * 1e-6);
+      while (times.size() > kKept) times.pop_front();
+      b.marks.clear();
+    }
     b.pool = 0, b.sets = b.buffers = 0;
     PROFILE_ZONE("readback");
     for (const Readback& r : b.readbacks) {
@@ -399,9 +425,18 @@ struct Device::Impl {
     return set;
   }
 
+  // The uploads' copies from the chunk they fill, as one command.
+  void flush_copies() {
+    if (copies.empty()) return;
+    vkCmdCopyBuffer(cmd, copy_src, copy_dst, uint32_t(copies.size()), copies.data());
+    copies.clear();
+  }
+
   // Begins a batch (once the one submitted before last finished), or orders the next command after
   // everything recorded so far. `buffers` stay with the batch until it is waited for.
   void record(std::initializer_list<Buffer*> buffers = {}) {
+    flush_copies();
+    since.clear(), copy_dst = VK_NULL_HANDLE;
     if (!recording) {
       if (batch->serial) finish(*batch);
       cmd = batch->cmd;
@@ -409,6 +444,7 @@ struct Device::Impl {
       bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
       check(vkBeginCommandBuffer(cmd, &bi), "vkBeginCommandBuffer");
       recording = true;
+      if (batch->query) vkCmdResetQueryPool(cmd, batch->query, 0, kMarks);
 #ifdef PB_TRACY
       if (tracy) TracyVkCollect(tracy, cmd);
 #endif
@@ -536,7 +572,7 @@ std::unique_ptr<Device> Device::create(bool allow_software) {
   vkEnumeratePhysicalDevices(d->instance, &n, devices.data());
   int best = 0;
   uint32_t family = 0;
-  [[maybe_unused]] bool timestamps = false;  // for Tracy GPU zones
+  uint32_t timestamps = 0;  // valid bits, for marks and Tracy's GPU zones
   for (VkPhysicalDevice pd : devices) {
     VkPhysicalDeviceProperties p;
     vkGetPhysicalDeviceProperties(pd, &p);
@@ -555,7 +591,8 @@ std::unique_ptr<Device> Device::create(bool allow_software) {
       if (queues[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
         best = rank;
         family = i;
-        timestamps = queues[i].timestampValidBits > 0;
+        timestamps = queues[i].timestampValidBits;
+        d->tick = p.limits.timestampPeriod;
         d->phys = pd;
         d->name = p.deviceName;
         d->max_buffer = p.limits.maxStorageBufferRange;
@@ -614,7 +651,13 @@ std::unique_ptr<Device> Device::create(bool allow_software) {
     check(vkAllocateCommandBuffers(d->dev, &ci, &b.cmd), "vkAllocateCommandBuffers");
     VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     check(vkCreateFence(d->dev, &fi, nullptr, &b.fence), "vkCreateFence");
+    if (!timestamps) continue;
+    VkQueryPoolCreateInfo qpi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+    qpi.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    qpi.queryCount = Device::Impl::kMarks;
+    check(vkCreateQueryPool(d->dev, &qpi, nullptr, &b.query), "vkCreateQueryPool");
   }
+  d->valid = timestamps >= 64 ? ~uint64_t(0) : (uint64_t(1) << timestamps) - 1;
 #ifdef PB_TRACY
   if (timestamps) d->tracy = TracyVkContext(d->phys, d->dev, d->queue, d->batches[0].cmd);
 #endif
@@ -680,12 +723,23 @@ KernelPtr Device::kernel(const char* name, const uint32_t* spirv, size_t spirv_b
 void Device::upload(Buffer& dst, const void* src, size_t bytes, size_t offset) {
   if (!bytes) return;
   Impl& d = *impl_;
-  const auto fits = [&] { return d.batch->chunk && d.batch->filled + bytes <= d.batch->chunk->size; };
-  if (d.recording && !fits() && d.batch->staged + bytes > Impl::kStaging) submit();  // the GPU starts on it
-  d.record({&dst});
+  const Impl::Batch& b = *d.batch;
+  if (d.recording && !(b.chunk && b.filled + bytes <= b.chunk->size) && b.staged + bytes > Impl::kStaging)
+    submit();  // the GPU starts on it
+  std::memcpy(stage(dst, bytes, offset), src, bytes);
+}
+
+void* Device::stage(Buffer& dst, size_t bytes, size_t offset) {
+  Impl& d = *impl_;
+  // After the uploads since the last barrier with none: into the same buffer, no byte of it twice.
+  bool apart = d.recording && d.copy_dst == dst.buf && d.since.size() < Impl::kCopies;
+  for (size_t i = 0; apart && i < d.since.size(); i++)
+    apart = offset >= d.since[i].dstOffset + d.since[i].size || d.since[i].dstOffset >= offset + bytes;
+  if (!apart) d.record({&dst});  // a barrier after what was recorded (the copies pending first)
   Impl::Batch& b = *d.batch;
   // ponytail: always through staging, even on unified memory (zero-copy is a P2 item).
-  if (!fits()) {
+  if (!(b.chunk && b.filled + bytes <= b.chunk->size)) {
+    d.flush_copies();  // the chunk's
     BufferPtr st = d.make_buffer(std::max(bytes, Impl::kChunk), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     b.chunk = st.get(), b.filled = 0, b.staged += st->size;
@@ -693,9 +747,9 @@ void Device::upload(Buffer& dst, const void* src, size_t bytes, size_t offset) {
   }
   const size_t at = b.filled;
   b.filled += (bytes + 63) & ~size_t(63);  // cache lines apart
-  std::memcpy(static_cast<char*>(b.chunk->mapped) + at, src, bytes);
-  const VkBufferCopy region{at, offset, bytes};
-  vkCmdCopyBuffer(d.cmd, b.chunk->buf, dst.buf, 1, &region);
+  d.copy_src = b.chunk->buf, d.copy_dst = dst.buf;
+  if (bytes) d.copies.push_back({at, offset, bytes}), d.since.push_back({at, offset, bytes});
+  return static_cast<char*>(b.chunk->mapped) + at;
 }
 
 void Device::fill(Buffer& dst, uint32_t value) {
@@ -744,6 +798,8 @@ void Device::download(Buffer& src, void* dst, size_t bytes, size_t row, size_t s
 uint64_t Device::submit() {
   Impl& d = *impl_;
   if (!d.recording) return d.submitted;  // the last one, if any
+  d.flush_copies();
+  d.since.clear(), d.copy_dst = VK_NULL_HANDLE;
   Impl::Batch& b = *d.batch;
   if (!b.readbacks.empty()) {
     VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
@@ -770,6 +826,23 @@ void Device::wait(uint64_t submission) {
 }
 
 void Device::flush() { wait(submit()); }
+
+uint64_t Device::mark() {
+  Impl& d = *impl_;
+  d.record();
+  Impl::Batch& b = *d.batch;
+  if (b.query && b.marks.size() < Impl::kMarks) {
+    vkCmdWriteTimestamp(d.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, b.query, uint32_t(b.marks.size()));
+    b.marks.push_back(d.marks + 1);
+  }
+  return ++d.marks;
+}
+
+double Device::marked(uint64_t mark) const {
+  const auto& t = impl_->times;
+  const auto it = std::lower_bound(t.begin(), t.end(), std::make_pair(mark, -1e300));
+  return it != t.end() && it->first == mark ? it->second : std::numeric_limits<double>::quiet_NaN();
+}
 
 TexturePtr Device::texture(int width, int height) {
   if (!impl_->get_handle || width <= 0 || height <= 0) return nullptr;

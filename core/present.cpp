@@ -5,14 +5,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <set>
 #include <stdexcept>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -71,6 +72,14 @@ uint32_t slot(const Consts& k, const uint32_t* tables, int x, int y) {
   return tables[k.table + uint32_t(ty) * k.tw + uint32_t(tx)];
 }
 
+F4 read(const Consts& k, const Bufs& b, uint32_t e, int x, int y) {
+  if (e >= kEmpty) return {0, 0, 0, 0};
+  const Src& s = b.tiles[e];
+  const unsigned mask = (1u << k.log2) - 1;
+  const uint16_t* p = s.px ? s.px + (((unsigned(y) & mask) << k.log2) + (unsigned(x) & mask)) * 4 : s.value.data();
+  return {unit16(p[0]), unit16(p[1]), unit16(p[2]), unit16(p[3])};
+}
+
 F4 texel(const Consts& k, const Bufs& b, int x, int y, int ownx, int owny) {
   uint32_t e = slot(k, b.tables, x, y);
   if (e == kNone) {
@@ -79,11 +88,7 @@ F4 texel(const Consts& k, const Bufs& b, int x, int y, int ownx, int owny) {
     y = std::clamp(y, owny, owny + last);
     e = slot(k, b.tables, x, y);
   }
-  if (e >= kEmpty) return {0, 0, 0, 0};
-  const Src& s = b.tiles[e];
-  const unsigned mask = (1u << k.log2) - 1;
-  const uint16_t* p = s.px ? s.px + (((unsigned(y) & mask) << k.log2) + (unsigned(x) & mask)) * 4 : s.value.data();
-  return {unit16(p[0]), unit16(p[1]), unit16(p[2]), unit16(p[3])};
+  return read(k, b, e, x, y);
 }
 
 F4 premultiplied(const F4& t) { return {t[0] * t[3], t[1] * t[3], t[2] * t[3], t[3]}; }
@@ -98,12 +103,20 @@ F4 sample(const Consts& k, const Bufs& b, float px, float py) {
   const float wx = fu - float(x0), wy = fv - float(y0);
   const int xa = std::clamp(x0, k.minx, k.maxx), xb = std::clamp(x0 + 1, k.minx, k.maxx);
   const int ya = std::clamp(y0, k.miny, k.maxy), yb = std::clamp(y0 + 1, k.miny, k.maxy);
-  const F4 t00 = premultiplied(texel(k, b, xa, ya, ownx, owny)), t10 = premultiplied(texel(k, b, xb, ya, ownx, owny));
-  const F4 t01 = premultiplied(texel(k, b, xa, yb, ownx, owny)), t11 = premultiplied(texel(k, b, xb, yb, ownx, owny));
+  const uint32_t e = (xa >> k.log2) == (xb >> k.log2) && (ya >> k.log2) == (yb >> k.log2) ? slot(k, b.tables, xa, ya) : kNone;
+  F4 t00, t10, t01, t11;
+  if (e != kNone) {
+    t00 = premultiplied(read(k, b, e, xa, ya)), t10 = premultiplied(read(k, b, e, xb, ya));
+    t01 = premultiplied(read(k, b, e, xa, yb)), t11 = premultiplied(read(k, b, e, xb, yb));
+  } else {
+    t00 = premultiplied(texel(k, b, xa, ya, ownx, owny)), t10 = premultiplied(texel(k, b, xb, ya, ownx, owny));
+    t01 = premultiplied(texel(k, b, xa, yb, ownx, owny)), t11 = premultiplied(texel(k, b, xb, yb, ownx, owny));
+  }
   const float w00 = (1 - wx) * (1 - wy), w10 = wx * (1 - wy), w01 = (1 - wx) * wy, w11 = wx * wy;
   F4 p;
   for (int c = 0; c < 4; c++) p[c] = t00[c] * w00 + t10[c] * w10 + t01[c] * w01 + t11[c] * w11;
   if (!(p[3] > 0)) return {0, 0, 0, 0};
+  if (p[3] == 1) return p;
   return {p[0] / p[3], p[1] / p[3], p[2] / p[3], p[3]};
 }
 
@@ -203,6 +216,9 @@ struct Shared {
   std::atomic<uint64_t> made{0};  // chunks of tiles the job made: frames count again what they lacked
   std::mutex m;
   std::function<void()> on_ready;  // null once the presenter goes
+  // Tiles (level, x, y) to read ahead whose layer tiles the job brought back into RAM (zstd, scratch) since a frame
+  // asked: those a frame uploads without stalling on that. Under m.
+  std::set<std::array<int, 3>> warm;
 };
 
 // The sRGB profile's, for documents without one (or with one lcms does not take).
@@ -241,10 +257,21 @@ struct Presenter::Impl {
   // The Visible job making mips: each frame lacking some asks anew (Latest: the one running stops at its next chunk).
   std::shared_ptr<Shared> shared = std::make_shared<Shared>();
   Latest job{Priority::Visible};
+  bool warming = false;  // the job brings tiles to read ahead into RAM: a stroke's frames stop it, the pool theirs
 
   // The last frame: its document, its level and the tiles it showed at that level (sorted), so that a frame of a view
   // change tells the tiles it shows newly.
-  int budget = kFrameUploads;
+  int fixed = -1;  // set_upload_budget()'s, -1: the budget's
+  UploadBudget uploads;
+  // GPU frames whose times the budget has yet to take, oldest first: CPU ms until the GPU starts (its first
+  // submission), of them staging the frame's level's uploads; marks at the start, after the frame's level
+  // composited, before and after reading ahead (its last command); the uploads.
+  struct Took {
+    double head = -1, sent = 0;
+    uint64_t a = 0, b = 0, c = 0, d = 0;
+    int n = 0;
+  };
+  std::deque<Took> took;
   std::weak_ptr<const DocState> last_doc;
   int last_level = -1;
   std::vector<TileXY> last;
@@ -265,13 +292,30 @@ struct Presenter::Impl {
     return n;
   }
 
+  // Gives the budget the times of the frames before whose marks are in (their submissions waited for), forgetting
+  // those still out past a few frames: a frame's, as its waiter sees it, the CPU's until the GPU starts then the GPU's
+  // until it is done; of it the uploads', their copies and composites on the GPU and the staging before it started
+  // (the CPU stages reading ahead while the GPU runs the frame).
+  void measured() {
+    for (; !took.empty(); took.pop_front()) {
+      const Took& t = took.front();
+      const double a = dev->marked(t.a), b = dev->marked(t.b), c = dev->marked(t.c), d = dev->marked(t.d);
+      if (std::isnan(d) && took.size() < 8) return;
+      if (std::isnan(a + b + c + d)) continue;
+      const double up = (b - a) + (d - c) + t.sent;
+      uploads.took(t.head + (d - a) - up, up, t.n);
+    }
+  }
+
   // Has the job make the mips of `tiles` at `level`, most urgent first, calling on_ready() after each chunk; then the
   // top level's (`top`, -1: none), the canvas in one tile, which may stand in for any; then bring back into RAM (zstd,
-  // scratch) the layer tiles of `waiting`, tiles of `in` at `level` that wait to composite, about two frames' budget
-  // of them, and call on_ready() for the next frame to go on.
-  void request(int level, std::vector<TileXY> tiles, int top, const RenderInput& in, std::vector<TileXY> waiting) {
-    job.submit([sh = shared, gs = grids, level, tiles = std::move(tiles), top, in, waiting = std::move(waiting),
-                most = 2 * budget](const CancelToken& token) {
+  // scratch) the layer tiles of `waiting`, tiles of `in` at `level` that wait to composite, about two frames' `budget`
+  // of them, and call on_ready() for the next frame to go on; then as many of `ahead`'s, at level `al`, the tiles the
+  // next frames read ahead.
+  void request(int level, std::vector<TileXY> tiles, int top, const RenderInput& in, std::vector<TileXY> waiting,
+               int al, std::vector<TileXY> ahead, int budget) {
+    job.submit([sh = shared, gs = grids, level, tiles = std::move(tiles), top, in, waiting = std::move(waiting), al,
+                ahead = std::move(ahead), most = 2 * budget](const CancelToken& token) {
       PROFILE_ZONE("present_mips");
       const auto ready = [&] {
         const std::lock_guard l(sh->m);
@@ -296,17 +340,35 @@ struct Presenter::Impl {
         });
         sh->made++;
       }
-      if (waiting.empty() || cancelled(token)) return;
-      PROFILE_ZONE("present_warm");
-      std::vector<TilePtr> cold;
-      for (size_t i = 0; i < waiting.size() && int(cold.size()) < most; i++)
-        for (const CompositeStep& s : composite_plan(in, level, waiting[i].x, waiting[i].y).steps)
-          for (const TilePtr& t : {s.tile, s.cover})
-            if (t && !t->is_solid()) cold.push_back(t);
-      parallel_for(int(cold.size()), [&](int begin, int end) {
-        for (int i = begin; i < end; i++) cold[size_t(i)]->pin();
-      });
-      ready();
+      // The layer tiles of ts back into RAM, tile after tile, in lots; `mark`: each tile into `warm` once its are.
+      const auto warm = [&](int l, const std::vector<TileXY>& ts, bool mark) {  // false once cancelled
+        PROFILE_ZONE("present_warm");
+        std::vector<TilePtr> cold;
+        std::vector<size_t> ends;  // of each tile's in cold
+        for (size_t i = 0; i < ts.size() && int(cold.size()) < most; i++) {
+          for (const CompositeStep& s : composite_plan(in, l, ts[i].x, ts[i].y).steps)
+            for (const TilePtr& t : {s.tile, s.cover})
+              if (t && !t->is_solid()) cold.push_back(t);
+          ends.push_back(cold.size());
+        }
+        for (size_t at = 0, done = 0; done < ends.size();) {
+          if (cancelled(token)) return false;
+          const size_t n = std::min(4 * kChunk, cold.size() - at);
+          parallel_for(int(n), [&](int begin, int end) {
+            for (int i = begin; i < end; i++) cold[at + size_t(i)]->pin();
+          });
+          at += n;
+          const std::lock_guard lock(sh->m);
+          for (; done < ends.size() && ends[done] <= at; done++)
+            if (mark) sh->warm.insert({l, ts[done].x, ts[done].y});
+        }
+        return !cancelled(token);
+      };
+      if (!waiting.empty()) {
+        if (!warm(level, waiting, false)) return;
+        ready();
+      }
+      warm(al, ahead, true);
     });
   }
 
@@ -362,7 +424,18 @@ Presenter::~Presenter() {
   impl_->job.submit([](const CancelToken&) {});  // the running job stops at its next chunk
 }
 
-void Presenter::set_upload_budget(int tiles) { impl_->budget = tiles; }
+void Presenter::set_upload_budget(int tiles) { impl_->fixed = tiles; }
+
+int UploadBudget::next() const {
+  return int(std::clamp((kFrameMs - other_) / each_, double(kMin), double(kMax)));
+}
+
+void UploadBudget::took(double other_ms, double upload_ms, int uploads) {
+  constexpr double k = 0.25;  // the newest frame's weight; one that took long (a store growing) counts twice the mean
+  if (std::isfinite(other_ms)) other_ += k * (std::clamp(other_ms, 0., 2 * other_ + 1) - other_);
+  if (uploads >= kMin && std::isfinite(upload_ms) && upload_ms > 0)
+    each_ += k * (std::min(upload_ms / uploads, 2 * each_) - each_);
+}
 
 Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const Target& target, const Look& look) {
   PROFILE_ZONE("present");
@@ -374,6 +447,15 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
   const View::Pixels px = view.pixels();
   const int W = px.width, H = px.height;
   if (W <= 0 || H <= 0) return f;
+  // The budget, and this frame's times for it (GPU).
+  const auto begun = std::chrono::steady_clock::now();
+  int budget = m.fixed >= 0 ? m.fixed : kFrameUploads;
+  Impl::Took took;
+  if (m.dev) {
+    m.measured();
+    if (m.fixed < 0) budget = m.uploads.next();
+    took.a = m.dev->mark();
+  }
   const DocState& d = *in.doc;
   m.set_colors(d, look);
   const std::array<double, 2> o = px.origin, ax = px.across, ay = px.down;
@@ -413,6 +495,29 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     return s1 >= -0.5 && s0 <= W - 0.5 && t1 >= -0.5 && t0 <= H - 0.5;
   };
 
+  // Tiles of level l in the order to composite them, from document point `at` out within `box` (x0, y0, x1, y1,
+  // document pixels) about it: first the tile a zoom in about `at` keeps in view longest (the smaller the scale of the
+  // box about `at` at which it still meets the tile), then the nearest; rings of the box's shape about it, so that what
+  // a zoom in shows next is there first (V2d), and a pan's or turn's centre.
+  const auto order = [&](std::vector<TileXY>& ts, int l, const std::array<double, 2>& at, const std::array<double, 4>& box) {
+    const double side = std::ldexp(double(S), l);
+    std::vector<std::pair<std::array<double, 2>, TileXY>> keyed;
+    for (const TileXY t : ts) {
+      double scale = 0, near = 0;
+      for (size_t c = 0; c < 2; c++) {
+        const double lo = (c ? t.y : t.x) * side, hi = lo + side, a = at[c];
+        if (lo > a) scale = std::max(scale, (lo - a) / std::max(box[c + 2] - a, 1e-9));
+        if (hi < a) scale = std::max(scale, (a - hi) / std::max(a - box[c], 1e-9));
+        near += ((lo + hi) / 2 - a) * ((lo + hi) / 2 - a);
+      }
+      keyed.push_back({{scale, near}, t});
+    }
+    std::sort(keyed.begin(), keyed.end(), [](const auto& a, const auto& b) {
+      return a.first != b.first ? a.first < b.first : a.second < b.second;
+    });
+    for (size_t i = 0; i < ts.size(); i++) ts[i] = keyed[i].second;
+  };
+
   // The frame's level's tiles it reads, from its anchor out: the pixel a zoom or turn since the last frame keeps in
   // place (the pointer's, as Photoshop zooms), else its centre.
   const View::Pixels before = m.last_px;
@@ -421,6 +526,7 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
   for (int ty = w0.y0; ty < w0.y1; ty++)
     for (int tx = w0.x0; tx < w0.x1; tx++)
       if (seen(L, tx, ty)) want.push_back({tx, ty});
+  std::array<double, 2> anchor;  // on the document
   {
     double s = (W - 1) / 2., t = (H - 1) / 2.;
     const View::Pixels& q = before;  // o + i ax + j ay = q.origin + i q.across + j q.down there
@@ -429,12 +535,8 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     if (q.width && std::abs(turn) > 1e-6 * std::abs(det))
       s = std::clamp((rx * e - b * ry) / turn, 0., W - 1.), t = std::clamp((a * ry - rx * c) / turn, 0., H - 1.);
     m.last_px = px;
-    const double k = std::ldexp(1.0, -L) / S;
-    const double cx = (o[0] + s * ax[0] + t * ay[0]) * k - 0.5, cy = (o[1] + s * ax[1] + t * ay[1]) * k - 0.5;
-    const auto far = [&](TileXY t) {
-      return std::make_tuple((t.x - cx) * (t.x - cx) + (t.y - cy) * (t.y - cy), t.y, t.x);
-    };
-    std::sort(want.begin(), want.end(), [&](TileXY a, TileXY b) { return far(a) < far(b); });
+    anchor = {o[0] + s * ax[0] + t * ay[0], o[1] + s * ax[1] + t * ay[1]};
+    order(want, L, anchor, {x0, y0, x1, y1});
   }
   f.tiles = int(want.size());
 
@@ -482,6 +584,10 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
   const bool top_ready = L < top && m.missing(top, 0, 0, 0) == 0;
   const bool same = m.last_doc.lock() == in.doc, moving = top_ready && same;
   if (!same || m.done.size() > (size_t(1) << 14)) m.done.clear();
+  {
+    const std::lock_guard lock(m.shared->m);
+    if (!same || m.shared->warm.size() > (size_t(1) << 14)) m.shared->warm.clear();
+  }
   const auto fresh = [&](TileXY t) {
     return !(m.last_level == L && std::binary_search(m.last.begin(), m.last.end(), t));
   };
@@ -639,11 +745,20 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
                  uint32_t(W + 7) / 8, uint32_t(H + 7) / 8);
   };
 
+  // What was recorded to the GPU, which runs it while the CPU goes on; the first time, the CPU's time until then.
+  const auto start = [&] {
+    if (took.head < 0) took.head = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begun).count();
+    m.dev->submit();
+  };
   std::vector<TileXY> waiting, late;  // the frame's level's tiles that wait: those a pass below takes, all of them
   int left = 0;                       // of the budget, what the frame's level did not take
   {
-    const std::vector<int> r = run(0, optional, m.budget);
-    if (m.dev) left = m.budget - m.gc->stats().uploaded;
+    const std::vector<int> r = run(0, optional, budget);
+    if (m.dev) {
+      const GpuComposite::Stats s = m.gc->stats();
+      left = budget - s.uploaded, took.n = s.uploaded, took.sent = s.sent_ms, took.b = m.dev->mark();
+      if (s.uploaded && !in.stroke) start();  // the GPU composites while the CPU records the passes (a stroke's: few)
+    }
     m.last.clear();
     for (size_t i = 0; i < r.size(); i++)
       if (r[i] == -2)
@@ -707,17 +822,30 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
     }, f.coarser);
   f.missing += int(waiting.size());  // none: the top stands in for any
 
-  // Read ahead: with budget left and nothing waiting, the tiles of the view the motion since the last frame reaches
-  // kAhead frames on, at that view's level, not composited yet (the next column of a pan, the next ring of a zoom
-  // out), into the GPU's cache. ponytail: the motion
+  // Read ahead: with budget left and nothing waiting, the tiles not composited yet, from the middle out, of the view
+  // where the motion since the last frame goes: a zoom in the view about the anchor once it gets to the next level (as
+  // all of it shows there unless the zoom goes on); else the view kAhead frames on, at its level (the next column of a
+  // pan, the next ring of a zoom out). Into the GPU's cache, those whose layer tiles the job brought into RAM; a view
+  // at rest has the job bring those of a zoom in about its centre, for a zoom to start from. ponytail: the motion
   // extrapolated linearly, and the CPU (slow anyway) reads nothing ahead.
-  if (m.dev && moving && !waited && !in.stroke && left > 0 && before.width == W && before.height == H) {
+  if (m.dev) took.c = m.dev->mark();
+  int al = 0;
+  std::vector<TileXY> next;  // to read ahead next, at level al
+  const bool still = before.origin == o && before.across == ax && before.down == ay;
+  if (m.dev && moving && !waited && !in.stroke && (left > 0 || still) && before.width == W && before.height == H) {
     constexpr double kAhead = 10;  // frames
-    std::array<double, 2> o2, ax2, ay2;
-    for (int c = 0; c < 2; c++)
-      o2[size_t(c)] = o[size_t(c)] + kAhead * (o[size_t(c)] - before.origin[size_t(c)]),
-      ax2[size_t(c)] = ax[size_t(c)] + kAhead * (ax[size_t(c)] - before.across[size_t(c)]),
-      ay2[size_t(c)] = ay[size_t(c)] + kAhead * (ay[size_t(c)] - before.down[size_t(c)]);
+    std::array<double, 2> o2, ax2, ay2, mid = anchor;
+    const double now = std::hypot(ax[0], ax[1]), then = std::hypot(before.across[0], before.across[1]);
+    if (L > 0 && (still || now < then * (1 - 1e-9))) {  // in: its level L - 1 begins below 2^L document pixels a device pixel
+      const double f = std::ldexp(1.0, L) * (1 - 1e-6) / now;
+      for (size_t c = 0; c < 2; c++)
+        o2[c] = anchor[c] + (o[c] - anchor[c]) * f, ax2[c] = ax[c] * f, ay2[c] = ay[c] * f;
+    } else {
+      for (size_t c = 0; c < 2; c++)
+        o2[c] = o[c] + kAhead * (o[c] - before.origin[c]), ax2[c] = ax[c] + kAhead * (ax[c] - before.across[c]),
+        ay2[c] = ay[c] + kAhead * (ay[c] - before.down[c]);
+      mid = {o2[0] + (W - 1) / 2. * ax2[0] + (H - 1) / 2. * ay2[0], o2[1] + (W - 1) / 2. * ax2[1] + (H - 1) / 2. * ay2[1]};
+    }
     const double unit = std::hypot(ax2[0], ax2[1]);  // document pixels a device pixel there
     if ((o2 != o || ax2 != ax || ay2 != ay) && unit > 0) {
       int l = 0;
@@ -732,25 +860,53 @@ Presenter::Frame Presenter::frame(const RenderInput& in, const View& view, const
       const int nx = (texels(l, d.width) + S - 1) / S, ny = (texels(l, d.height) + S - 1) / S;
       const int tx0 = std::max(0, int(std::floor(bx0 * k))), ty0 = std::max(0, int(std::floor(by0 * k)));
       const int tx1 = std::min(nx, int(std::floor(bx1 * k)) + 1), ty1 = std::min(ny, int(std::floor(by1 * k)) + 1);
-      std::vector<TileXY> ahead;
+      std::vector<TileXY> ahead, warm;
       for (int ty = ty0; ty < ty1; ty++)
         for (int tx = tx0; tx < tx1; tx++)
           if (!m.done.count({l, tx, ty}) && !m.missing(l, tx, ty, 0)) ahead.push_back({tx, ty});
-      const double cx = (bx0 + bx1) / 2 * k - 0.5, cy = (by0 + by1) / 2 * k - 0.5;
-      std::sort(ahead.begin(), ahead.end(), [&](TileXY a, TileXY b) {
-        return std::hypot(a.x - cx, a.y - cy) < std::hypot(b.x - cx, b.y - cy);
-      });
-      const std::vector<int> r = m.gc->composite(in, l, ahead, 0, left);
-      for (size_t i = 0; i < r.size(); i++)
-        if (r[i] != -2) m.done.insert({l, ahead[i].x, ahead[i].y});
+      order(ahead, l, mid, {bx0, by0, bx1, by1});
+      {  // those the job brought into RAM go up now, the others once it did: zstd and scratch would stall the frame
+        const std::lock_guard lock(m.shared->m);
+        for (const TileXY t : ahead)
+          if (m.shared->warm.count({l, t.x, t.y})) warm.push_back(t);
+      }
+      std::vector<int> r;
+      if (still) warm.clear();  // the job's alone
+      if (!warm.empty()) {
+        start();  // the GPU runs the frame while the CPU stages these
+        r = m.gc->composite(in, l, warm, 0, left);
+        took.n += m.gc->stats().uploaded;
+      }
+      for (size_t i = 0, j = 0; i < ahead.size(); i++)  // the others to read ahead next, in order
+        if (j < warm.size() && warm[j] == ahead[i] && r[j++] != -2)
+          m.done.insert({l, ahead[i].x, ahead[i].y});
+        else
+          next.push_back(ahead[i]);
+      al = l;
     }
   }
+  if (m.dev) took.d = m.dev->mark();
 
   const bool need_top = L < top && !top_ready;
-  if ((f.pending = !ask.empty() || waited) || need_top) m.request(L, std::move(ask), need_top ? top : -1, in, std::move(late));
+  if ((f.pending = !ask.empty() || waited) || need_top || !next.empty()) {
+    m.warming = !next.empty();
+    m.request(L, std::move(ask), need_top ? top : -1, in, std::move(late), al, std::move(next), budget);
+  } else if (m.warming && in.stroke) {
+    m.job.submit([](const CancelToken&) {});  // the running one stops at its next lot
+    m.warming = false;
+  }
+  // At rest, room in the GPU's cache for the composite tiles of every level of the document (a motion's frames
+  // would else grow it: an allocation, a copy, the frame late).
+  if (m.dev && still && same && !in.stroke) {
+    int all = 0;
+    for (int l = 0; l <= top && all < (1 << 20); l++) all += ((texels(l, d.width) + S - 1) / S) * ((texels(l, d.height) + S - 1) / S);
+    m.gc->reserve(all);
+  }
 
   if (m.dev) {
+    if (took.head < 0) took.head = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begun).count();
     f.submission = m.dev->submit();
+    m.took.push_back(took);
     return f;
   }
   const Bufs b{table.data(), m.color.data(), srcs.data()};

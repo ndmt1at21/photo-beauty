@@ -39,8 +39,17 @@ uint slot(StructuredBuffer<uint> tables, int x, int y) {
     return tables[k.table + uint(ty) * k.tw + uint(tx)];
 }
 
-// Texel (x, y) as R, G, B, alpha, not premultiplied: GpuComposite's RGBA U16 (core/gpu_composite.h). In a tile the
-// pass lacks, the nearest of the pixel's own tile (its corner `own`) instead.
+// Texel (x, y) of the tile in slot e as R, G, B, alpha, not premultiplied: GpuComposite's RGBA U16
+// (core/gpu_composite.h).
+float4 read(StructuredBuffer<uint> tiles, uint e, int x, int y) {
+    if (e >= kEmpty) return float4(0);
+    uint mask = (1u << k.log2) - 1;
+    uint i = ((e << (2 * k.log2)) + ((uint(y) & mask) << k.log2) + (uint(x) & mask)) * 2;
+    uint w0 = tiles[i], w1 = tiles[i + 1];
+    return float4(unit16(w0 & 0xffff), unit16(w0 >> 16), unit16(w1 & 0xffff), unit16(w1 >> 16));
+}
+
+// Texel (x, y); in a tile the pass lacks, the nearest of the pixel's own tile (its corner `own`) instead.
 float4 texel(StructuredBuffer<uint> tiles, StructuredBuffer<uint> tables, int x, int y, int2 own) {
     uint e = slot(tables, x, y);
     if (e == kNone) {
@@ -49,11 +58,7 @@ float4 texel(StructuredBuffer<uint> tiles, StructuredBuffer<uint> tables, int x,
         y = clamp(y, own.y, own.y + last);
         e = slot(tables, x, y);
     }
-    if (e >= kEmpty) return float4(0);
-    uint mask = (1u << k.log2) - 1;
-    uint i = ((e << (2 * k.log2)) + ((uint(y) & mask) << k.log2) + (uint(x) & mask)) * 2;
-    uint w0 = tiles[i], w1 = tiles[i + 1];
-    return float4(unit16(w0 & 0xffff), unit16(w0 >> 16), unit16(w1 & 0xffff), unit16(w1 >> 16));
+    return read(tiles, e, x, y);
 }
 
 float4 premultiplied(float4 t) {
@@ -72,11 +77,24 @@ float4 sample(StructuredBuffer<uint> tiles, StructuredBuffer<uint> tables, float
     precise float wx = fu - float(x0), wy = fv - float(y0);
     int xa = clamp(x0, k.minx, k.maxx), xb = clamp(x0 + 1, k.minx, k.maxx);
     int ya = clamp(y0, k.miny, k.maxy), yb = clamp(y0 + 1, k.miny, k.maxy);
-    float4 t00 = premultiplied(texel(tiles, tables, xa, ya, own)), t10 = premultiplied(texel(tiles, tables, xb, ya, own));
-    float4 t01 = premultiplied(texel(tiles, tables, xa, yb, own)), t11 = premultiplied(texel(tiles, tables, xb, yb, own));
+    // The four in one tile this pass has (most pixels): its slot read once, as each texel() would find it.
+    uint e = (xa >> k.log2) == (xb >> k.log2) && (ya >> k.log2) == (yb >> k.log2) ? slot(tables, xa, ya) : kNone;
+    float4 t00, t10, t01, t11;
+    if (e != kNone) {
+        t00 = premultiplied(read(tiles, e, xa, ya));
+        t10 = premultiplied(read(tiles, e, xb, ya));
+        t01 = premultiplied(read(tiles, e, xa, yb));
+        t11 = premultiplied(read(tiles, e, xb, yb));
+    } else {
+        t00 = premultiplied(texel(tiles, tables, xa, ya, own));
+        t10 = premultiplied(texel(tiles, tables, xb, ya, own));
+        t01 = premultiplied(texel(tiles, tables, xa, yb, own));
+        t11 = premultiplied(texel(tiles, tables, xb, yb, own));
+    }
     precise float w00 = (1 - wx) * (1 - wy), w10 = wx * (1 - wy), w01 = (1 - wx) * wy, w11 = wx * wy;
     precise float4 p = t00 * w00 + t10 * w10 + t01 * w01 + t11 * w11;
     if (!(p.a > 0)) return float4(0);
+    if (p.a == 1) return p;  // what the CPU's division by 1 gives
     precise float4 c = float4(p.rgb / p.a, p.a);
     return c;
 }

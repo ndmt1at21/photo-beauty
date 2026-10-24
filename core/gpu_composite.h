@@ -47,6 +47,9 @@ class GpuComposite {
   // Another buffer after a composite() that grew it.
   gpu::Buffer& output() const;
   int output_tiles() const;  // slots in output()
+  // Room for `tiles` composite tiles from now on (up to the quarter of the budget they have): for a frame at rest to
+  // take the time a store growing takes (an allocation, the copy of what it held) rather than a frame of a motion.
+  void reserve(int tiles);
   // Device memory held, which the device counts in K1's tile budget where it is RAM (gpu.h): integrated GPUs (the Iris
   // Xe) take it from there. What a store held before it grew is freed once the copy ran, not kept for reuse.
   size_t bytes() const;
@@ -59,6 +62,7 @@ class GpuComposite {
     int layers = 0;      // layer steps the GPU composited: the layer tiles it read, solid ones too
     int cpu = 0;         // output tiles from composite_tile()
     int dispatches = 0;
+    double sent_ms = 0;  // CPU time staging and filling the uploads (V2d's upload budget)
   };
   Stats stats() const;
 

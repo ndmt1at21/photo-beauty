@@ -5,9 +5,11 @@
 #include "gpu_composite.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <list>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,6 +29,7 @@ constexpr size_t kPixels = size_t(S) * S;
 constexpr size_t kOutBytes = kPixels * 8;     // an RGBA U16 tile
 constexpr size_t kBelowBytes = kPixels * 16;  // an accumulator: premultiplied float R, G, B, alpha
 constexpr int kMaxDepth = 10;                 // composite.slang's: groups open at once on the GPU
+constexpr size_t kLot = size_t(32) << 20;     // staging between two submits, as Device::upload() keeps it
 
 // composite.slang's push constants and buffers.
 struct Consts {
@@ -89,6 +92,9 @@ class Slots {
     }
   }
   bool has(const Key& key) const { return index_.count(key) != 0; }
+  void drop(int s) {  // s holds nothing from now on
+    if (held_[size_t(s)]) index_.erase(keys_[size_t(s)]), held_[size_t(s)] = false;
+  }
   int held() const { return int(index_.size()); }  // slots holding a key
   int find(const Key& key, uint64_t stamp) {  // the slot holding key, used now; -1 if none
     const auto it = index_.find(key);
@@ -134,7 +140,7 @@ struct Store {
 using Keys = std::map<std::vector<uint64_t>, int>;
 
 // A buffer of at least `bytes`, grown by doubling.
-void reserve(gpu::Device& dev, gpu::BufferPtr& buf, size_t& cap, size_t bytes) {
+void at_least(gpu::Device& dev, gpu::BufferPtr& buf, size_t& cap, size_t bytes) {
   if (buf && cap >= bytes) return;
   cap = std::max<size_t>(cap, 4096);
   while (cap < bytes) cap *= 2;
@@ -174,8 +180,20 @@ struct GpuComposite::Impl {
   std::vector<Job> jobs;
   std::vector<Entry> entries;
   std::vector<std::pair<int, std::vector<uint64_t>>> keys, below_keys;
+  struct Up {  // a layer tile going into atlas slot `slot`, `bytes` of it
+    TilePtr tile;
+    int slot;
+    size_t bytes;
+  };
+  std::vector<Up> ups;           // the batch's, sent before its dispatch
   uint64_t batch = 1, call = 0;  // stamps
   Stats stats;
+  // The cache's keys of the tiles planned for `planned_doc` (by level and place; empty: transparent), so that a tile the
+  // cache has needs no plan: a view shows the same document frame after frame (V2d). Frames with a stroke plan anew.
+  // A mip tile built again since (the mip cache let it go) has a new id but the same pixels: the key stays good.
+  static constexpr size_t kPlanned = 8192;
+  std::weak_ptr<const DocState> planned_doc;
+  std::unordered_map<uint64_t, std::vector<uint64_t>> planned;
 
   explicit Impl(gpu::Device& d) : dev(d) {}
 
@@ -269,16 +287,45 @@ struct GpuComposite::Impl {
     return n;
   }
 
-  // The atlas slot holding t (`bytes` of it), uploaded if it was not there; -1 when the batch uses every slot.
-  int resident(const Tile& t, size_t bytes) {
-    int s = atlas.slots.find(t.id(), batch);
+  // The atlas slot holding t (`bytes` of it), to upload with the batch if it was not there; -1 when the batch uses every
+  // slot.
+  int resident(const TilePtr& t, size_t bytes) {
+    int s = atlas.slots.find(t->id(), batch);
     if (s >= 0 || (s = atlas.slots.take(batch)) < 0) return s;
-    PROFILE_ZONE("gpu_composite_upload");
-    const Pin pin = t.pin();
-    dev.upload(*atlas.buf, pin.data(), bytes, size_t(s) * atlas.size);
-    atlas.slots.put(s, t.id());
+    atlas.slots.put(s, t->id());
+    ups.push_back({t, s, bytes});
     stats.uploaded++;
     return s;
+  }
+
+  // The batch's uploads: staged, then filled on the pool's threads (each tile back in RAM first: zstd, scratch), some
+  // 32 MB at a time, each lot but the last submitted, so that the GPU copies it while the next one fills. Slots that
+  // did not fill hold nothing.
+  void send() {
+    PROFILE_ZONE("gpu_composite_upload");
+    const auto t0 = std::chrono::steady_clock::now();
+    for (size_t at = 0; at < ups.size();) {
+      const size_t from = at;
+      std::vector<void*> to;
+      for (size_t bytes = 0; at < ups.size() && (at == from || bytes + ups[at].bytes <= kLot); bytes += ups[at++].bytes)
+        to.push_back(dev.stage(*atlas.buf, ups[at].bytes, size_t(ups[at].slot) * atlas.size));
+      try {
+        parallel_for(int(to.size()), [&](int begin, int end) {
+          for (int i = begin; i < end; i++) {
+            const Up& u = ups[from + size_t(i)];
+            const Pin pin = u.tile->pin();
+            std::memcpy(to[size_t(i)], pin.data(), u.bytes);
+          }
+        });
+      } catch (...) {
+        for (const Up& u : ups) atlas.slots.drop(u.slot);
+        ups.clear();
+        throw;
+      }
+      if (at < ups.size()) dev.submit();
+    }
+    ups.clear();
+    stats.sent_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
   }
 
   // The entries of the steps the GPU runs for t, their tiles resident in the atlas: from the accumulators the cache
@@ -301,14 +348,14 @@ struct GpuComposite::Impl {
         const int at[4] = {0, rgb ? 1 : 0, rgb ? 2 : 0, format.channels - 1};
         for (int c = 0; c < 4; c++) e.solid[c] = float(double(v[size_t(at[c])]) * unit);
       } else if (step.tile) {
-        const int s = resident(*step.tile, atlas.size);
+        const int s = resident(step.tile, atlas.size);
         if (s < 0) return entries.resize(first), false;
         e.slot = uint32_t(s);
       }  // else transparent, where the stroke paints
       if (step.cover && step.cover->is_solid()) {
         e.cover = kSolid, e.cover_solid = float(double(step.cover->value()[0]) * (1.0 / 65535));
       } else if (step.cover) {
-        const int s = resident(*step.cover, kPixels * 2);
+        const int s = resident(step.cover, kPixels * 2);
         if (s < 0) return entries.resize(first), false;
         e.cover = uint32_t(s);
       }
@@ -320,8 +367,9 @@ struct GpuComposite::Impl {
   // Records the batch's dispatch: every tile of it at once.
   void flush() {
     if (jobs.empty()) return;
-    reserve(dev, job_buf, job_cap, jobs.size() * sizeof(Job));
-    reserve(dev, entry_buf, entry_cap, entries.size() * sizeof(Entry));
+    send();
+    at_least(dev, job_buf, job_cap, jobs.size() * sizeof(Job));
+    at_least(dev, entry_buf, entry_cap, entries.size() * sizeof(Entry));
     dev.upload(*job_buf, jobs.data(), jobs.size() * sizeof(Job));
     dev.upload(*entry_buf, entries.data(), entries.size() * sizeof(Entry));
     dev.dispatch(*kernel,
@@ -362,6 +410,7 @@ GpuComposite::~GpuComposite() = default;
 
 gpu::Buffer& GpuComposite::output() const { return impl_->out.buf ? *impl_->out.buf : *impl_->none; }
 int GpuComposite::output_tiles() const { return impl_->out.slots.size(); }
+void GpuComposite::reserve(int tiles) { impl_->fit(impl_->out, std::min(tiles, impl_->out.cap)); }
 size_t GpuComposite::bytes() const { return impl_->bytes(); }
 GpuComposite::Stats GpuComposite::stats() const { return impl_->stats; }
 
@@ -374,7 +423,8 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   m.set_stroke(in);
   m.stats = {};
   m.call++;
-  m.batch++, m.jobs.clear(), m.entries.clear(), m.keys.clear(), m.below_keys.clear();  // what a call that threw left
+  for (const Impl::Up& u : m.ups) m.atlas.slots.drop(u.slot);  // what a call that threw left
+  m.batch++, m.jobs.clear(), m.entries.clear(), m.keys.clear(), m.below_keys.clear(), m.ups.clear();
 
   // Each tile's plan, and the keys of what the caches have; what the stores lack for the rest.
   std::vector<int> slots(tiles.size(), -1);
@@ -382,14 +432,29 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   int waiting = 0;                 // optional tiles past `most`
   const bool budgeted = most > 0;  // once spent, the rest wait unplanned: plans cost too
   bool spent = false;              // some tile took of `most`: a tile of more layers than it still comes in turn
+  const bool reuse = !in.stroke;   // keys planned before stand
+  if (m.planned_doc.lock() != in.doc || m.planned.size() > Impl::kPlanned) m.planned.clear(), m.planned_doc = in.doc;
   for (size_t i = 0; i < tiles.size(); i++) {
+    const uint64_t at = uint64_t(level) << 56 | uint64_t(uint32_t(tiles[i].y)) << 28 | uint32_t(tiles[i].x);
+    const auto known = reuse ? m.planned.find(at) : m.planned.end();
+    if (known != m.planned.end()) {
+      if (known->second.empty()) continue;  // transparent
+      if ((slots[i] = m.out.slots.find(known->second, m.call)) >= 0) {
+        m.stats.cached++;
+        continue;
+      }
+    }
     if (i >= optional && budgeted && most <= 0) {
       slots[i] = -2, waiting++;
       continue;
     }
     Todo t{i, composite_plan(in, level, tiles[i].x, tiles[i].y)};  // the tiles composite_tile() reads
-    if (t.plan.steps.empty()) continue;
+    if (t.plan.steps.empty()) {
+      if (reuse) m.planned[at].clear();
+      continue;
+    }
     t.key = m.key(t.plan, 0, t.plan.steps.size());
+    if (reuse) m.planned[at] = t.key;
     if ((slots[i] = m.out.slots.find(t.key, m.call)) >= 0) {
       m.stats.cached++;
       continue;
@@ -407,20 +472,12 @@ std::vector<int> GpuComposite::composite(const RenderInput& in, int level, const
   }
   int levels = 0;                      // accumulators the cache below the stroke's layer gives or takes
   std::unordered_set<uint64_t> reads;  // the atlas's tiles the GPU reads
-  std::vector<const Tile*> cold;       // of them, those it lacks
   for (const Todo& t : todo) {
     if (t.plan.depth > kMaxDepth) continue;
     levels += t.levels;
     for (size_t i = t.load.empty() ? 0 : t.at; i < t.plan.steps.size(); i++)
       for (const Tile* tile : {t.plan.steps[i].tile.get(), t.plan.steps[i].cover.get()})
-        if (tile && !tile->is_solid() && reads.insert(tile->id()).second && !m.atlas.slots.has(tile->id()))
-          cold.push_back(tile);
-  }
-  {  // their pixels back in RAM on the pool's threads first (zstd, scratch), not one by one as they go up below
-    PROFILE_ZONE("gpu_composite_warm");
-    parallel_for(int(cold.size()), [&](int begin, int end) {
-      for (int i = begin; i < end; i++) cold[size_t(i)]->pin();
-    });
+        if (tile && !tile->is_solid()) reads.insert(tile->id());
   }
   // Room for those waiting too, as they come; and in a call where some wait (a view change, V2c) for what it holds:
   // it grows to its cap before any tile goes, so that the levels a frame stands in from and the views it comes back

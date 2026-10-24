@@ -146,7 +146,12 @@ float separable(uint mode, float cb, float cs) {
     }
 }
 
-float unpremultiply(float c_p, float a) { return a > 0 ? (c_p < a ? div(c_p, a) : 1) : 0; }
+// Over an opaque backdrop (a photo's, as most pixels are) a == 1: the CPU's c_p / a is c_p exactly, which div()
+// gives too, after its steps.
+float unpremultiply(float c_p, float a) {
+    if (a == 1) return c_p < 1 ? c_p : 1;
+    return a > 0 ? (c_p < a ? div(c_p, a) : 1) : 0;
+}
 
 float over(float cb_p, float ab, float cs, float as, float b) {
     precise float r = (1 - as) * cb_p + as * ((1 - ab) * cs + ab * b);

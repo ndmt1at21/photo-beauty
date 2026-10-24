@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include "check.h"
@@ -224,7 +225,8 @@ struct Composite {
 // An sRGB document on an sRGB screen: past the canvas the pasteboard; on it the composite at the view's level, nearest
 // from 100 % up, bilinear below on premultiplied texels within the canvas, over the checkerboard (its squares from the
 // document's corner): an opaque texel's own 8-bit values where it is alone (nearest, or bilinear on its centre), else
-// within a level of the exact mix.
+// within a level of the exact mix. The bilinear views (50 %, 60 %) mix four texels of one tile and, along tiles' edges
+// (the 60 % one's row of tiles at its bottom), of two or four tiles.
 void check_srgb(gpu::Device* dev) {
   Look look;
   look.pasteboard = {30, 40, 50}, look.light = {250, 240, 230}, look.dark = {100, 110, 120};
@@ -355,7 +357,8 @@ void check_profiles(gpu::Device* dev) {
 }
 
 // The GPU's frames against the CPU's: every kind of document, fit to the frame, 50 %, 100 %, 800 %, turned, at a
-// device pixel ratio of 2; within a level everywhere.
+// device pixel ratio of 2; within a level everywhere. Below 100 % (bilinear) each frame has pixels whose four texels
+// lie in one tile (present.slang reads its slot once) and pixels whose texels straddle tiles' edges (each its own).
 void check_gpu_cpu(gpu::Device& dev) {
   const View views[] = {view(750, 550, 0.2),  view(600, 400, 0.5),       view(900, 700, 1),
                         view(1300, 900, 8),   view(800, 500, 0.7, 30),   view(700, 600, 1.5, 200),
@@ -570,6 +573,71 @@ void check_wait(gpu::Device* dev, std::vector<Image>* first) {
   clear_mips();
 }
 
+// The upload budget: as many as fit in kFrameMs beside the rest of the frame, by moving averages of the frames' times:
+// it settles there, within its bounds; a frame of few uploads tells nothing of their cost, its other time counts; one
+// long frame (a store growing) moves it as twice the mean would, and it comes back.
+void check_budget() {
+  using B = UploadBudget;
+  const auto settled = [](double other, double each) {
+    B b;
+    for (int i = 0; i < 100; i++) b.took(other, 40 * each, 40);
+    return b;
+  };
+  const B b = settled(4, 0.1);
+  CHECK(std::abs(b.next() - (B::kFrameMs - 4) / 0.1) <= 1);
+  B few = b, slow = b, spike = b;
+  few.took(4, 5 * 2.0, 5);  // 5 uploads of 2 ms each: fewer than kMin
+  CHECK(few.next() == b.next());
+  slow.took(4.8, 40 * 0.1, 40);
+  CHECK(slow.next() < b.next());
+  spike.took(400, 40 * 0.1, 40);
+  CHECK(spike.next() >= (B::kFrameMs - 4 - 0.25 * (4 + 1)) / 0.1 - 1 && spike.next() < b.next());
+  for (int i = 0; i < 30; i++) spike.took(4, 40 * 0.1, 40);
+  CHECK(std::abs(spike.next() - b.next()) <= 1);
+  CHECK(settled(B::kFrameMs, 0.1).next() == B::kMin && settled(0, 0.001).next() == B::kMax);
+}
+
+// Zooming in reads ahead: frames showing only tiles of level 1 composited before composite level 0's about the
+// pointer within the budget, once the Visible job brought their layer tiles back into RAM; the frame that gets there
+// shows them at once, where a jump straight there shows all but the budget's from level 1. A view at rest has the job
+// bring in those of a zoom in about its centre: a zoom's first frame reads them ahead.
+void check_ahead(gpu::Device& dev) {
+  const RenderInput in{sample({Depth::U16, 4})};  // 1500 x 1100
+  const View top = view(750, 550, 0.1, 0, 640, 480), from = view(750, 550, 0.3, 0, 640, 480);
+  const View there = view(750, 550, 0.55, 0, 640, 480);  // level 0's tiles 0..5 x 0..3
+  // From `from` sharp, `rest` ms at rest there after one more frame, then `zooms` frames zooming in on the way at
+  // `budget` uploads a frame, then the frame of `there`.
+  const auto arrive = [&](int rest, int zooms, int budget) {
+    clear_mips();
+    Ready r;
+    Presenter p(&dev, r.fn());
+    p.set_upload_budget(budget);
+    settle(p, r, &dev, in, top);
+    settle(p, r, &dev, in, from);
+    if (rest) {
+      shoot(p, &dev, in, from);  // the view at rest
+      std::this_thread::sleep_for(std::chrono::milliseconds(rest));
+    }
+    for (int i = 0; i < zooms; i++) {
+      Presenter::Frame f;
+      shoot(p, &dev, in, view(750, 550, 0.32 + 0.03 * i, 0, 640, 480), {}, &f);
+      CHECK(f.coarser == 0);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));  // the job brings the next tiles' into RAM
+    }
+    Presenter::Frame f;
+    shoot(p, &dev, in, there, {}, &f);
+    return f;
+  };
+  const Presenter::Frame zoomed = arrive(0, 6, 4), jumped = arrive(0, 0, 4);
+  const Presenter::Frame rested = arrive(100, 1, 16), leapt = arrive(0, 0, 16);
+  std::printf("present: zooming in, %d of %d tiles coarse on arrival, %d after a jump; from rest in a frame %d, a jump %d\n",
+              zoomed.coarser, zoomed.tiles, jumped.coarser, rested.coarser, leapt.coarser);
+  CHECK(zoomed.tiles == 24 && jumped.tiles == 24 && jumped.coarser >= 20);
+  CHECK(zoomed.coarser + 6 <= jumped.coarser);
+  CHECK(rested.coarser + 5 <= leapt.coarser);
+  clear_mips();
+}
+
 void check_throws(gpu::Device* dev) {
   Presenter p(dev);
   std::vector<uint32_t> px(64 * 64);
@@ -600,6 +668,7 @@ void check_throws(gpu::Device* dev) {
 }  // namespace
 
 TEST(test_present) {
+  check_budget();
   check_throws(nullptr);
   check_srgb(nullptr);
   check_profiles(nullptr);
@@ -621,5 +690,6 @@ TEST(test_present) {
   check_wait(dev.get(), &gpu_first);
   for (size_t i = 0; i < cpu_first.size(); i++) CHECK(max_diff(cpu_first[i], gpu_first[i]) <= 1);  // tiles waiting alike
   check_gpu_cpu(*dev);
+  check_ahead(*dev);
   clear_mips();
 }
