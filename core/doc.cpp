@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <limits>
 #include <locale>
@@ -42,7 +43,8 @@ constexpr BoolKey kBools[] = {{"visible", &LayerProps::visible},
                               {"lockAll", &LayerProps::lock_all},
                               {"clip", &LayerProps::clip},
                               {"maskOff", &LayerProps::mask_off},
-                              {"maskLinked", &LayerProps::mask_linked}};
+                              {"maskLinked", &LayerProps::mask_linked},
+                              {"background", &LayerProps::background}};
 // Channels' check boxes by JSON key, as LayerStyleDialog names them.
 struct ChannelKey {
   const char* key;
@@ -83,6 +85,9 @@ std::string to_json(const LayerProps& p) {
     if (p.*k.field != def.*k.field) s << ",\"" << k.key << "\":" << p.*k.field;
   for (const BoolKey& k : kBools)
     if (p.*k.field != def.*k.field) s << ",\"" << k.key << "\":" << (p.*k.field ? "true" : "false");
+  if (p.link != def.link) s << ",\"link\":" << p.link;
+  if (p.color != def.color)  // "" for none known, which props_from_json() refuses
+    s << ",\"color\":\"" << (size_t(p.color) < std::size(kLabelNames) ? kLabelNames[size_t(p.color)] : "") << '"';
   // Blend If: the channels off their default, both sliders each; Channels: the boxes off.
   const auto slider = [&](const char* key, const std::array<uint8_t, 4>& v) {
     s << '"' << key << "\":[" << int(v[0]) << ',' << int(v[1]) << ',' << int(v[2]) << ',' << int(v[3]) << ']';
@@ -178,6 +183,14 @@ std::optional<LayerProps> props_from(const nlohmann::json& j) {
       const auto n = std::find(std::begin(kBlendNames), std::end(kBlendNames), name);
       if (n == std::end(kBlendNames)) return std::nullopt;
       p.blend = Blend(n - std::begin(kBlendNames));
+    } else if (key == "link") {
+      if (!v.is_number_unsigned() || v.get<uint64_t>() > std::numeric_limits<uint32_t>::max()) return std::nullopt;
+      p.link = uint32_t(v.get<uint64_t>());
+    } else if (key == "color") {  // null: none, as the mock writes it
+      const std::string name = v.is_null() ? "none" : v.is_string() ? v.get<std::string>() : "";
+      const auto n = std::find(std::begin(kLabelNames), std::end(kLabelNames), name);
+      if (n == std::end(kLabelNames)) return std::nullopt;
+      p.color = Label(n - std::begin(kLabelNames));
     } else if (key == "blendIf") {
       if (!blend_if_from(v, p.blend_if)) return std::nullopt;
     } else if (key == "channels") {
@@ -197,6 +210,61 @@ std::optional<LayerProps> props_from(const nlohmann::json& j) {
 
 std::optional<LayerProps> props_from_json(const std::string& text) {
   return props_from(nlohmann::json::parse(text, nullptr, false));  // discarded, not an object, when malformed
+}
+
+std::string to_json(const ChannelProps& p) {
+  std::ostringstream s;
+  s.imbue(std::locale::classic());
+  s.precision(9);
+  char color[8];
+  std::snprintf(color, sizeof color, "#%02x%02x%02x", p.color[0], p.color[1], p.color[2]);
+  s << "{\"name\":" << dump(p.name) << ",\"color\":\"" << color << "\",\"opacity\":" << p.opacity
+    << ",\"masked\":" << (p.masked ? "true" : "false") << ",\"visible\":" << (p.visible ? "true" : "false") << '}';
+  return s.str();
+}
+
+namespace {
+
+// "#rrggbb", either case.
+bool color_from(const std::string& s, std::array<uint8_t, 3>& to) {
+  const auto digit = [](char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+  };
+  if (s.size() != 7 || s[0] != '#') return false;
+  for (size_t i = 0; i < 3; i++) {
+    const int hi = digit(s[1 + 2 * i]), lo = digit(s[2 + 2 * i]);
+    if (hi < 0 || lo < 0) return false;
+    to[i] = uint8_t(hi * 16 + lo);
+  }
+  return true;
+}
+
+std::optional<ChannelProps> channel_props_from(const nlohmann::json& j) {
+  if (!j.is_object()) return std::nullopt;
+  ChannelProps p;
+  for (const auto& [key, v] : j.items()) {
+    if (key == "name") {
+      if (!v.is_string()) return std::nullopt;
+      p.name = v.get<std::string>();
+    } else if (key == "color") {
+      if (!v.is_string() || !color_from(v.get_ref<const std::string&>(), p.color)) return std::nullopt;
+    } else if (key == "opacity") {
+      if (!v.is_number()) return std::nullopt;
+      p.opacity = float(std::clamp(v.get<double>(), 0., 1.));
+    } else if (key == "masked" || key == "visible") {
+      if (!v.is_boolean()) return std::nullopt;
+      (key == "masked" ? p.masked : p.visible) = v.get<bool>();
+    }
+  }
+  return p;
+}
+
+}  // namespace
+
+std::optional<ChannelProps> channel_props_from_json(const std::string& text) {
+  return channel_props_from(nlohmann::json::parse(text, nullptr, false));
 }
 
 namespace {
@@ -316,7 +384,7 @@ bool is_object(const std::string& text) {
 }
 
 // p for a layer of `kind`. `was`: the props the layer has, whose JSON objects need no second look (a slider dragged
-// on a layer with a 3D LUT parses nothing).
+// on a layer with a 3D LUT parses nothing). The Background's place is its command's to check.
 const LayerProps& checked(const LayerProps& p, Kind kind, const LayerProps* was = nullptr) {
   if (size_t(kind) >= std::size(kKindNames)) throw bad("no such kind of layer");
   if (size_t(p.blend) >= std::size(kBlendNames)) throw bad("no such blend mode");
@@ -326,11 +394,52 @@ const LayerProps& checked(const LayerProps& p, Kind kind, const LayerProps* was 
     throw bad("mask density goes 0..1, feather 0..1000 px");
   for (const BlendRange& r : p.blend_if)
     if (!ordered(r.layer) || !ordered(r.under)) throw bad("Blend If's sliders out of order");
+  if (size_t(p.color) >= std::size(kLabelNames)) throw bad("no such colour label");
+  if (p.background && (kind != Kind::Pixel || p.blend != Blend::Normal || p.opacity != 1 || p.fill != 1))
+    throw bad("the Background is a pixel layer in Normal at full opacity and fill");
   for (const ObjectKey& k : kObjects) {
     const JsonPtr& j = p.*k.field;
     if (j && !(was && was->*k.field == j) && !is_object(*j)) throw bad(std::string(k.key) + " is not a JSON object");
   }
   return p;
+}
+
+// An operation's JSON (SetPixels, SetState): an object or none.
+void check_action(const JsonPtr& action) {
+  if (action && !is_object(*action)) throw bad("an action that is not a JSON object");
+}
+
+// The Background, if d has one: the bottom layer of its root.
+const Layer* background_of(const DocState& d) {
+  const auto& bottom = d.root->children;
+  return !bottom.empty() && bottom[0]->props.background ? bottom[0].get() : nullptr;
+}
+// What may become the Background, a layer at place p (its props' kind, blend, opacity and fill checked) with mask m:
+// the bottom layer of the root, without a mask.
+void check_background(const DocState& d, const Place& p, const std::shared_ptr<const TileGrid>& m) {
+  if (p.parent != d.root.get() || p.index != 0) throw bad("the Background is the bottom layer of the root");
+  if (m) throw bad("the Background takes no mask");
+}
+
+// A selection's, Reselect's or an alpha channel's grid in d: one channel at its depth, 0 where empty, no tile wholly
+// past the canvas.
+void check_area(const DocState& d, const TileGrid& g, const char* what) {
+  if (g.format() != mask_format(d) || g.fill()[0] != 0)
+    throw bad(std::string(what) + " not in the document's mask format, or not 0 where empty");
+  const int64_t across = (int64_t(d.width) + kTileSize - 1) >> kTileLog2;
+  const int64_t down = (int64_t(d.height) + kTileSize - 1) >> kTileLog2;
+  for (const auto& [xy, t] : g.tiles())
+    if (xy.x < 0 || xy.y < 0 || xy.x >= across || xy.y >= down) throw bad(std::string(what) + " past the canvas");
+}
+
+const ChannelProps& checked(const ChannelProps& p) {
+  if (!(p.opacity >= 0 && p.opacity <= 1)) throw bad("a channel's opacity goes 0..1");
+  return p;
+}
+size_t channel_at(const DocState& d, ChannelId id) {  // its index in d.channels; throws when not there
+  for (size_t i = 0; i < d.channels.size(); i++)
+    if (d.channels[i].id == id) return i;
+  throw bad("no channel " + std::to_string(id));
 }
 
 void check_pixels(const DocState& d, const TileGrid& g) {
@@ -361,10 +470,11 @@ std::shared_ptr<const TileGrid> layer_mask(const DocState& d, std::shared_ptr<co
 }
 
 // l and everything in it again, under new ids from `next` on (each before what it holds), sharing their pixels,
-// masks and props' JSON.
+// masks, props' JSON and kept blocks; a copy of the Background is none.
 LayerPtr copy_layer(const Layer& l, LayerId& next) {
   auto c = std::make_shared<Layer>(l);
   c->id = next++;
+  c->props.background = false;
   for (LayerPtr& k : c->children) k = copy_layer(*k, next);
   return c;
 }
@@ -373,6 +483,9 @@ LayerPtr copy_layer(const Layer& l, LayerId& next) {
 void perform(const DocState& d, DocState& n, const AddLayer& c) {
   const Layer& parent = need_group(d, c.parent);
   if (c.index < 0 || size_t(c.index) > parent.children.size()) throw bad("no index " + std::to_string(c.index));
+  if (c.parent == 0 && c.index == 0 && background_of(d)) throw bad("nothing goes below the Background");
+  if (c.props.background && (c.parent != 0 || c.index != 0 || c.mask))
+    throw bad("the Background goes at the bottom of the root, without a mask");
   auto l = std::make_shared<Layer>();
   l->kind = c.kind;
   l->props = checked(c.props, c.kind);
@@ -419,6 +532,9 @@ void perform(const DocState& d, DocState& n, const MoveLayer& c) {
   if (locate(*l.layer, c.parent).layer) throw bad("a group inside itself");
   const size_t count = parent.children.size() - (l.parent->id == c.parent);
   if (c.index < 0 || size_t(c.index) > count) throw bad("no index " + std::to_string(c.index));
+  const bool bottom = c.parent == 0 && c.index == 0;  // the Background's place: it may only stay there
+  if ((*l.layer)->props.background ? !bottom : bottom && background_of(d))
+    throw bad((*l.layer)->props.background ? "the Background does not move" : "nothing goes below the Background");
   const LayerPtr moved = *l.layer;
   n.root = rebuilt(d, [&](const LayerPtr& x) -> std::optional<Layers> {
     if (x->id == c.layer) return Layers{};
@@ -430,6 +546,8 @@ void perform(const DocState& d, DocState& n, const MoveLayer& c) {
 void perform(const DocState& d, DocState& n, const GroupLayers& c) {
   const Layers top = top_level(d, c.layers);
   if (top.empty()) throw bad("no layers to group");
+  if (std::any_of(top.begin(), top.end(), [](const LayerPtr& l) { return l->props.background; }))
+    throw bad("the Background goes in no group");
   auto g = std::make_shared<Layer>();
   g->kind = Kind::Group;
   g->props = checked(c.props, Kind::Group);
@@ -462,8 +580,10 @@ void perform(const DocState& d, DocState& n, const Ungroup& c) {
 }
 
 void perform(const DocState& d, DocState& n, const SetProps& c) {
-  const Layer& l = **need(d, c.layer).layer;
+  const Place at = need(d, c.layer);
+  const Layer& l = **at.layer;
   const LayerProps& p = checked(c.props, l.kind, &l.props);
+  if (p.background) check_background(d, at, l.mask);  // Background from Layer (T31), or the Background still
   n.root = changed(d, c.layer, [&](Layer& x) { x.props = p; });
 }
 
@@ -471,6 +591,7 @@ void perform(const DocState& d, DocState& n, const SetPixels& c) {
   if ((*need(d, c.layer).layer)->kind != Kind::Pixel)
     throw bad("layer " + std::to_string(c.layer) + " is not a pixel layer");
   const auto pixels = layer_pixels(d, Kind::Pixel, c.pixels);
+  check_action(c.action);
   n.root = changed(d, c.layer, [&](Layer& l) { l.pixels = pixels; });
 }
 
@@ -488,20 +609,24 @@ void perform(const DocState& d, DocState& n, const SelectLayers& c) {
 }
 
 void perform(const DocState& d, DocState& n, const SetMask& c) {
-  need(d, c.layer);
+  const Place at = need(d, c.layer);
+  if (c.mask && (*at.layer)->props.background) throw bad("the Background takes no mask");
   const auto mask = layer_mask(d, c.mask);
   n.root = changed(d, c.layer, [&](Layer& l) { l.mask = mask; });
 }
 
 void perform(const DocState& d, DocState& n, const ReplaceLayer& c) {
-  const Layer& old = **need(d, c.layer).layer;
+  const Place at = need(d, c.layer);
+  const Layer& old = **at.layer;
   if (c.kind == Kind::Group) throw bad("ReplaceLayer makes no group");
   auto l = std::make_shared<Layer>();
   l->id = c.layer;
   l->kind = c.kind;
   l->props = checked(c.props, c.kind);
+  if (c.props.background) check_background(d, at, c.mask);
   l->pixels = layer_pixels(d, c.kind, c.pixels);
   l->mask = layer_mask(d, c.mask);
+  l->kept = c.kept;
   std::vector<LayerId> gone;  // a group's layers go with it
   for (const LayerPtr& k : old.children) collect(*k, gone);
   std::sort(gone.begin(), gone.end());
@@ -511,6 +636,68 @@ void perform(const DocState& d, DocState& n, const ReplaceLayer& c) {
   });
   const auto is_gone = [&](LayerId id) { return std::binary_search(gone.begin(), gone.end(), id); };
   n.selected.erase(std::remove_if(n.selected.begin(), n.selected.end(), is_gone), n.selected.end());
+}
+
+void perform(const DocState& d, DocState& n, const SetSelection& c) {
+  if (c.selection)
+    check_area(d, *c.selection, "a selection");
+  else if (d.selection)
+    n.reselect = d.selection;  // Deselect: for Reselect
+  n.selection = c.selection;
+}
+
+void perform(const DocState& d, DocState& n, const AddChannel& c) {
+  if (c.index < 0 || size_t(c.index) > d.channels.size()) throw bad("no channel index " + std::to_string(c.index));
+  if (c.grid) check_area(d, *c.grid, "a channel");
+  Channel added{n.next_id++, checked(c.props), c.grid ? c.grid : std::make_shared<const TileGrid>(mask_format(d))};
+  n.channels.insert(n.channels.begin() + std::ptrdiff_t(c.index), std::move(added));
+}
+
+void perform(const DocState& d, DocState& n, const DeleteChannels& c) {
+  std::vector<ChannelId> gone = c.channels;
+  std::sort(gone.begin(), gone.end());
+  gone.erase(std::unique(gone.begin(), gone.end()), gone.end());
+  for (const ChannelId id : gone) channel_at(d, id);
+  n.channels.erase(std::remove_if(n.channels.begin(), n.channels.end(),
+                                  [&](const Channel& x) { return std::binary_search(gone.begin(), gone.end(), x.id); }),
+                   n.channels.end());
+}
+
+void perform(const DocState& d, DocState& n, const SetChannel& c) {
+  const size_t at = channel_at(d, c.channel);
+  if (c.grid) check_area(d, *c.grid, "a channel");
+  Channel& x = n.channels[at];
+  x.props = checked(c.props);
+  if (c.grid) x.grid = c.grid;
+}
+
+void perform(const DocState& d, DocState& n, const MoveChannel& c) {
+  const size_t at = channel_at(d, c.channel);
+  if (c.index < 0 || size_t(c.index) >= d.channels.size()) throw bad("no channel index " + std::to_string(c.index));
+  Channel moved = std::move(n.channels[at]);
+  n.channels.erase(n.channels.begin() + std::ptrdiff_t(at));
+  n.channels.insert(n.channels.begin() + std::ptrdiff_t(c.index), std::move(moved));
+}
+
+void perform(const DocState&, DocState& n, const SetGuides& c) {
+  for (const Guide& g : c.guides)
+    if (!std::isfinite(g.position)) throw bad("a guide at no position");
+  n.guides = c.guides;
+}
+
+void perform(const DocState&, DocState& n, const SetResolution& c) {
+  if (!(c.ppi > 0) || !std::isfinite(c.ppi)) throw bad("a resolution not above 0");
+  n.ppi = c.ppi;
+}
+
+// SetState's: `to` itself, made from doc.
+DocPtr state_from(const DocState& doc, const SetState& c) {
+  if (c.from.get() != &doc) throw bad("SetState from another state: the document changed since its job began");
+  if (!c.to) throw bad("SetState without a state");
+  check_action(c.action);
+  validate(*c.to);
+  if (c.to->next_id < doc.next_id) throw bad("SetState would give ids again");
+  return c.to;
 }
 
 }  // namespace
@@ -536,9 +723,14 @@ const Layer* find_layer(const DocState& d, LayerId id) {
 DocPtr run(const DocState& doc, const Command& cmd) {
   PROFILE_ZONE("doc_run");
   if (!doc.root) throw bad("a document without its root");
+  if (const auto* s = std::get_if<SetState>(&cmd)) return state_from(doc, *s);
   auto next = std::make_shared<DocState>(doc);
-  std::visit([&](const auto& c) { perform(doc, *next, c); }, cmd);
-  if (next->next_id < doc.next_id) throw bad("out of layer ids");  // wrapped: only a damaged file's next_id gets there
+  std::visit(
+      [&](const auto& c) {
+        if constexpr (!std::is_same_v<std::decay_t<decltype(c)>, SetState>) perform(doc, *next, c);
+      },
+      cmd);
+  if (next->next_id < doc.next_id) throw bad("out of ids");  // wrapped: only a damaged file's next_id gets there
   return next;
 }
 
@@ -546,12 +738,14 @@ void validate(const DocState& d) {
   if (d.width < 1 || d.height < 1) throw bad("a canvas without pixels");
   if ((d.mode != Mode::Rgb && d.mode != Mode::Gray) || (d.depth != Depth::U8 && d.depth != Depth::U16))
     throw bad("no such mode or depth");
+  if (!(d.ppi > 0) || !std::isfinite(d.ppi)) throw bad("a resolution not above 0");
   if (!d.root || d.root->id != 0 || d.root->kind != Kind::Group || d.root->pixels || d.root->mask)
     throw bad("no root group");
   if (d.next_id == 0) throw bad("next_id 0, the root's");
   std::vector<LayerId> ids;
   const std::function<void(const Layer&)> walk = [&](const Layer& g) {
-    for (const LayerPtr& l : g.children) {
+    for (size_t i = 0; i < g.children.size(); i++) {
+      const LayerPtr& l = g.children[i];
       if (!l) throw bad("a null layer");
       if (l->id == 0 || l->id >= d.next_id) throw bad("layer id " + std::to_string(l->id) + " not in 1 to next_id");
       checked(l->props, l->kind);
@@ -564,6 +758,7 @@ void validate(const DocState& d) {
       if (l->kind != Kind::Group && !l->children.empty())
         throw bad("layers inside layer " + std::to_string(l->id) + ", not a group");
       if (l->mask) check_mask(d, *l->mask);
+      if (l->props.background) check_background(d, {&l, &g, i}, l->mask);
       ids.push_back(l->id);
       walk(*l);
     }
@@ -578,19 +773,41 @@ void validate(const DocState& d) {
       !std::all_of(selected.begin(), selected.end(),
                    [&](LayerId id) { return std::binary_search(ids.begin(), ids.end(), id); }))
     throw bad("a selection of layers not there, or twice");
+  // P1 (A40): the selection, Reselect's, the alpha channels, the guides.
+  if (d.selection) check_area(d, *d.selection, "the selection");
+  if (d.reselect) check_area(d, *d.reselect, "Reselect's selection");
+  std::vector<ChannelId> channels;
+  for (const Channel& c : d.channels) {
+    if (c.id == 0 || c.id >= d.next_id) throw bad("channel id " + std::to_string(c.id) + " not in 1 to next_id");
+    if (!c.grid) throw bad("channel " + std::to_string(c.id) + " without its grid");
+    check_area(d, *c.grid, "a channel");
+    checked(c.props);
+    channels.push_back(c.id);
+  }
+  std::sort(channels.begin(), channels.end());
+  if (const auto twice = std::adjacent_find(channels.begin(), channels.end()); twice != channels.end())
+    throw bad("channel id " + std::to_string(*twice) + " twice");
+  for (const Guide& g : d.guides)
+    if (!std::isfinite(g.position)) throw bad("a guide at no position");
 }
 
 std::string to_json(const Command& cmd) {
   std::ostringstream s;
   s.imbue(std::locale::classic());
-  const auto ids = [&](const std::vector<LayerId>& v) {
-    s << ",\"layers\":[";
+  const auto list = [&](const char* key, const std::vector<uint32_t>& v) {
+    s << ",\"" << key << "\":[";
     for (size_t i = 0; i < v.size(); i++) s << (i ? "," : "") << v[i];
     s << ']';
   };
+  const auto ids = [&](const std::vector<LayerId>& v) { list("layers", v); };
   const auto kind = [&](Kind k) {  // "" for none known, which command_from_json() refuses
     s << ",\"kind\":\"" << (size_t(k) < std::size(kKindNames) ? kKindNames[size_t(k)] : "") << '"';
   };
+  const auto action = [&](const JsonPtr& a) {
+    if (a) s << ",\"action\":" << *a;
+  };
+  const auto number = [&](double x) { s << dump(nlohmann::json(x)); };  // the shortest that reads back the same
+  const auto grid = [&](const std::shared_ptr<const TileGrid>& g) { s << ",\"grid\":" << (g ? "true" : "false"); };
   std::visit(
       [&](const auto& c) {
         using T = std::decay_t<decltype(c)>;
@@ -616,16 +833,44 @@ std::string to_json(const Command& cmd) {
           s << "{\"op\":\"setProps\",\"layer\":" << c.layer << ",\"props\":" << to_json(c.props);
         } else if constexpr (std::is_same_v<T, SetPixels>) {
           s << "{\"op\":\"setPixels\",\"layer\":" << c.layer;
+          action(c.action);
         } else if constexpr (std::is_same_v<T, SelectLayers>) {
           s << "{\"op\":\"selectLayers\"";
           ids(c.layers);
         } else if constexpr (std::is_same_v<T, SetMask>) {  // whether there is one: its grid is left out
           s << "{\"op\":\"setMask\",\"layer\":" << c.layer << ",\"mask\":" << (c.mask ? "true" : "false");
-        } else {
-          static_assert(std::is_same_v<T, ReplaceLayer>, "a command to_json() does not write");
+        } else if constexpr (std::is_same_v<T, ReplaceLayer>) {
           s << "{\"op\":\"replaceLayer\",\"layer\":" << c.layer;
           kind(c.kind);
           s << ",\"props\":" << to_json(c.props);
+        } else if constexpr (std::is_same_v<T, SetSelection>) {  // as SetMask
+          s << "{\"op\":\"setSelection\",\"selection\":" << (c.selection ? "true" : "false");
+        } else if constexpr (std::is_same_v<T, AddChannel>) {
+          s << "{\"op\":\"addChannel\",\"index\":" << c.index << ",\"props\":" << to_json(c.props);
+          grid(c.grid);
+        } else if constexpr (std::is_same_v<T, DeleteChannels>) {
+          s << "{\"op\":\"deleteChannels\"";
+          list("channels", c.channels);
+        } else if constexpr (std::is_same_v<T, SetChannel>) {
+          s << "{\"op\":\"setChannel\",\"channel\":" << c.channel << ",\"props\":" << to_json(c.props);
+          grid(c.grid);
+        } else if constexpr (std::is_same_v<T, MoveChannel>) {
+          s << "{\"op\":\"moveChannel\",\"channel\":" << c.channel << ",\"index\":" << c.index;
+        } else if constexpr (std::is_same_v<T, SetGuides>) {  // [{"x": a vertical one's}, {"y": a horizontal one's}]
+          s << "{\"op\":\"setGuides\",\"guides\":[";
+          for (size_t i = 0; i < c.guides.size(); i++) {
+            s << (i ? "," : "") << (c.guides[i].vertical ? "{\"x\":" : "{\"y\":");
+            number(c.guides[i].position);
+            s << '}';
+          }
+          s << ']';
+        } else if constexpr (std::is_same_v<T, SetResolution>) {
+          s << "{\"op\":\"setResolution\",\"ppi\":";
+          number(c.ppi);
+        } else {
+          static_assert(std::is_same_v<T, SetState>, "a command to_json() does not write");
+          s << "{\"op\":\"setState\"";
+          action(c.action);
         }
       },
       cmd);
@@ -651,13 +896,13 @@ bool integer(const nlohmann::json& j, const char* key, T& to) {
   to = T(v);
   return true;
 }
-bool ids(const nlohmann::json& j, std::vector<LayerId>& to) {
-  const auto it = j.find("layers");
+bool ids(const nlohmann::json& j, std::vector<uint32_t>& to, const char* key = "layers") {  // layers' or channels'
+  const auto it = j.find(key);
   if (it == j.end() || !it->is_array()) return false;
   to.clear();
   for (const auto& v : *it) {
-    if (!v.is_number_unsigned() || v.get<uint64_t>() > std::numeric_limits<LayerId>::max()) return false;
-    to.push_back(LayerId(v.get<uint64_t>()));
+    if (!v.is_number_unsigned() || v.get<uint64_t>() > std::numeric_limits<uint32_t>::max()) return false;
+    to.push_back(uint32_t(v.get<uint64_t>()));
   }
   return true;
 }
@@ -667,6 +912,29 @@ bool props(const nlohmann::json& j, LayerProps& to) {
   std::optional<LayerProps> p = props_from(*it);
   if (!p) return false;
   to = std::move(*p);
+  return true;
+}
+bool props(const nlohmann::json& j, ChannelProps& to) {
+  const auto it = j.find("props");
+  if (it == j.end()) return false;
+  std::optional<ChannelProps> p = channel_props_from(*it);
+  if (!p) return false;
+  to = std::move(*p);
+  return true;
+}
+bool is_false(const nlohmann::json& j, const char* key) {  // a grid left out: true for none
+  const auto it = j.find(key);
+  return it != j.end() && it->is_boolean() && !it->get<bool>();
+}
+bool guides(const nlohmann::json& j, std::vector<Guide>& to) {  // [{"x": 10.5}, {"y": 3}]
+  const auto it = j.find("guides");
+  if (it == j.end() || !it->is_array()) return false;
+  for (const auto& g : *it) {
+    const auto x = g.is_object() ? g.find("x") : g.end(), y = g.is_object() ? g.find("y") : g.end();
+    const auto at = x != g.end() ? x : y;
+    if ((x == g.end()) == (y == g.end()) || !at->is_number()) return false;
+    to.push_back({x != g.end(), at->get<double>()});
+  }
   return true;
 }
 bool kind(const nlohmann::json& j, Kind& to) {
@@ -713,10 +981,29 @@ std::optional<Command> command_from_json(const std::string& text) {
     if (ids(j, c.layers)) return c;
   } else if (name == "setMask") {
     SetMask c;  // the mask deleted; one set has its grid left out
-    const auto mask = j.find("mask");
-    if (integer(j, "layer", c.layer) && mask != j.end() && mask->is_boolean() && !mask->get<bool>()) return c;
+    if (integer(j, "layer", c.layer) && is_false(j, "mask")) return c;
+  } else if (name == "setSelection") {
+    if (is_false(j, "selection")) return SetSelection{};  // Deselect; a selection has its grid left out
+  } else if (name == "addChannel") {
+    AddChannel c;  // a black one; a grid given is left out
+    if (integer(j, "index", c.index) && props(j, c.props) && is_false(j, "grid")) return c;
+  } else if (name == "deleteChannels") {
+    DeleteChannels c;
+    if (ids(j, c.channels, "channels")) return c;
+  } else if (name == "setChannel") {
+    SetChannel c;  // its props; a grid given is left out
+    if (integer(j, "channel", c.channel) && props(j, c.props) && is_false(j, "grid")) return c;
+  } else if (name == "moveChannel") {
+    MoveChannel c;
+    if (integer(j, "channel", c.channel) && integer(j, "index", c.index)) return c;
+  } else if (name == "setGuides") {
+    SetGuides c;
+    if (guides(j, c.guides)) return c;
+  } else if (name == "setResolution") {
+    const auto ppi = j.find("ppi");
+    if (ppi != j.end() && ppi->is_number()) return SetResolution{ppi->get<double>()};
   }
-  return std::nullopt;  // setPixels, replaceLayer too: their JSON lacks the grids
+  return std::nullopt;  // setPixels, replaceLayer, setState too: their JSON lacks the grids, the states
 }
 
 }  // namespace pb

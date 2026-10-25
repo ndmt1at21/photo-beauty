@@ -1,6 +1,9 @@
 // Commands read back from their JSON (doc.h: command_from_json()): every command without grids writes, read back, the
-// JSON it wrote, its props byte for byte with P1's keys and unknown keys, layers of every kind; SetPixels, SetMask with
-// a mask, ReplaceLayer and what is not a command give nullopt; a command read back runs to the same state.
+// JSON it wrote, its props byte for byte with P1's keys and unknown keys, layers of every kind, A40's commands of the
+// selection, channels, guides and resolution; SetPixels, SetMask with a mask, ReplaceLayer, SetSelection with one,
+// AddChannel and SetChannel with a grid, SetState and what is not a command give nullopt; a command read back runs to
+// the same state.
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
@@ -56,8 +59,29 @@ LayerProps random_props(std::mt19937& r, bool group) {
   if (r() % 2) p.adj = random_name(r);
   if (r() % 2) p.vals = std::make_shared<const std::string>(R"x({"pre":"Lighter (RGB)","s":-30})x");
   if (r() % 2) p.fx = std::make_shared<const std::string>(R"( {"stroke": {"on": true, "size": 6}} )");  // as the UI may
-  if (r() % 2) p.extra = R"x({"background":true,"mask":null,"tag":"#e8664a"})x";
+  if (r() % 2) p.extra = R"x({"mask":null,"tag":"#e8664a"})x";
+  p.background = !group && r() % 4 == 0;
+  p.link = r() % 2 ? 0 : r() % 3 ? r() % 100 : std::numeric_limits<uint32_t>::max();
+  p.color = Label(r() % std::size(kLabelNames));
   return props_of(to_json(p));  // as reading leaves them: members sorted, no spaces
+}
+
+ChannelProps random_channel(std::mt19937& r) {
+  ChannelProps p;
+  p.name = random_name(r);
+  p.color = {uint8_t(r()), uint8_t(r()), uint8_t(r())};
+  p.opacity = r() % 3 ? float(r() % 101) / 100 : std::uniform_real_distribution<float>(0, 1)(r);
+  p.masked = r() % 2, p.visible = r() % 2;
+  return p;
+}
+
+std::vector<Guide> random_guides(std::mt19937& r) {
+  std::vector<Guide> v(r() % 5);
+  for (Guide& g : v) {
+    g.vertical = r() % 2;
+    g.position = r() % 2 ? double(int(r() % 20000) - 5000) / 8 : std::uniform_real_distribution<double>(-1e6, 1e6)(r);
+  }
+  return v;
 }
 
 std::vector<LayerId> random_ids(std::mt19937& r) {
@@ -101,6 +125,19 @@ TEST(test_doc_json) {
       SetProps{3, plain},
       SelectLayers{{}},
       SelectLayers{{5, 1, 5}},
+      SetSelection{},
+      AddChannel{0, ChannelProps{}, nullptr},
+      AddChannel{-3, ChannelProps{"Kênh \"1\"\n🙂", {255, 0, 128}, 0.3f, false, true}, nullptr},
+      DeleteChannels{{}},
+      DeleteChannels{{1, 2, std::numeric_limits<ChannelId>::max()}},
+      SetChannel{3, ChannelProps{"", {0, 0, 0}, 0, true, true}, nullptr},
+      MoveChannel{2, 0},
+      MoveChannel{std::numeric_limits<ChannelId>::max(), std::numeric_limits<int>::min()},
+      SetGuides{{}},
+      SetGuides{{{true, 0.1}, {false, -1e10}, {true, 1e-300}, {false, 0}}},
+      SetResolution{72},
+      SetResolution{299.99},
+      SetResolution{-1},  // run() refuses; JSON keeps it
   };
   for (const Command& c : some) round_trip(c);
 
@@ -108,7 +145,7 @@ TEST(test_doc_json) {
   std::mt19937 r(20261024);
   for (int i = 0; i < 2000; i++) {
     const bool group = r() % 2;
-    switch (r() % 9) {
+    switch (r() % 14) {
       case 0: {
         const Kind kind = group ? Kind::Group : Kind(r() % 2 ? 0 : 2 + r() % 4);  // pixel, or adj, fill, text, shape
         round_trip(AddLayer{LayerId(r() % 100), int(r() % 50), kind, random_props(r, group), nullptr});
@@ -121,7 +158,16 @@ TEST(test_doc_json) {
       case 5: round_trip(Ungroup{LayerId(r())}); break;
       case 6: round_trip(SetProps{LayerId(r() % 100), random_props(r, group)}); break;
       case 7: round_trip(SetMask{LayerId(r()), nullptr}); break;
-      default: round_trip(SelectLayers{random_ids(r)}); break;
+      case 8: round_trip(SelectLayers{random_ids(r)}); break;
+      case 9: round_trip(r() % 2 ? Command(SetSelection{}) : Command(SetGuides{random_guides(r)})); break;
+      case 10: round_trip(AddChannel{int(r() % 10) - 1, random_channel(r), nullptr}); break;
+      case 11: round_trip(SetChannel{ChannelId(r()), random_channel(r), nullptr}); break;
+      case 12:
+        round_trip(r() % 2 ? Command(DeleteChannels{random_ids(r)}) : MoveChannel{ChannelId(r() % 9), int(r() % 9)});
+        break;
+      default:
+        round_trip(SetResolution{r() % 2 ? double(r() % 1200) : std::uniform_real_distribution<double>(0, 1e4)(r)});
+        break;
     }
   }
 
@@ -136,6 +182,13 @@ TEST(test_doc_json) {
   CHECK(!command_from_json(to_json(SetMask{1, mask})));
   CHECK(!command_from_json(to_json(ReplaceLayer{1, Kind::Pixel, plain, grid, mask})));
   CHECK(!command_from_json(to_json(ReplaceLayer{1, Kind::Fill, p1, nullptr, nullptr})));
+  const auto area = std::make_shared<const TileGrid>(mask_format(*d0));
+  CHECK(!command_from_json(to_json(SetSelection{area})));
+  CHECK(!command_from_json(to_json(AddChannel{0, {}, area})));
+  CHECK(!command_from_json(to_json(SetChannel{1, {}, area})));
+  CHECK(!command_from_json(to_json(SetState{d0, d0})));
+  CHECK(!command_from_json(to_json(SetState{d0, d0, std::make_shared<const std::string>(R"({"op":"imageSize"})")})));
+  CHECK(!command_from_json(to_json(SetPixels{1, grid, std::make_shared<const std::string>(R"({"op":"fill"})")})));
   {
     const std::optional<Command> a = command_from_json(to_json(AddLayer{0, 0, Kind::Text, plain, grid, mask}));
     CHECK(a && std::holds_alternative<AddLayer>(*a) && !std::get<AddLayer>(*a).pixels && !std::get<AddLayer>(*a).mask);
@@ -170,6 +223,25 @@ TEST(test_doc_json) {
     walk(*a->root, ta, walk);
     walk(*b->root, tb, walk);
     CHECK(ta == tb && !ta.empty());
+    // A40's: the same channels (ids, props, black grids), guides, resolution, no selection.
+    const ChannelId c0 = a->next_id;  // the channels' ids: c0, c0 + 1, c0 + 2
+    const std::vector<Command> more = {
+        SetSelection{}, AddChannel{0, random_channel(r), nullptr}, AddChannel{1, random_channel(r), nullptr},
+        AddChannel{0, random_channel(r), nullptr}, SetChannel{c0, random_channel(r), nullptr}, MoveChannel{c0 + 1, 0},
+        DeleteChannels{{c0 + 2}}, SetGuides{random_guides(r)}, SetResolution{300}, SetSelection{}};
+    for (const Command& c : more) {
+      a = run(*a, c);
+      b = run(*b, *command_from_json(to_json(c)));
+      CHECK(a->next_id == b->next_id);
+    }
+    const auto areas = [](const DocState& s) {
+      std::string out = std::to_string(s.ppi) + (s.selection ? "s" : "-") + (s.reselect ? "r" : "-");
+      for (const Channel& c : s.channels)
+        out += std::to_string(c.id) + to_json(c.props) + std::to_string(c.grid->tiles().size());
+      for (const Guide& g : s.guides) out += (g.vertical ? "x" : "y") + std::to_string(g.position);
+      return out;
+    };
+    CHECK(areas(*a) == areas(*b) && a->channels.size() == 2 && a->ppi == 300);
   }
 
   // Not commands: nullopt, never a throw.
@@ -200,6 +272,33 @@ TEST(test_doc_json) {
       R"({"op":"setMask","layer":1,"mask":true})", R"({"op":"setMask","layer":1})", R"({"op":"setMask","mask":false})",
       R"({"op":"setMask","layer":1,"mask":0})", R"({"op":"setMask","layer":1,"mask":null})",
       R"({"op":"replaceLayer","layer":1,"kind":"pixel","props":{"version":1}})",
+      // A40's: grids and states are not in the JSON; fields missing, of the wrong type or out of range.
+      R"({"op":"setSelection"})", R"({"op":"setSelection","selection":true})", R"({"op":"setSelection","selection":0})",
+      R"({"op":"setSelection","selection":null})", R"({"op":"SetSelection","selection":false})",
+      R"({"op":"addChannel","index":0,"props":{}})", R"({"op":"addChannel","index":0,"props":{},"grid":true})",
+      R"({"op":"addChannel","props":{},"grid":false})", R"({"op":"addChannel","index":0,"grid":false})",
+      R"({"op":"addChannel","index":0.5,"props":{},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":[],"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"name":1},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"color":"red"},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"color":"#12345"},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"color":"#1234567"},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"color":"#gg0000"},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"color":[255,0,0]},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"opacity":"1"},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"masked":1},"grid":false})",
+      R"({"op":"addChannel","index":0,"props":{"visible":null},"grid":false})",
+      R"({"op":"deleteChannels"})", R"({"op":"deleteChannels","channels":[-1]})",
+      R"({"op":"deleteChannels","channels":[4294967296]})", R"({"op":"deleteChannels","layers":[1]})",
+      R"({"op":"setChannel","channel":1,"props":{},"grid":true})", R"({"op":"setChannel","props":{},"grid":false})",
+      R"({"op":"setChannel","channel":-1,"props":{},"grid":false})", R"({"op":"setChannel","channel":1,"grid":false})",
+      R"({"op":"moveChannel","channel":1})", R"({"op":"moveChannel","index":0})",
+      R"({"op":"moveChannel","channel":1,"index":"0"})", R"({"op":"setGuides"})", R"({"op":"setGuides","guides":{}})",
+      R"({"op":"setGuides","guides":[{"x":1,"y":2}]})", R"({"op":"setGuides","guides":[{}]})",
+      R"({"op":"setGuides","guides":[{"x":"1"}]})", R"({"op":"setGuides","guides":[1]})",
+      R"({"op":"setGuides","guides":[{"z":1}]})", R"({"op":"setResolution"})", R"({"op":"setResolution","ppi":"72"})",
+      R"({"op":"setResolution","ppi":null})", R"({"op":"setState"})",
+      R"({"op":"setState","action":{"op":"imageSize"}})", R"({"op":"setPixels","layer":1,"action":{}})",
   };
   for (const char* b : bad)
     if (command_from_json(b)) {
@@ -211,4 +310,23 @@ TEST(test_doc_json) {
   CHECK(u && std::holds_alternative<Ungroup>(*u) && std::get<Ungroup>(*u).group == 3);
   const std::optional<Command> s = command_from_json(R"({"props":{"name":"x","version":1},"layer":2,"op":"setProps"})");
   CHECK(s && std::get<SetProps>(*s).layer == 2 && std::get<SetProps>(*s).props.name == "x");
+  // Channel props: any order, missing keys at their default, unknown ones skipped, either case of hex, the opacity
+  // clamped; guides at whole numbers too.
+  const std::optional<Command> c = command_from_json(
+      R"({"op":"addChannel","grid":false,"index":2,"props":{"zz":[1],"visible":true,"color":"#FFa0C1","opacity":7}})");
+  CHECK(c && std::holds_alternative<AddChannel>(*c) && std::get<AddChannel>(*c).index == 2);
+  const ChannelProps& cp = std::get<AddChannel>(*c).props;
+  CHECK(cp.name.empty() && cp.visible && cp.masked && cp.opacity == 1);
+  CHECK(cp.color == (std::array<uint8_t, 3>{255, 160, 193}));
+  CHECK(to_json(*c) ==
+        R"({"op":"addChannel","index":2,"props":{"name":"","color":"#ffa0c1","opacity":1,"masked":true,)"
+        R"("visible":true},"grid":false})");
+  CHECK(channel_props_from_json(R"({"opacity":-2})")->opacity == 0 && !channel_props_from_json("{") &&
+        !channel_props_from_json("[]") && channel_props_from_json("{}"));
+  const std::optional<Command> g = command_from_json(R"({"op":"setGuides","guides":[{"y":3},{"x":-2,"why":1}]})");
+  CHECK(g && to_json(*g) == R"({"op":"setGuides","guides":[{"y":3.0},{"x":-2.0}]})");
+  const std::optional<Command> ppi = command_from_json(R"({"ppi":300,"op":"setResolution"})");
+  CHECK(ppi && std::get<SetResolution>(*ppi).ppi == 300 && to_json(*ppi) == R"({"op":"setResolution","ppi":300.0})");
+  const std::optional<Command> drop = command_from_json(R"({"op":"setSelection","selection":false,"why":"Ctrl D"})");
+  CHECK(drop && std::holds_alternative<SetSelection>(*drop) && !std::get<SetSelection>(*drop).selection);
 }

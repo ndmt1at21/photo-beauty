@@ -154,7 +154,7 @@ void flatten(const pb::Layer& g, std::vector<const pb::Layer*>& out) {
     flatten(*g.children[i], out);
   }
 }
-bool background(const pb::Layer& l) { return l.props.extra.find("\"background\":true") != std::string::npos; }
+bool background(const pb::Layer& l) { return l.props.background; }
 
 // "base N" for the next N no layer has (Mock.nextName()).
 std::string nextName(const pb::DocState& d, const std::string& base) {
@@ -308,11 +308,11 @@ void DocModel::opened(pb::DocPtr state, const char* step, bool background, std::
   task_.clear();
   progress_ = -1;
   if (background && state->root->children.size() == 1 && state->root->children[0]->kind == pb::Kind::Pixel) {
-    // as Photoshop opens a JPEG: the Background, locked, at the bottom (the mock's `background`, A40 for the core)
+    // as Photoshop opens a JPEG: the Background, locked, at the bottom (the mock's `background`, the core's since A40)
     const pb::Layer& l = *state->root->children[0];
     pb::LayerProps p = l.props;
     p.lock_all = true;
-    p.extra = R"({"background":true})";
+    p.background = true;
     state = pb::run(*state, pb::SetProps{l.id, p});
   }
   doc_ = std::make_unique<pb::Document>(std::move(state), step);
@@ -518,9 +518,7 @@ bool DocModel::apply(const QJsonObject& c) {
         pb::LayerProps p = top[k]->props;
         p.name += tr(" bản sao").toStdString();
         p.lock_transparency = p.lock_pixels = p.lock_position = p.lock_all = false;
-        QJsonObject extra = QJsonDocument::fromJson(QByteArray::fromStdString(p.extra)).object();
-        extra.remove(QStringLiteral("background"));
-        p.extra = extra.isEmpty() ? std::string() : QJsonDocument(extra).toJson(QJsonDocument::Compact).toStdString();
+        p.background = false;  // the core's copy is none already; these props are the original's
         step(pb::SetProps{copies[k], p}, "Duplicate Layer");
       }
     } catch (...) {
@@ -803,6 +801,7 @@ QJSValue DocModel::props(const pb::Layer& l) {
   s += ",\"lockPixels\":", s += p.lock_pixels ? "true" : "false";
   s += ",\"lockPosition\":", s += p.lock_position ? "true" : "false";
   s += ",\"lockAll\":", s += p.lock_all ? "true" : "false";
+  if (p.background) s += ",\"background\":true";  // over kP1Props' false
   if (p.extra.size() > 2) s += ',', s.append(p.extra, 1, p.extra.size() - 2);  // over the defaults: JSON's last wins
   // the thumbnail of a pixel layer, as the mock's sample photo (LayerRow shows `photo` through Doc.thumbUrl())
   if (l.kind == pb::Kind::Pixel) s += ",\"photo\":", quoted(s, thumbUrl(l).toStdString());

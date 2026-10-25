@@ -28,8 +28,9 @@ void append(std::string& json, const std::string& cmd) {
 }
 
 // The data tiles that layers of one state hold (pixels and masks) and the same layers (by id) of another do not, and
-// the other way round: each placement +1 or -1 in `net`. The trees are walked together past the nodes and grids they
-// share, so it costs what changed between them, not what they hold.
+// the other way round, and likewise of their selections, Reselect's and alpha channels (by id): each placement +1 or
+// -1 in `net`. The trees are walked together past the nodes and grids they share, so it costs what changed between
+// them, not what they hold.
 struct Diff {
   std::unordered_map<uint64_t, std::pair<int, const Tile*>> net;  // by id
   std::unordered_map<LayerId, const Layer*> left, entered;  // layers out of their group or into one, and all in them
@@ -99,6 +100,27 @@ struct Diff {
     for (const auto& [id, l] : entered)
       if (!left.count(id)) grids(nullptr, l->pixels.get()), grids(nullptr, l->mask.get());
   }
+  // The selection, Reselect's and the channels' grids of two states (a: null for none); channels matched by id.
+  void areas(const DocState* a, const DocState& b) {
+    grids(a ? a->selection.get() : nullptr, b.selection.get());
+    grids(a ? a->reselect.get() : nullptr, b.reselect.get());
+    static const std::vector<Channel> none;
+    const std::vector<Channel>& x = a ? a->channels : none;
+    const std::vector<Channel>& y = b.channels;
+    const auto same = [](const Channel& p, const Channel& q) { return p.id == q.id; };
+    if (x.size() == y.size() && std::equal(x.begin(), x.end(), y.begin(), same)) {  // most commands
+      for (size_t i = 0; i < x.size(); i++) grids(x[i].grid.get(), y[i].grid.get());
+      return;
+    }
+    std::unordered_map<ChannelId, const TileGrid*> there;
+    for (const Channel& c : y) there.emplace(c.id, c.grid.get());
+    for (const Channel& c : x) {
+      const auto it = there.find(c.id);
+      grids(c.grid.get(), it == there.end() ? nullptr : it->second);
+      if (it != there.end()) there.erase(it);
+    }
+    for (const auto& [id, g] : there) grids(nullptr, g);
+  }
 };
 
 }  // namespace
@@ -106,16 +128,18 @@ struct Diff {
 Document::Document(DocPtr state, std::string name) {
   if (!state || !state->root) throw std::invalid_argument("pb: Document: no state");
   Entry tiles;
-  count(Layer{}, *state->root, &tiles);
+  count(nullptr, *state, &tiles);
   keep(tiles.came, 1);  // the first step's
   steps_.push_back({{std::move(name), "", std::move(state), ++g_serial}, {}, {}});
 }
 
-void Document::count(const Layer& from, const Layer& to, Entry* into) {
+void Document::count(const DocState* from, const DocState& to, Entry* into) {
   PROFILE_ZONE("history_count");
   Diff d;
-  d.layers(from, to);
+  const Layer nothing{};
+  d.layers(from ? *from->root : nothing, *to.root);
   d.moved();
+  d.areas(from, to);
   for (const auto& [id, n] : d.net) {
     if (!n.first) continue;  // moved between layers
     Held& h = tiles_[id];
@@ -154,7 +178,7 @@ void Document::add(DocPtr state, std::string name, std::string json) {
   cut();
   Entry e;
   e.name = std::move(name), e.json = std::move(json), e.state = std::move(state), e.serial = ++g_serial;
-  count(*this->state()->root, *e.state->root, &e);
+  count(this->state().get(), *e.state, &e);
   keep(e.came, 1);
   steps_.push_back(std::move(e));
   current_++;
@@ -184,11 +208,11 @@ void Document::run(const Command& cmd, std::string name) {
     add(std::move(next), std::move(name), std::move(json));
     merge_ = gesture_ > 0;
   } else {  // the gesture's step anew from the one before: tiles that came and went within it are no step's
-    const Layer& before = *steps_[current_ - 1].state->root;
+    const DocState& before = *steps_[current_ - 1].state;
     keep(e.came, -1);
-    count(*e.state->root, before, nullptr);
+    count(e.state.get(), before, nullptr);
     e.came.clear(), e.gone.clear();
-    count(before, *next->root, &e);
+    count(&before, *next, &e);
     keep(e.came, 1);
     e.state = std::move(next);
     e.serial = ++g_serial;
@@ -219,7 +243,7 @@ bool Document::redo() {
 
 void Document::jump(size_t i) {
   if (i >= steps_.size()) throw std::out_of_range("pb: Document::jump: no step " + std::to_string(i));
-  count(*state()->root, *steps_[i].state->root, nullptr);
+  count(state().get(), *steps_[i].state, nullptr);
   current_ = i;
   merge_ = false;
 }

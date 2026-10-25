@@ -176,7 +176,7 @@ Item {
             verify(Docs.saveAs(d, path, false))
             saved()
             const first = bytes(path), pixels = d.model.digest()
-            verify(d.run({ op: "setProps", props: { opacity: 0.5 } }))
+            verify(d.run({ op: "setProps", props: { visible: false } }))  // the Background: Opacity locked
             verify(d.dirty)
             verify(Docs.exec("@save"))  // Lưu, Ctrl S
             compare(asked.count, 0)
@@ -190,7 +190,7 @@ Item {
             compare(bytes(path), grown)
             Docs.close(d)
             const e = opened(path)
-            compare(e.layers[0].props.opacity, 0.5)
+            compare(e.layers[0].props.visible, false)
             compare(e.model.digest(), pixels)
             compare(e.history.length, 1, "opened at its step")
         }
@@ -217,7 +217,7 @@ Item {
 
             Docs.save(d)  // of step 2; the document goes on before it ends
             verify(Session.saving)
-            verify(d.run({ op: "setProps", props: { opacity: 0.25 } }))
+            verify(d.run({ op: "setProps", props: { name: "Ba" } }))
             saved()
             compare([d.index, d.dirty, d.unsaved], [3, true, 1], "the step after the one saved")
             d.undo()
@@ -371,7 +371,7 @@ Item {
             const fd = findChild(w, "savePath")
             const d = opened(file("n2-i.png", "png", 300, 200))
             verify(d.run({ op: "setProps", props: { name: "Một" } }))
-            verify(d.run({ op: "setProps", props: { opacity: 0.5 } }))
+            verify(d.run({ op: "setProps", props: { visible: false } }))  // the Background: Opacity locked
             w.closeDoc(d)
             let s = dialogOn(w, SaveChangesDialog)
             verify(texts(s.contentItem).indexOf("Không lưu thì mất 2 bước chỉnh từ lần lưu trước.") >= 0, texts(s.contentItem))
@@ -384,13 +384,13 @@ Item {
             tryVerify(() => Docs.docs.indexOf(d) < 0, 5000, "closed once it saves")
             saved()
             const e = opened(at("n2-i.pbd"))
-            compare(e.layers[0].props.opacity, 0.5)
+            compare(e.layers[0].props.visible, false)
 
-            verify(e.run({ op: "setProps", props: { visible: false } }))
+            verify(e.run({ op: "setProps", props: { visible: true } }))
             verify(e.run({ op: "setProps", props: { name: "Ba" } }))
             Docs.save(e)  // at step 2
             saved()
-            verify(e.run({ op: "setProps", props: { opacity: 0.25 } }))
+            verify(e.run({ op: "setProps", props: { visible: false } }))
             compare([e.index, e.unsaved], [3, 1])
             w.closeDoc(e)
             s = dialogOn(w, SaveChangesDialog)
@@ -401,7 +401,7 @@ Item {
             tryVerify(() => Docs.docs.indexOf(e) < 0)
             saved()
             const f = opened(at("n2-i.pbd"))
-            compare([f.layers[0].props.visible, f.layers[0].props.opacity], [false, 0.25])
+            compare([f.layers[0].props.visible, f.layers[0].props.name], [false, "Ba"])
         }
 
         // ---- the status bar ---------------------------------------------------------------------------------------------

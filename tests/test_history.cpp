@@ -3,7 +3,7 @@
 // tile bytes against a count over every step afresh, with the oldest steps dropped past a quarter of the budget and no
 // more; a slider dragged through 100 values one step; layers chosen joining a step; steps leaving the store with their
 // tiles, shared tiles counted once; a real brush stroke undone to the layer's very tiles; the cost of a step on a tree
-// shaped as D4. Masks' tiles count as pixels' do (A30).
+// shaped as D4. Masks' tiles count as pixels' do (A30), as do the selection's, Reselect's and alpha channels' (A40).
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -46,6 +46,11 @@ void dump(std::ostream& s, const Layer& l) {
   for (const LayerPtr& c : l.children) dump(s, *c);
   s << ']';
 }
+void dump(std::ostream& s, const char* what, const TileGrid* g) {
+  s << ' ' << what << (g ? "" : " none");
+  if (g)
+    for (const auto& [xy, t] : g->tiles()) s << ' ' << xy.x << ',' << xy.y << '=' << t->id();
+}
 std::string dump(const DocState& d, bool selected = true) {
   std::ostringstream s;
   s.precision(9);
@@ -54,6 +59,12 @@ std::string dump(const DocState& d, bool selected = true) {
   for (const LayerId id : d.selected) s << ' ' << (selected ? id : 0);
   s << " } ";
   dump(s, *d.root);
+  dump(s, "selection", d.selection.get());
+  dump(s, "reselect", d.reselect.get());
+  for (const Channel& c : d.channels) {
+    s << " channel " << c.id << ' ' << to_json(c.props);
+    dump(s, "grid", c.grid.get());
+  }
   return s.str();
 }
 
@@ -71,7 +82,15 @@ std::map<uint64_t, size_t> tiles_of(const std::vector<DocPtr>& states) {
           if (!t->is_solid()) out[t->id()] = raw_size(*t);
     for (const LayerPtr& c : l.children) self(*c, self);
   };
-  for (const DocPtr& d : states) walk(*d->root, walk);
+  for (const DocPtr& d : states) {
+    walk(*d->root, walk);
+    std::vector<const TileGrid*> areas{d->selection.get(), d->reselect.get()};
+    for (const Channel& c : d->channels) areas.push_back(c.grid.get());
+    for (const TileGrid* g : areas)
+      if (g)
+        for (const auto& [xy, t] : g->tiles())
+          if (!t->is_solid()) out[t->id()] = raw_size(*t);
+  }
   return out;
 }
 // What only states other than current hold, counted afresh.
@@ -156,6 +175,34 @@ Command random_command(const DocState& d, std::mt19937& rng) {
   return SetPixels{from(pixel), pixels()};
 }
 
+// A random command on d's selection or alpha channels (A40), some refused: a grid of fresh tiles, now and then one
+// past the canvas, or the selection's or a channel's grid (its tiles shared), or none; a channel not there.
+Command random_area(const DocState& d, std::mt19937& rng) {
+  const auto area = [&]() -> std::shared_ptr<const TileGrid> {
+    const unsigned k = rng() % 8;
+    if (k == 0 && d.selection) return d.selection;
+    if (k == 1 && !d.channels.empty()) return d.channels[rng() % d.channels.size()].grid;
+    const Format f = mask_format(d);
+    auto g = std::make_shared<TileGrid>(f);
+    const int across = (d.width + S - 1) / S, down = (d.height + S - 1) / S;
+    for (unsigned n = 1 + rng() % 6; n > 0; n--)
+      g->set(int(rng() % unsigned(across)), int(rng() % unsigned(down)), Tile::make(f));
+    if (rng() % 12 == 0) g->set(across, 0, Tile::make(f));
+    return g;
+  };
+  const auto channel = [&] {
+    return rng() % 12 && !d.channels.empty() ? d.channels[rng() % d.channels.size()].id
+                                             : ChannelId(rng() % (d.next_id + 3));
+  };
+  switch (d.channels.size() > 6 ? 3 : rng() % 6) {
+    case 0: return SetSelection{area()};
+    case 1: return AddChannel{int(rng() % (d.channels.size() + 1)), {}, rng() % 3 ? area() : nullptr};
+    case 2: return SetChannel{channel(), {}, rng() % 4 ? area() : nullptr};
+    case 3: return DeleteChannels{{channel()}};
+    default: return SetSelection{};  // Deselect: the selection to Reselect's
+  }
+}
+
 // The history as plainly as it goes: states run again from the commands, the oldest dropped as Document drops them.
 struct Reference {
   struct Step {
@@ -215,7 +262,9 @@ void check_random() {
   const size_t old = tile_budget();
   set_tile_budget(size_t(16) << 20);  // a quarter: 4 MB, 16 tiles of 8-bit RGBA
   const size_t cap = tile_budget() / 4;
-  std::mt19937 rng(7);
+  // The selection's and channels' commands (A40) come from a generator of their own, between P0's 1000 rounds: those
+  // keep their mix, and the steps dropped that it makes (light steps in their place made few).
+  std::mt19937 rng(7), areas(40);
   DocPtr d = new_document(700, 500, Mode::Rgb, Depth::U8, nullptr);
   d = run(*d, AddLayer{0, 0, Kind::Pixel, {}, fresh(pixel_format(*d), rng)});
   Document doc(d, "Open");
@@ -223,13 +272,16 @@ void check_random() {
   ref.steps.push_back({"Open", {}, {}, d, doc.step(0).serial});
   std::set<uint64_t> serials{doc.step(0).serial};
   int ran = 0, refused = 0, undone = 0, redone = 0, jumped = 0, gestures = 0, restored = 0, deleted = 0, dropped = 0;
+  int area_ran = 0;
   size_t most = 0;
-  for (int i = 0; i < 1000; i++) {
-    const unsigned op = rng() % 100;
+  for (int i = 0, rounds = 0; rounds < 1000; i++) {
+    const bool area = areas() % 6 == 0;
+    rounds += !area;
+    const unsigned op = area ? 0 : rng() % 100;
     bool added = false;    // a step may have been made or changed: Document may drop the oldest
     bool changed = false;  // the current step made or changed: a new serial
     if (op < 58) {
-      const Command cmd = random_command(*ref.state(), rng);
+      const Command cmd = area ? random_area(*ref.state(), areas) : random_command(*ref.state(), rng);
       const std::string name = "step " + std::to_string(i);
       DocPtr next;
       try {
@@ -250,7 +302,7 @@ void check_random() {
         refused++;
       } else {
         added = changed = ref.run(cmd, name, next);
-        ran++;
+        ran++, area_ran += area;
       }
     } else if (op < 74) {  // undos, then maybe redos
       const auto step = [&](bool back) {
@@ -347,12 +399,12 @@ void check_random() {
   for (size_t k = from + 1; k <= ref.cur; k++)
     for (const Command& c : ref.steps[k].cmds) again = run(*again, c);
   CHECK(dump(*again, false) == dump(*doc.state(), false));
-  std::printf("test_history: %d commands (%d refused), %d undos, %d redos, %d jumps, %d gestures, %d restores, %d "
-              "steps deleted; %d dropped, %zu left, history up to %zu MB of %zu\n",
-              ran, refused, undone, redone, jumped, gestures, restored, deleted, dropped, doc.steps(), most >> 20,
-              cap >> 20);
+  std::printf("test_history: %d commands (%d refused; %d of the selection or channels), %d undos, %d redos, %d jumps, "
+              "%d gestures, %d restores, %d steps deleted; %d dropped, %zu left, history up to %zu MB of %zu\n",
+              ran, refused, area_ran, undone, redone, jumped, gestures, restored, deleted, dropped, doc.steps(),
+              most >> 20, cap >> 20);
   CHECK(ran >= 400 && refused >= 30 && undone >= 50 && redone >= 30 && jumped >= 20 && gestures >= 15 &&
-        restored >= 15 && deleted >= 5 && dropped >= 50 && most > cap / 2);
+        restored >= 15 && deleted >= 5 && dropped >= 50 && most > cap / 2 && area_ran >= 100);
   set_tile_budget(old);
 }
 
@@ -607,6 +659,47 @@ void check_masks() {
   CHECK(held(7));
 }
 
+// The selection's, Reselect's and alpha channels' tiles (A40) count as layers' do: each tile once wherever the states
+// hold it (a channel saved from the selection shares its tiles), at its own size.
+void check_areas() {
+  const auto area = [&](Format f, int n, uint8_t v) {  // n data tiles of v
+    auto g = std::make_shared<TileGrid>(f);
+    for (int i = 0; i < n; i++) std::memset(g->write(i, 0).data(), v, size_t(S) * S * size_t(f.bytes()));
+    return std::shared_ptr<const TileGrid>(std::move(g));
+  };
+  const Format m{Depth::U8, 1};
+  const size_t tile = size_t(S) * S;  // an 8-bit one's bytes
+  Document doc(new_document(4 * S, S, Mode::Rgb, Depth::U8, nullptr), "Open");
+  const auto held = [&](size_t tiles) {
+    return doc.history_bytes() == tiles * tile && doc.history_bytes() == held_elsewhere(states_of(doc), doc.state());
+  };
+  const auto a = area(m, 2, 1);
+  doc.run(SetSelection{a}, "Rectangular Marquee");
+  CHECK(held(0));
+  doc.run(AddChannel{0, {}, a}, "Save Selection");  // shares a's tiles
+  CHECK(held(0));
+  doc.run(SetSelection{}, "Deselect");  // a to Reselect's
+  CHECK(held(0) && doc.state()->reselect == a);
+  doc.run(SetSelection{area(m, 3, 2)}, "Rectangular Marquee");
+  CHECK(held(0));
+  doc.run(SetChannel{1, {}, area(m, 1, 3)}, "Brush Tool");  // the channel's old tiles: Reselect's still
+  CHECK(held(0));
+  doc.run(DeleteChannels{{1}}, "Delete Channel");  // its tile to the history
+  CHECK(held(1));
+  doc.run(SetSelection{}, "Deselect");  // a out of Reselect's: to the history
+  CHECK(held(3));
+  CHECK(doc.undo() && held(1) && doc.redo() && held(3));
+  doc.jump(0);
+  CHECK(held(6));
+  doc.jump(7);
+  CHECK(held(3));
+  // A 16-bit document's are twice the size.
+  Document deep(new_document(S, S, Mode::Gray, Depth::U16, nullptr), "Open");
+  deep.run(SetSelection{area({Depth::U16, 1}, 1, 7)}, "Select All");
+  deep.run(SetSelection{area({Depth::U16, 1}, 1, 8)}, "Select All");
+  CHECK(deep.history_bytes() == 2 * tile);
+}
+
 double ms(std::chrono::steady_clock::time_point t0) {
   return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
@@ -709,6 +802,7 @@ TEST(test_history) {
   check_stroke();  // before the checks that lower the budget: its raw bytes stay put
   check_budget();
   check_masks();
+  check_areas();
   check_random();
   check_d4();
 }

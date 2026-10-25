@@ -80,12 +80,14 @@ class Document {
   struct Entry : Step {
     std::vector<uint64_t> came, gone;  // data tiles (ids) its state holds that the step before's does not, and back
   };
-  // A data tile that a step holds: in how many of state()'s layers, in how many steps' `came` (and 1 if the first
-  // step's state holds it), its raw size. So a step holds it while `kept` is not 0.
+  // A data tile that a step holds: in how many of state()'s grids (layers' pixels and masks, the selection, Reselect's,
+  // the alpha channels'), in how many steps' `came` (and 1 if the first step's state holds it), its raw size. So a
+  // step holds it while `kept` is not 0.
   struct Held {
     uint32_t now = 0, kept = 0, bytes = 0;
   };
-  void count(const Layer& from, const Layer& to, Entry* into);  // state() was `from`, is `to`: `now` follows
+  // state() was `from` (null: none, an empty document's), is `to`: `now` follows.
+  void count(const DocState* from, const DocState& to, Entry* into);
   void keep(const std::vector<uint64_t>& ids, int by);
   void cut();                                                  // drops the steps past the current one
   void add(DocPtr state, std::string name, std::string json);  // a new step after the current one
