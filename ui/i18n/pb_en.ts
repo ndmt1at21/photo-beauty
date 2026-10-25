@@ -3400,6 +3400,10 @@
         <translation>Fill…</translation>
     </message>
     <message>
+        <source>Đóng các tài liệu khác</source>
+        <translation>Close Others</translation>
+    </message>
+    <message>
         <source>Xóa</source>
         <comment>Edit › Clear</comment>
         <translation>Clear</translation>
@@ -3669,8 +3673,16 @@
         <translation>Group…</translation>
     </message>
     <message>
+        <source>Nhóm từ layer…</source>
+        <translation>Group from Layers…</translation>
+    </message>
+    <message>
         <source>Chuyển thành Background</source>
         <translation>Background from Layer</translation>
+    </message>
+    <message>
+        <source>Layer từ Background…</source>
+        <translation>Layer from Background…</translation>
     </message>
     <message>
         <source>Sao chép sang layer mới</source>
@@ -3715,6 +3727,10 @@
     <message>
         <source>Gradient Overlay…</source>
         <translation>Gradient Overlay…</translation>
+    </message>
+    <message>
+        <source>Xóa Layer Style</source>
+        <translation>Clear Layer Style</translation>
     </message>
     <message>
         <source>Fill Layer mới</source>
@@ -3833,6 +3849,10 @@
         <translation>Send to Back</translation>
     </message>
     <message>
+        <source>Đảo thứ tự</source>
+        <translation>Reverse</translation>
+    </message>
+    <message>
         <source>Căn</source>
         <translation>Align</translation>
     </message>
@@ -3871,6 +3891,10 @@
     <message>
         <source>Liên kết layer</source>
         <translation>Link Layers</translation>
+    </message>
+    <message>
+        <source>Bỏ liên kết layer</source>
+        <translation>Unlink Layers</translation>
     </message>
     <message>
         <source>Gộp xuống</source>
@@ -3987,6 +4011,10 @@
     <message>
         <source>Mọi layer</source>
         <translation>All Layers</translation>
+    </message>
+    <message>
+        <source>Bỏ chọn layer</source>
+        <translation>Deselect Layers</translation>
     </message>
     <message>
         <source>Color Range…</source>
@@ -4384,6 +4412,179 @@
     <message>
         <source>Về photo-beauty</source>
         <translation>About photo-beauty</translation>
+    </message>
+    <message>
+        <source>Layer</source>
+        <comment>Phím tắt › Khác</comment>
+        <translation>Layers</translation>
+    </message>
+    <message>
+        <source>Chọn layer dưới</source>
+        <translation>Select Next Layer Down</translation>
+    </message>
+    <message>
+        <source>Chọn layer trên</source>
+        <translation>Select Next Layer Up</translation>
+    </message>
+    <message>
+        <source>Chọn layer dưới cùng</source>
+        <translation>Select Bottom Layer</translation>
+    </message>
+    <message>
+        <source>Chọn layer trên cùng</source>
+        <translation>Select Top Layer</translation>
+    </message>
+    <message>
+        <source>Chọn thêm layer dưới</source>
+        <translation>Add Next Layer Down to Selection</translation>
+    </message>
+    <message>
+        <source>Chọn thêm layer trên</source>
+        <translation>Add Next Layer Up to Selection</translation>
+    </message>
+    <message>
+        <source>Gộp layer đang hiện vào layer mới</source>
+        <translation>Stamp Visible</translation>
+    </message>
+    <message>
+        <source>Gộp layer đang chọn vào layer mới</source>
+        <translation>Stamp Selected Layers</translation>
+    </message>
+    <message>
+        <source>Layer mới, không hỏi</source>
+        <translation>New Layer Without Dialog</translation>
+    </message>
+    <message>
+        <source>Xem mask thành lớp phủ đỏ</source>
+        <translation>Toggle Rubylith Mode</translation>
+    </message>
+    <message>
+        <source>Nạp độ trong suốt làm vùng chọn</source>
+        <translation>Load Layer Transparency as Selection</translation>
+    </message>
+    <message>
+        <source>nhấp thumbnail</source>
+        <translation>click thumbnail</translation>
+    </message>
+    <message>
+        <source>Cộng độ trong suốt vào vùng chọn</source>
+        <translation>Add Transparency to Selection</translation>
+    </message>
+    <message>
+        <source>Trừ độ trong suốt khỏi vùng chọn</source>
+        <translation>Subtract Transparency from Selection</translation>
+    </message>
+    <message>
+        <source>Giao độ trong suốt với vùng chọn</source>
+        <translation>Intersect Transparency with Selection</translation>
+    </message>
+    <message>
+        <source>Nạp mask làm vùng chọn</source>
+        <translation>Load Layer Mask as Selection</translation>
+    </message>
+    <message>
+        <source>nhấp mask</source>
+        <translation>click mask</translation>
+    </message>
+    <message>
+        <source>Xem riêng mask</source>
+        <translation>View Layer Mask</translation>
+    </message>
+    <message>
+        <source>Tắt, bật mask</source>
+        <translation>Disable/Enable Layer Mask</translation>
+    </message>
+    <message>
+        <source>Tạo, bỏ Clipping Mask</source>
+        <translation>Create/Release Clipping Mask</translation>
+    </message>
+    <message>
+        <source>nhấp giữa hai layer</source>
+        <translation>click between layers</translation>
+    </message>
+    <message>
+        <source>Tô màu</source>
+        <translation>Fill</translation>
+    </message>
+    <message>
+        <source>Tô màu trước</source>
+        <translation>Fill with Foreground Color</translation>
+    </message>
+    <message>
+        <source>Tô màu sau</source>
+        <translation>Fill with Background Color</translation>
+    </message>
+    <message>
+        <source>Tô màu trước, giữ chỗ trong suốt</source>
+        <translation>Fill with Foreground Color, Preserve Transparency</translation>
+    </message>
+    <message>
+        <source>Tô màu sau, giữ chỗ trong suốt</source>
+        <translation>Fill with Background Color, Preserve Transparency</translation>
+    </message>
+    <message>
+        <source>Mở hộp thoại Fill</source>
+        <translation>Display Fill Dialog Box</translation>
+    </message>
+    <message>
+        <source>Dời, biến đổi</source>
+        <translation>Nudge, Transform</translation>
+    </message>
+    <message>
+        <source>Dời 1 px</source>
+        <translation>Nudge 1 Pixel</translation>
+    </message>
+    <message>
+        <source>Dời 10 px</source>
+        <translation>Nudge 10 Pixels</translation>
+    </message>
+    <message>
+        <source>Nhân bản rồi Transform lại</source>
+        <translation>Duplicate and Transform Again</translation>
+    </message>
+    <message>
+        <source>Tài liệu</source>
+        <translation>Documents</translation>
+    </message>
+    <message>
+        <source>Tài liệu kế</source>
+        <translation>Next Document</translation>
+    </message>
+    <message>
+        <source>Tài liệu trước</source>
+        <translation>Previous Document</translation>
+    </message>
+    <message>
+        <source>Cọ</source>
+        <translation>Brushes</translation>
+    </message>
+    <message>
+        <source>Preset cọ trước</source>
+        <translation>Previous Brush</translation>
+    </message>
+    <message>
+        <source>Preset cọ sau</source>
+        <translation>Next Brush</translation>
+    </message>
+    <message>
+        <source>Preset cọ đầu</source>
+        <translation>First Brush</translation>
+    </message>
+    <message>
+        <source>Preset cọ cuối</source>
+        <translation>Last Brush</translation>
+    </message>
+    <message>
+        <source>Blend mode</source>
+        <translation>Blend Modes</translation>
+    </message>
+    <message>
+        <source>Blend mode kế</source>
+        <translation>Next Blend Mode</translation>
+    </message>
+    <message>
+        <source>Blend mode trước</source>
+        <translation>Previous Blend Mode</translation>
     </message>
 </context>
 <context>
@@ -4796,6 +4997,78 @@
     <message>
         <source>Mở</source>
         <translation>Open</translation>
+    </message>
+    <message>
+        <source>Gộp layer đang hiện vào layer mới</source>
+        <translation>Stamp Visible</translation>
+    </message>
+    <message>
+        <source>%1 (gộp)</source>
+        <translation>%1 (merged)</translation>
+    </message>
+    <message>
+        <source>Gộp layer đang chọn vào layer mới</source>
+        <translation>Stamp Selected Layers</translation>
+    </message>
+    <message>
+        <source>Nhân bản rồi Transform lại</source>
+        <translation>Duplicate and Transform Again</translation>
+    </message>
+    <message>
+        <source>Bỏ liên kết layer</source>
+        <translation>Unlink Layers</translation>
+    </message>
+    <message>
+        <source>Liên kết layer</source>
+        <translation>Link Layers</translation>
+    </message>
+    <message>
+        <source>Đảo thứ tự layer</source>
+        <translation>Reverse Layers</translation>
+    </message>
+    <message>
+        <source>Xóa Layer Style</source>
+        <translation>Clear Layer Style</translation>
+    </message>
+    <message>
+        <source>Layer 0</source>
+        <translation>Layer 0</translation>
+    </message>
+    <message>
+        <source>Layer từ Background</source>
+        <translation>Layer from Background</translation>
+    </message>
+    <message>
+        <source>Chuyển thành Background</source>
+        <translation>Background from Layer</translation>
+    </message>
+    <message>
+        <source>Phân bố layer</source>
+        <translation>Distribute</translation>
+    </message>
+    <message>
+        <source>Dời vùng chọn</source>
+        <translation>Nudge Selection</translation>
+    </message>
+    <message>
+        <source>Dời layer</source>
+        <translation>Nudge</translation>
+    </message>
+    <message>
+        <source>Nạp vùng chọn</source>
+        <translation>Load Selection</translation>
+    </message>
+    <message>
+        <source>Cộng vào vùng chọn</source>
+        <translation>Add to Selection</translation>
+    </message>
+    <message>
+        <source>Trừ khỏi vùng chọn</source>
+        <translation>Subtract from Selection</translation>
+    </message>
+    <message>
+        <source>Giao với vùng chọn</source>
+        <translation>Intersect with Selection</translation>
     </message>
     <message>
         <source>Layer 1</source>
@@ -5868,8 +6141,8 @@
         <translation>Open Keyboard Shortcuts…</translation>
     </message>
     <message>
-        <source>Bảng phím theo menu ứng dụng, menu panel và công cụ, có ô tìm.</source>
-        <translation>Shortcuts by application menus, panel menus and tools, with a search field.</translation>
+        <source>Bảng phím theo menu ứng dụng, menu panel, công cụ và phím khác, có ô tìm.</source>
+        <translation>Shortcuts by application menus, panel menus, tools and other keys, with a search field.</translation>
     </message>
     <message>
         <source>Model tải khi dùng lần đầu, kiểm SHA-256, chạy trên máy.</source>
@@ -7517,6 +7790,10 @@
     <message>
         <source>Công cụ</source>
         <translation>Tools</translation>
+    </message>
+    <message>
+        <source>Khác</source>
+        <translation>Other</translation>
     </message>
     <message>
         <source>Tìm lệnh hay phím, tên tiếng Anh cũng được</source>

@@ -30,6 +30,9 @@ Item {
     readonly property var kinds: Tools.value("layers:kinds", {})
     readonly property var fxShut: Tools.value("layers:fxShut", {})
     readonly property int thumbSize: [16, 24, 40][Tools.value("layers:thumb", 1)] || 24
+    // A mask seen on its own (Alt click) or as red over the image (\): { doc, layer, view } (MenuSpec.maskView(), U31).
+    readonly property var maskView: Tools.value("layers:maskView", null)
+    readonly property var linkItem: layerItem("@link")  // Layer › Liên kết layer, the foot's link
     readonly property int rowHeight: thumbSize + 8
     property var shown: []  // the rows: { l: a Doc layers entry, fx: "" the layer, "effects" or an effect's key }
     property Doc shownOf: null  // the document they are of
@@ -228,9 +231,15 @@ Item {
                                : p[k] ? { [k]: false } : { lockAll: false, [k]: true }, true)
     }
     // A click on a row: the layer alone; Ctrl adds or takes it off; Shift, the rows from the active one to it. On the
-    // mask, the mask takes the brush; Shift there turns it off or on.
+    // mask, the mask takes the brush; Shift there turns it off or on, Alt shows it alone (Tools "layers:maskView", U31).
+    // Ctrl on the thumbnail or the mask: its pixels or mask made the selection (Shift adds, Alt takes away, both cross);
+    // Alt on the line between two rows ("edge:top", "edge:bottom" of this one): the clipping mask (U31, Photoshop's).
     function pick(r, mods, part) {
         const id = r.l.id, sel = doc.selected
+        if (/^edge:/.test(part))
+            return clipAt(r, part.slice(5))
+        if ((mods & Qt.ControlModifier) && (part === "thumb" || part === "mask"))
+            return loadSelection(id, part === "mask" ? "mask" : "transparency", mods)
         if (part === "mask" && (mods & Qt.ShiftModifier))
             return run({ op: "mask", layer: id, action: "off" })
         let ids = [id]
@@ -243,6 +252,26 @@ Item {
         }
         run({ op: "selectLayers", layers: ids })
         doc.setEditMask(part === "mask" && ids[ids.length - 1] === id)
+        if (part === "mask" && (mods & Qt.AltModifier) && !(mods & Qt.ControlModifier))
+            Tools.setValue("layers:maskView", MenuSpec.maskView(maskView, doc, id, "alone"))
+    }
+    // Ctrl click on a thumbnail: from "transparency" or "mask"; mode by Shift, Alt as Photoshop's. A History step.
+    function loadSelection(id, from, mods) {
+        if (!doc.supports("loadSelection"))  // a real document: not until the core has it (decision 4)
+            return false
+        const add = !!(mods & Qt.ShiftModifier), sub = !!(mods & Qt.AltModifier)
+        return run({ op: "loadSelection", layer: id, from: from, mode: add && sub ? "int" : add ? "add" : sub ? "sub" : "new" })
+    }
+    // Alt on the line above (edge "top") or below ("bottom") row r: the layer over the line clipped to the one under it,
+    // or released; an effect's row is its layer's. Only two layers next to each other in one group.
+    function clipAt(r, edge) {
+        const i = shown.indexOf(r), j = edge === "top" ? i - 1 : i + 1
+        if (i < 0 || j < 0 || j >= shown.length || !doc.supports("clippingMask"))
+            return false
+        const upper = shown[Math.min(i, j)].l, lower = shown[Math.max(i, j)].l
+        if (upper === lower || upper.parent !== lower.parent || upper.index !== lower.index + 1)
+            return false
+        return run({ op: "clippingMask", layer: upper.id })
     }
     function deselect() {
         if (!doc)
@@ -381,14 +410,16 @@ Item {
         return items.map(it => it.t === "sep" ? it : Object.assign({}, it, { disabled: !main || !main.can(it), sub: Array.isArray(it.sub) ? resolve(it.sub) : it.sub }))
     }
     // The right button on a row: its layer picked unless it is, then the Layer menu but for what makes new layers,
-    // aligns or is always greyed; then the colour labels.
+    // aligns, distributes or is always greyed, and Liên kết layer while it cannot run (as Photoshop's: two layers picked,
+    // or linked ones); then the colour labels.
     function contextMenu(r, x, y) {
         if (doc.selected.indexOf(r.entry.id) < 0) {
             run({ op: "selectLayers", layers: [r.entry.id] })
             doc.setEditMask(false)
         }
         const first = it => it.act || it.dialog || (Array.isArray(it.sub) && it.sub.length ? first(it.sub[0]) : "")
-        const kept = layerMenu().items.filter(it => it.t === "sep" || (!it.disabled && first(it) && !/^@(newLayer|fill|adj|alignSel)\b/.test(first(it))))
+        const kept = layerMenu().items.filter(it => it.t === "sep" || (!it.disabled && first(it) && !/^@(newLayer|fill|adj|alignSel|distribute)\b/.test(first(it))
+                                                                       && (it.act !== "@link" || (!!main && main.can(it)))))
         const items = resolve(kept.filter((it, i) => it.t !== "sep" || (i > 0 && kept[i - 1].t !== "sep")))
         const tag = active ? active.props.tag || null : null
         pop.cap = Infinity
@@ -558,6 +589,8 @@ Item {
             selected: !!item.l && !!panel.doc && panel.doc.selected.indexOf(item.l.id) >= 0
             editMask: !!item.l && !!panel.doc && panel.doc.editMask && !!panel.active && panel.active.id === item.l.id
             renaming: !pooled && !!item.l && !item.fx && panel.renaming === item.l.id
+            maskView: !!item.l && !item.fx && !!panel.maskView && panel.maskView.doc === panel.doc && panel.maskView.layer === item.l.id ? panel.maskView.view : ""
+            linked: !!item.l && !item.fx && !!item.l.props.link
             onEyeClicked: mods => panel.eye(r.item, mods)
             onTwistClicked: panel.doc.toggleOpen(r.item.l.id)
             onFxClicked: panel.toggleFx(r.item.l.id)
@@ -630,18 +663,22 @@ Item {
             anchors.rightMargin: 8
             y: 4
             spacing: 2
-            ToolToggle {
-                enabled: false  // P2 as the prototype's: greyed
+            ToolToggle {  // Layer › Liên kết layer, or Bỏ liên kết layer (U31)
+                enabled: !!panel.main && panel.main.can(panel.linkItem)
                 icon.name: "link"
                 ToolTip.text: qsTr("Liên kết layer · Link Layers")
                 Accessible.name: qsTr("Liên kết layer")
+                onClicked: panel.main.act(panel.linkItem)
             }
             ToolToggle {
                 id: fxButton
                 enabled: !!panel.active && !panel.active.props.background
                 ToolTip.text: qsTr("Layer style · Add a layer style")
                 Accessible.name: qsTr("Thêm layer style")
-                onClicked: panel.footMenu(panel.subOf(it => it.dialog === "LayerStyle"), Infinity)
+                onClicked: {  // Layer › Layer Style's pages, as Photoshop's fx: not Xóa Layer Style
+                    const pages = panel.subOf(it => it.dialog === "LayerStyle"), end = pages.map(it => !!it.dialog).lastIndexOf(true)
+                    panel.footMenu(pages.filter((it, i) => i <= end && (it.dialog || it.t === "sep")), Infinity)
+                }
                 contentItem: Text {
                     text: "fx"
                     color: !fxButton.enabled ? Theme.t4 : fxButton.hovered ? Theme.t1 : Theme.t2

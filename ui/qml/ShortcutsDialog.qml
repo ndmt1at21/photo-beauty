@@ -4,19 +4,21 @@ import QtQuick.Controls.Basic
 import "MenuSpec.js" as MenuSpec
 import "ToolSpec.js" as ToolSpec
 
-// Phím tắt (docs/ui-tasks.md, U20; build/proto/Shortcuts.dc.html; Edit › Phím tắt…, Help, Thiết lập's link): three
+// Phím tắt (docs/ui-tasks.md, U20; build/proto/Shortcuts.dc.html; Edit › Phím tắt…, Help, Thiết lập's link): four
 // tabs read from where the keys run, not retyped: Menu ứng dụng, the menus' keys Main registers (MenuSpec.keyed());
 // Menu panel, each panel's … menu (its `menu`, read from the panel made for a moment); Công cụ, ToolSpec.KEYS, the
-// toolbar's. The search folds case and Vietnamese marks ("luu" finds Lưu) over a row's name, its English name and its
-// keys (⇧ as "shift"); groups flow in two columns. Shows the keys only: changing them is P2.
+// toolbar's; Khác, MenuSpec.KEYS, Photoshop's keys no menu item has and the clicks in Layers (U31). The search folds
+// case and Vietnamese marks ("luu" finds Lưu) over a row's name, its English name and its keys (⇧ as "shift"); groups
+// flow in two columns. Shows the keys only: changing them is P2.
 DialogBox {
     id: dlg
     property var params: ({})
-    property int tab: 0  // 0 Menu ứng dụng, 1 Menu panel, 2 Công cụ
+    property int tab: 0  // 0 Menu ứng dụng, 1 Menu panel, 2 Công cụ, 3 Khác
     property alias query: search.text
-    // Each tab's [[group, rows]], a row { n, en, keys (as shown, one per cap: "Ctrl", "⇧", "Z"), find (what the search
-    // reads, folded) }: made once open, as the panels' menus are read from panels made for the moment.
-    property var lists: [[], [], []]
+    // Each tab's [[group, rows]], a row { n, en, keys (as shown, one per cap: "Ctrl", "⇧", "Z"; none for a click), caps
+    // (the caps shown: its keys, a click's modifiers), click (where a click is: "nhấp mask"; "" for keys), find (what the
+    // search reads, folded) }: made once open, as the panels' menus are read from panels made for the moment.
+    property var lists: [[], [], [], []]
     readonly property var shown: {
         const q = fold(query.trim())
         return lists[tab].map(g => [g[0], g[1].filter(r => !q || r.find.indexOf(q) >= 0)]).filter(g => g[1].length)
@@ -41,15 +43,15 @@ DialogBox {
     boxWidth: 860
     implicitHeight: 600
     closable: true
-    Component.onCompleted: lists = [appKeys(), panelKeys(), toolKeys()]
+    Component.onCompleted: lists = [appKeys(), panelKeys(), toolKeys(), otherKeys()]
     onOpened: search.forceActiveFocus()
 
     // Case, Vietnamese marks and đ folded, ⇧ as "shift", as the prototype's search.
     function fold(s) { return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/⇧/g, "shift") }
-    function row(n, label, en, k) {
+    function row(n, label, en, k, click) {
         const e = en || english[String(label).replace(/…$/, "")] || ""
-        const keys = k ? String(k).split(" ") : []
-        return { n: n, en: e, keys: keys, find: fold(n + " " + e + " " + keys.join(" ")) }
+        const caps = k ? String(k).split(" ") : []
+        return { n: n, en: e, keys: click ? [] : caps, caps: caps, click: click || "", find: fold([n, e].concat(caps, [click || ""]).join(" ")) }
     }
     // The menu bar's, by menu; an item in a submenu named after it ("Mới › Layer…").
     function appKeys() {
@@ -85,6 +87,7 @@ DialogBox {
     }
     function menuOf(panel) { return panel.menu || [] }  // untyped: any panel's
     function toolKeys() { return ToolSpec.KEYS.map(g => [g[0], g[1].map(r => row(r.l, r.l, r.en, r.k))]) }
+    function otherKeys() { return MenuSpec.KEYS.map(g => [g[0], g[1].map(r => row(r.l, r.l, r.en, r.k, r.click))]) }
     // Photoshop's English names of the menus' Vietnamese labels (… dropped): the artboard's, then those it has no row for.
     readonly property var english: ({
         "Tạo mới": "New", "Mở": "Open", "Lưu": "Save", "Lưu thành": "Save As", "Xuất thành": "Export As", "Đóng": "Close",
@@ -121,7 +124,7 @@ DialogBox {
                 x: 18
                 y: 12
                 height: 28
-                options: [qsTr("Menu ứng dụng"), qsTr("Menu panel"), qsTr("Công cụ")]
+                options: [qsTr("Menu ứng dụng"), qsTr("Menu panel"), qsTr("Công cụ"), qsTr("Khác")]
                 current: dlg.tab
                 onPicked: i => dlg.tab = i
             }
@@ -239,7 +242,7 @@ DialogBox {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 3
                         Repeater {
-                            model: r.modelData.keys
+                            model: r.modelData.caps
                             delegate: Rectangle {  // .kb: a key cap, its inset shadow a line at its foot
                                 id: cap
                                 required property string modelData
@@ -258,6 +261,13 @@ DialogBox {
                                     font.weight: Font.Medium
                                 }
                             }
+                        }
+                        Text {  // a click's place after its modifiers: "nhấp mask"
+                            visible: r.modelData.click !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: r.modelData.click
+                            color: Theme.t2
+                            font.pointSize: Theme.pt(11)
                         }
                     }
                 }

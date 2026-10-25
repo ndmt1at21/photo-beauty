@@ -154,6 +154,11 @@ var ALT_PICK = { brush: 1, pencil: 1, gradient: 1, bucket: 1 }
 var VIEW_T = { hand: 1, rot: 1, zoom: 1 }
 // The bar whose brush the brush picker and [ ] change: the painting tool's, else Brush's.
 function brushBar(id, xf) { return PAINT_T[id] && !xf ? tool(id).bar : "brush" }
+// The selection tools: with a selection, the arrows nudge its outline (U31); Move nudges the layers.
+var SEL_T = { rect: 1, ellip: 1, lasso: 1, plasso: 1, wand: 1, selbrush: 1 }
+// The index of a bar's Mode with the blend modes (LISTS.paint: Brush, Pencil, Clone Stamp, the healing brushes,
+// Gradient, Paint Bucket), whose mode Shift + −, Alt ⇧ + a letter set while the tool is in use (U31); -1 for none.
+function modeCell(bar) { return (BARS[bar] || []).findIndex(x => /^!?D~[^~]*~[^~]*~paint~/.test(x)) }
 // The tool a key picks: its group's tool on top when that one has the key, else the first that has it; with next (Shift
 // and the key, or the key again when Thiết lập › Công cụ cycles without Shift) the one after the tool in use.
 function keyTool(k, current, top, next) {

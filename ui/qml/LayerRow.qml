@@ -6,9 +6,9 @@ import "Mock.js" as Mock
 // A row of the Layers panel (docs/ui-tasks.md, U9; the LayerRow card of Controls, PanelsA, the rows of Main.dc.html):
 // size + 8 tall (32 with the 24 thumbnail; Nhỏ, Vừa, Lớn are 16, 24, 40): the eye, 16 of indent a level, the clipping
 // arrow, a group's twist and folder, the thumbnail by kind, the mask behind its link (striped while off), the name
-// (italic for the Background), fx, the lock, the colour label on the left edge. Under a layer with effects, its Hiệu ứng
-// row and a row per effect, each with an eye. It shows what it is given and tells what was done to it; LayersPanel
-// runs the commands.
+// (italic for the Background), the link of linked layers, fx, the lock, the colour label on the left edge. Under a
+// layer with effects, its Hiệu ứng row and a row per effect, each with an eye. It shows what it is given and tells what
+// was done to it; LayersPanel runs the commands.
 Item {
     id: row
     property var entry: null  // a Doc layers entry: { id, kind, props, depth, parent, index, count }
@@ -23,6 +23,8 @@ Item {
     property bool fxOpen  // its effects listed
     property bool renaming
     property int size: 24  // the thumbnail's side
+    property string maskView  // its mask seen "alone" (Alt click) or as red over the image ("overlay", \), else "" (U31)
+    property bool linked  // linked to other layers (props.link): the link at the right, as Photoshop's (U31)
     readonly property var p: entry ? entry.props : ({})
     readonly property string kind: entry ? entry.kind : ""
     readonly property string text: fx ? label : p.name || ""
@@ -37,7 +39,7 @@ Item {
     signal eyeClicked(int modifiers)
     signal twistClicked()
     signal fxClicked()
-    signal picked(int modifiers, string part)  // a click; part: "thumb", "mask", else "row"
+    signal picked(int modifiers, string part)  // a click; part: "thumb", "mask", "edge:top" or "edge:bottom" (Alt on the line), else "row"
     signal opened(string part)  // a double click; part: "name" on the name, else "row"
     signal menuAsked(real x, real y)  // the right button, in the row
     signal dragged(real x, real y)  // the left button held and moved past 6 px, in the row
@@ -47,6 +49,8 @@ Item {
     implicitWidth: 307
     implicitHeight: size + 8
 
+    // The line above or below the row a click at y is on ("top", "bottom"; Alt there clips, U31), "" for none.
+    function edgeAt(y) { return y < 4 ? "top" : y >= height - 5 ? "bottom" : "" }
     // A click's or double click's part of the row at x.
     function partAt(x) {
         const over = it => it.visible && x >= it.mapToItem(row, 0, 0).x && x < it.mapToItem(row, 0, 0).x + it.width
@@ -232,13 +236,20 @@ Item {
                     ctx.stroke()
                 }
             }
+            Rectangle {  // \: the mask as red over the image (the canvas shows it later; Layers marks it here)
+                anchors.fill: parent
+                radius: 2
+                visible: row.maskView === "overlay"
+                color: Theme.danger
+                opacity: 0.45
+            }
             Rectangle {  // on its edge, t4; round that, t1 while the mask takes the brush (box-shadow 0 0 0 1px, 2px)
                 anchors.fill: parent
                 anchors.margins: -2
                 radius: 4
                 color: "transparent"
                 border.width: 1
-                border.color: row.selected && row.editMask ? Theme.t1 : "transparent"
+                border.color: row.maskView === "alone" ? Theme.accent : row.selected && row.editMask ? Theme.t1 : "transparent"
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 1
@@ -285,8 +296,11 @@ Item {
             onReleased: e => {
                 if (e.button !== Qt.LeftButton)
                     return
+                const alt = (e.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.ShiftModifier)) === Qt.AltModifier
                 if (moved)
                     row.dropped(e.modifiers)
+                else if (alt && row.edgeAt(e.y) && !row.fx)
+                    row.picked(e.modifiers, "edge:" + row.edgeAt(e.y))
                 else
                     row.picked(e.modifiers, row.partAt(e.x + pick.x))
             }
@@ -344,6 +358,7 @@ Item {
         anchors.rightMargin: 8
         height: parent.height - 1
         spacing: 6
+        Icon { visible: row.linked; anchors.verticalCenter: parent.verticalCenter; name: "link"; size: 14; color: Theme.t3 }
         AbstractButton {
             visible: row.hasFx && !row.fx
             height: parent.height

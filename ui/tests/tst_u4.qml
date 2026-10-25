@@ -168,13 +168,13 @@ Item {
         // ---- menus ---------------------------------------------------------------------------------------------------
         // The Menus artboard's menus, copied: on chân dung.psd as Main opens (Dodge & Burn picked, no selection).
         readonly property var artboard: [
-            ['Tạo mới…|Ctrl N', 'Mở…|Ctrl O', '>Mở gần đây', '-', 'Đóng|Ctrl W', 'Đóng tất cả|Ctrl Alt W', '-', 'Lưu|Ctrl S', 'Lưu thành…|Ctrl ⇧ S', 'Lưu bản sao…|Ctrl Alt S', 'Hoàn nguyên|F12', '-', 'Place Embedded…', '>Xuất', '-', 'Thoát|Ctrl Q'],
+            ['Tạo mới…|Ctrl N', 'Mở…|Ctrl O', '>Mở gần đây', '-', 'Đóng|Ctrl W', 'Đóng tất cả|Ctrl Alt W', 'Đóng các tài liệu khác|Ctrl Alt P', '-', 'Lưu|Ctrl S', 'Lưu thành…|Ctrl ⇧ S', 'Lưu bản sao…|Ctrl Alt S', 'Hoàn nguyên|F12', '-', 'Place Embedded…', '>Xuất', '-', 'Thoát|Ctrl Q'],  // U31: Đóng các tài liệu khác
             ['Hoàn tác Brush|Ctrl Z', '!Làm lại|Ctrl ⇧ Z', 'Đổi qua lại bước cuối|Ctrl Alt Z', 'Fade Brush…|Ctrl ⇧ F', '-', '!Cắt|Ctrl X', '!Sao chép|Ctrl C', '!Sao chép hợp nhất|Ctrl ⇧ C', 'Dán|Ctrl V', 'Dán tại chỗ|Ctrl ⇧ V', '!Xóa|Del', '-', 'Fill…|⇧ F5', '!Stroke…', '-', 'Free Transform|Ctrl T', '>Transform', '-', 'Define Brush Preset…', '-', 'Color Settings…|Ctrl ⇧ K', 'Assign Profile…', 'Convert to Profile…', '-', 'Phím tắt…|Ctrl ⇧ Alt K', 'Thiết lập…|Ctrl K'],
             ['>Mode', '-', '^>Adjustments', '-', 'Auto Tone|Ctrl ⇧ L', 'Auto Contrast|Ctrl ⇧ Alt L', 'Auto Color|Ctrl ⇧ B', '-', 'Image Size…|Ctrl Alt I', 'Canvas Size…|Ctrl Alt C', '>Image Rotation', '!Crop', 'Trim…', 'Reveal All', '-', 'Nhân bản…'],
             // The artboard draws Bỏ nhóm on; the prototype's REQ (ungroup: grp) greys it with Dodge & Burn picked.
             ['>Mới', 'Nhân bản layer…', 'Đổi tên layer…', '>Xóa', '-', '>Layer Style', '-', '>Fill Layer mới', '>Adjustment Layer mới', '-', '>Layer Mask', 'Tạo Clipping Mask|Ctrl Alt G', '-', '>Smart Objects', '>Rasterize', '-', 'Nhóm layer|Ctrl G', '!Bỏ nhóm|Ctrl ⇧ G', 'Ẩn layer|Ctrl ,', '-', '>Sắp xếp', '>Căn', '>Phân bố', '-', 'Khóa layer…|Ctrl /', '!Liên kết layer', '-', 'Gộp xuống|Ctrl E', 'Gộp layer đang hiện|Ctrl ⇧ E', 'Làm phẳng ảnh'],
             ['>Panel', '>Anti-Alias', '-', '!Chuyển thành chữ đoạn', '!Rasterize Type Layer', '-', '>Cỡ xem trước font', 'Cập nhật mọi layer chữ', 'Thay font thiếu…'],
-            ['Chọn tất cả|Ctrl A', '!Bỏ chọn|Ctrl D', '!Chọn lại|Ctrl ⇧ D', '!Đảo vùng chọn|Ctrl ⇧ I', '-', 'Mọi layer|Ctrl Alt A', '-', 'Color Range…', 'Subject', '^>Chân dung', '-', 'Select and Mask…|Ctrl Alt R', '!>Modify', '!Grow', '!Similar', '!Transform Selection', '-', 'Sửa trong Quick Mask|Q', '-', 'Nạp vùng chọn…', '!Lưu vùng chọn…'],
+            ['Chọn tất cả|Ctrl A', '!Bỏ chọn|Ctrl D', '!Chọn lại|Ctrl ⇧ D', '!Đảo vùng chọn|Ctrl ⇧ I', '-', 'Mọi layer|Ctrl Alt A', 'Bỏ chọn layer', '-', 'Color Range…', 'Subject', '^>Chân dung', '-', 'Select and Mask…|Ctrl Alt R', '!>Modify', '!Grow', '!Similar', '!Transform Selection', '-', 'Sửa trong Quick Mask|Q', '-', 'Nạp vùng chọn…', '!Lưu vùng chọn…'],  // U31: Bỏ chọn layer
             ['Gaussian Blur|Ctrl Alt F', '-', '>Neural Filters', 'Liquify…|Ctrl ⇧ X', '-', '^>Blur', '>Noise', '>Sharpen', '>Other'],
             ['Phóng to|Ctrl +', 'Thu nhỏ|Ctrl −', 'Vừa màn hình|Ctrl 0', '100%|Ctrl 1', '-', '*Lưới điểm ảnh', '>Chế độ màn hình', '-', '*Extras|Ctrl H', '>Hiện', '-', '*Thước|Ctrl R', '-', '*Bắt dính|Ctrl ⇧ ;', '>Bắt dính vào', '-', 'Khóa guide|Ctrl Alt ;', 'Xóa guide', 'Guide mới…'],
             ['Adjustments', 'Brush Settings|F5', 'Brushes', 'Channels', 'Character', '*Color|F6', 'Gradients', 'Histogram', 'History', 'Info|F8', '*Layers|F7', 'Navigator', 'Paragraph', '*Properties', 'Retouch', 'Swatches', '-', '*Thanh tùy chọn', '*Thanh công cụ'],
@@ -191,15 +191,15 @@ Item {
             "Edit>Transform": ["Lặp lại|Ctrl ⇧ T", "-", "Scale", "Rotate", "Skew", "Distort", "Perspective", "Warp", "-", "Xoay 180°", "Xoay 90° theo chiều kim đồng hồ", "Xoay 90° ngược chiều kim đồng hồ", "-", "Lật ngang", "Lật dọc"],
             "Image>Mode": ["RGB Color", "Grayscale", "-", "8 Bits/Channel", "16 Bits/Channel"],
             "Image>Image Rotation": ["180°", "90° theo chiều kim đồng hồ", "90° ngược chiều kim đồng hồ", "Tùy ý…", "-", "Lật canvas ngang", "Lật canvas dọc"],
-            "Layer>Mới": ["Layer…|Ctrl ⇧ N", "Nhóm…", "Chuyển thành Background", "-", "Sao chép sang layer mới|Ctrl J", "Cắt sang layer mới|Ctrl ⇧ J"],
+            "Layer>Mới": ["Layer…|Ctrl ⇧ N", "Nhóm…", "Nhóm từ layer…", "Chuyển thành Background", "-", "Sao chép sang layer mới|Ctrl J", "Cắt sang layer mới|Ctrl ⇧ J"],  // U31: Nhóm từ layer…
             "Layer>Xóa": ["Layer", "Layer đang ẩn"],
-            "Layer>Layer Style": ["Blending Options…", "-", "Drop Shadow…", "Stroke…", "Color Overlay…", "Gradient Overlay…"],
+            "Layer>Layer Style": ["Blending Options…", "-", "Drop Shadow…", "Stroke…", "Color Overlay…", "Gradient Overlay…", "-", "Xóa Layer Style"],  // U31: Xóa Layer Style
             "Layer>Fill Layer mới": ["Solid Color…", "Gradient…"],
             "Layer>Adjustment Layer mới": ["Brightness/Contrast…", "Levels…", "Curves…", "Exposure…", "Vibrance…", "Hue/Saturation…", "Color Balance…", "Black & White…", "Photo Filter…", "Channel Mixer…", "Color Lookup…", "Invert…", "Posterize…", "Threshold…", "Gradient Map…", "Selective Color…"],
             "Layer>Layer Mask": ["Hiện tất cả", "Ẩn tất cả", "Hiện vùng chọn", "Ẩn vùng chọn", "-", "Xóa", "Áp dụng", "-", "Tắt", "Bỏ liên kết"],
             "Layer>Smart Objects": ["Chuyển thành Smart Object", "Sửa nội dung", "Rasterize"],
             "Layer>Rasterize": ["Layer chữ", "Hình", "Smart Object", "Layer"],
-            "Layer>Sắp xếp": ["Đưa lên trên cùng|Ctrl ⇧ ]", "Đưa lên một bậc|Ctrl ]", "Đưa xuống một bậc|Ctrl [", "Đưa xuống dưới cùng|Ctrl ⇧ ["],
+            "Layer>Sắp xếp": ["Đưa lên trên cùng|Ctrl ⇧ ]", "Đưa lên một bậc|Ctrl ]", "Đưa xuống một bậc|Ctrl [", "Đưa xuống dưới cùng|Ctrl ⇧ [", "Đảo thứ tự"],  // U31: Đảo thứ tự
             "Layer>Căn": ["Mép trên", "Giữa theo chiều dọc", "Mép dưới", "-", "Mép trái", "Giữa theo chiều ngang", "Mép phải"],
             "Layer>Phân bố": ["!Mép trên", "!Giữa theo chiều dọc", "!Mép dưới", "-", "!Mép trái", "!Giữa theo chiều ngang", "!Mép phải"],
             "Type>Panel": ["Character", "Paragraph"],
@@ -286,7 +286,7 @@ Item {
             compare(Docs.docs.length, 0)
             Docs.openRecent(0)
             const m = openMenu(w, 0)
-            compare([m.count, m.itemAt(2).text], [16, "Mở gần đây"], "a document open: the whole File")
+            compare([m.count, m.itemAt(2).text], [17, "Mở gần đây"], "a document open: the whole File")  // U31: Đóng các tài liệu khác
         }
         function test_menus_selection() {
             const w = open({ startState: "Main" })

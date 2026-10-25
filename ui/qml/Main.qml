@@ -6,6 +6,9 @@ import QtQuick.Dialogs
 import QtQuick.Templates as T
 import QtCore
 import "MenuSpec.js" as MenuSpec
+import "ToolSpec.js" as ToolSpec
+import "Presets.js" as Presets
+import "Mock.js" as Mock
 
 // The app's window (docs/ui-tasks.md, U4; artboards Main, Start, the grid of Tokens): top bar 44, options bar 36,
 // toolbar 44, document tabs 28, the canvas, icon column 36, dock 308, status bar 24, each a type of its own that the task
@@ -48,6 +51,7 @@ ApplicationWindow {
     Component.onCompleted: {
         Prefs.persist = persist
         Prefs.machine = machine
+        MenuSpec.setDocCan(n => Docs.can(n))  // the items that follow the layer picked (Layer › Mới's Background, Liên kết layer)
         TitleBar.use(win)
         if (startState)
             start(startState)
@@ -77,16 +81,34 @@ ApplicationWindow {
 
     // ---- items, dialogs, spaces --------------------------------------------------------------------------------------
     // Whether a MenuSpec item can run now: a document open unless it is free, its requirement (Docs.can()), its dialog's
-    // or space's file in the module.
+    // or space's file in the module, the context of a key of MenuSpec.KEYS (U31).
     function can(item) {
         if (!item || item.t === "sep" || item.disabled || !(item.free || Docs.current))
             return false
         if (item.dialog ? !hasDialog(item.dialog) : item.space ? !hasSpace(item.space) : false)
             return false
-        if (Docs.current && !Docs.current.supports(item))  // a real document: what the core has (decision 4)
+        if (Docs.current && !Docs.current.supports(item.uses !== undefined ? item.uses : item))  // a real document: what the core has (decision 4)
+            return false
+        if (!inContext(item))
             return false
         return Docs.can(item.req || item.act || "")
     }
+    // A key's ctx (MenuSpec.KEYS: a tool with a brush, one whose Mode has the blend modes, Move or a selection tool with
+    // a selection but while Free Transform or Warp is on), and another document for Đóng các tài liệu khác, Ctrl Tab.
+    function inContext(item) {
+        const n = MenuSpec.name(item.act), t = baseTool
+        if ((n === "closeOthers" || n === "nextDoc") && Docs.docs.length < 2)
+            return false
+        switch (item.ctx) {
+        case "brush": return !!ToolSpec.PAINT_T[t] && !Tools.xf
+        case "paint": return ToolSpec.modeCell(ToolSpec.barOf(t, Tools.xf, Tools.warp)) >= 0
+        case "nudge": return !Tools.xf && (t === "move" || (!!ToolSpec.SEL_T[t] && !!Docs.current && !!Docs.current.selection))  // Free Transform, Warp: theirs (U34)
+        default: return true
+        }
+    }
+    // The tool in use, but the one under a key held a moment (U5: Space Hand, Alt Eyedropper, Ctrl Move): Alt ⇧ M is the
+    // brush's Multiply after Alt held long enough to pick colours.
+    readonly property string baseTool: toolbar.held ? toolbar.heldBase : Tools.tool
     // Runs a MenuSpec item (a menu's, a key's): its dialog, its space, Main's own actions, else Docs.exec(); false when it
     // cannot run.
     function act(item) {
@@ -101,17 +123,85 @@ ApplicationWindow {
             return !!openDialog(item.dialog, item.params)
         if (item.space)
             return !!openSpace(item.space, item.params)
+        const d = Docs.current, arg = MenuSpec.arg(item.act)
         switch (MenuSpec.name(item.act)) {
         case "openFile": files.open(); return true
         case "quit": win.close(); return true
         case "close": closeDoc(Docs.current); return true
         case "closeAll": closeAll(); return true
+        case "closeOthers": closeOthers(); return true
         case "clearRecent": Docs.clearRecent(); return true
         case "rename":
         case "noop":
         case "": requested(item.act || ""); return true
+        // MenuSpec.KEYS' own (U31); the rest of its acts are mock commands, Docs.exec()'s
+        case "nextDoc": Docs.select((Docs.index + Number(arg) + Docs.docs.length) % Docs.docs.length); return true
+        case "layerSel": return pickLayers(MenuSpec.layerSel(d.rows, d.selected, arg))
+        case "deselectLayers": return pickLayers([])
+        case "blend": return blend(arg)
+        case "fillWith": {  // "foreground" or "background", ",keep" what is transparent
+            const a = arg.split(",")
+            return d.run({ op: "fill", use: a[0], color: a[0] === "foreground" ? Tools.fg : Tools.bg, preserve: a[1] === "keep" })
+        }
+        case "nudge": {  // "Left", "Shift+Left"…: 1 px, 10 with Shift; the layers with Move, the selection with a selection tool
+            const px = /Shift/.test(arg) ? 10 : 1, dir = { Left: [-px, 0], Right: [px, 0], Up: [0, -px], Down: [0, px] }[arg.replace(/^.*\+/, "")]
+            return d.run({ op: "nudge", what: baseTool === "move" ? "layer" : "selection", dx: dir[0], dy: dir[1] })
+        }
+        case "maskView": {  // \: the active layer's mask as a red overlay, or not (Layers shows it; not History's)
+            if (!d.active || !d.active.props.mask)
+                return false
+            Tools.setValue("layers:maskView", MenuSpec.maskView(Tools.value("layers:maskView", null), d, d.active.id, arg))
+            return true
+        }
+        case "brushPreset": return brushPreset(arg)
         default: return Docs.exec(item.act)
         }
+    }
+    // MenuSpec.KEYS' layer keys: ids picked (the active one last), the layer and not its mask; false for none, or no change.
+    function pickLayers(ids) {
+        if (!ids || !Docs.current.run({ op: "selectLayers", layers: ids }))
+            return false
+        Docs.current.setEditMask(false)
+        return true
+    }
+    // Shift + −, Alt ⇧ + a letter: the Mode of the painting tool in use (its bar's, Tools.values), else the blend mode of
+    // the layers picked but the Background, one History step, as Photoshop's.
+    function blend(arg) {
+        const d = Docs.current, bar = ToolSpec.barOf(baseTool, Tools.xf, Tools.warp), i = ToolSpec.modeCell(bar)
+        if (i >= 0) {
+            const key = ToolSpec.key(bar, i), c = ToolSpec.cell(bar, i), now = Tools.value(key, c.def), v = MenuSpec.blendAfter(c.list, now, arg, true)
+            if (!v || v === now)
+                return false
+            Tools.setValue(key, v)
+            return true
+        }
+        const a = d.active
+        if (!a || a.props.background)
+            return false
+        const v = MenuSpec.blendAfter(Mock.BLENDS.filter(b => b !== "passThrough" || a.kind === "group"), a.props.blend, arg, false)
+        let ok = false
+        d.beginGesture()
+        for (const id of v ? d.selected : []) {
+            const l = d.layer(id)
+            if (l && !l.props.background && l.props.blend !== v && (v !== "passThrough" || l.kind === "group"))
+                ok = d.run({ op: "setProps", layer: id, props: { blend: v } }) || ok
+        }
+        d.endGesture()
+        return ok
+    }
+    // , . and with Shift: the brush preset before, after, first, last (Brushes' presets in order, the one in use the last
+    // with the size and hardness of the painting tool's brush, as the panel's) as that brush.
+    function brushPreset(arg) {
+        const bar = ToolSpec.brushBar(baseTool, Tools.xf), b = ToolSpec.brush(bar)
+        const all = Tools.value("brushes:groups", Presets.BR_GROUPS).reduce((o, g) => o.concat(g[1]), [])
+        const size = Tools.value(bar + ":size", b.size), hard = Tools.value(bar + ":hard", b.hard)
+        let at = -1
+        all.forEach((p, i) => { if (p[1] === size && p[2] === hard) at = i })
+        const to = MenuSpec.presetAfter(all.length, at, arg)
+        if (to < 0)
+            return false
+        Tools.setValues({ [bar + ":size"]: all[to][1], [bar + ":hard"]: all[to][2] })
+        return true
     }
     // The Component of a type of the module, null when there is none, looked up once.
     property var types: ({})
@@ -177,6 +267,15 @@ ApplicationWindow {
             openDialog("SaveChanges", { docs: [d], done: () => Docs.close(d) })
         else
             Docs.close(d)
+    }
+    // File › Đóng các tài liệu khác (U31): all but the one in front, asking first about those not saved.
+    function closeOthers() {
+        const keep = Docs.current, others = Docs.docs.filter(d => d !== keep), dirty = others.filter(d => d.dirty)
+        const go = () => others.forEach(d => Docs.close(d))
+        if (dirty.length && hasDialog("SaveChanges"))
+            openDialog("SaveChanges", { docs: dirty, done: go })
+        else
+            go()
     }
     function closeAll() {
         const dirty = Docs.docs.filter(d => d.dirty)
@@ -338,6 +437,19 @@ ApplicationWindow {
             required property var modelData
             sequences: modelData.sequences
             enabled: !win.space && win.can(modelData.item)
+            onActivated: win.act(modelData.item)
+        }
+    }
+    // The keys no menu item has (MenuSpec.KEYS, bound(); U31): on as an item can run (its ctx too), and while no text
+    // field has the focus; a plain one (no Ctrl or Alt: arrows, , . \) also while no control has it, as Tab.
+    readonly property bool typing: activeFocusItem instanceof TextInput || activeFocusItem instanceof TextEdit
+    readonly property bool controlFocus: activeFocusItem instanceof T.Control
+    Instantiator {
+        model: MenuSpec.bound()
+        delegate: Shortcut {
+            required property var modelData
+            sequences: modelData.sequences
+            enabled: !win.space && !win.typing && !(modelData.plain && win.controlFocus) && win.can(modelData.item)
             onActivated: win.act(modelData.item)
         }
     }

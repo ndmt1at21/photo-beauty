@@ -99,10 +99,15 @@ var REQ = {
   xf: "layer", warpOn: "layer", rot: "layer", flip: "layer", mode: "doc", bits: "doc", dlg: "doc", invert: "doc", step: "doc", crot: "doc", cflip: "doc", cropSel: "sel", dupDoc: "doc",
   newLayer: "doc", newGroup: "doc", dupLayer: "layer", cutLayer: "sel", rename: "layer", delLayer: "multi", delHidden: "hidden", fill: "doc", adj: "doc", clip: "layer", toSO: "layer", rast: "layer",
   groupLayer: "layer", ungroup: "grp", hideLayer: "layer", arr: "layer", alignSel: "sel", lockAll: "layer", merge: "multi", selAll: "doc", deselect: "sel", reselect: "prev", inverse: "sel",
-  ants: "doc", qm: "doc", loadSel: "doc", saveSel: "sel", zoomIn: "doc", zoomOut: "doc", zoomFit: "doc", zoom100: "doc", zoomFill: "doc", clearGuides: "doc", newGuide: "doc"
+  ants: "doc", qm: "doc", loadSel: "doc", saveSel: "sel", zoomIn: "doc", zoomOut: "doc", zoomFit: "doc", zoom100: "doc", zoomFill: "doc", clearGuides: "doc", newGuide: "doc",
+  // U31: Photoshop's items and keys the prototype has not (MenuSpec.KEYS)
+  stampVisible: "doc", stampLayers: "layer", transformAgain: "layer", link: "linkable", reverse: "picked2", clearStyle: "fx", bgToLayer: "bgl", layerToBg: "tobg",
+  distribute: "picked3", deselectLayers: "layer"
 };
-// The keys of cx().
-var CX = ["doc", "sel", "prev", "undo", "redo", "hist", "layer", "multi", "hidden", "grp", "text", "shape", "so", "mask", "bgl", "below", "faces"];
+// The keys of cx(); U31's after faces: two, three layers picked or more, those that link or are linked together, a
+// layer style on the active layer, a pixel layer that can become the Background (there is none).
+var CX = ["doc", "sel", "prev", "undo", "redo", "hist", "layer", "multi", "hidden", "grp", "text", "shape", "so", "mask", "bgl", "below", "faces",
+  "picked2", "picked3", "linkable", "linked", "fx", "tobg"];
 // The portrait's History as it opens (the mock keeps no pixels, so every step has the state it opened with).
 const H0 = [[qsTr("Mở"), "folder_open"], [qsTr("Tách tần số"), "face_retouching_natural"], ["Spot Healing Brush", "spot_heal"], ["Spot Healing Brush", "spot_heal"], ["Liquify", "face"],
   [qsTr("Layer Curves mới"), "curve"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"]];
@@ -111,6 +116,7 @@ const MASK_SEL = "radial-gradient(ellipse 30% 26% at 57% 42%, #ffffff 0 70%, #00
 const MASK_INV = "radial-gradient(ellipse 30% 26% at 57% 42%, #000000 0 70%, #ffffff 100%)";
 const MASK_SUBJECT = "radial-gradient(ellipse 42% 47% at 57% 55%, #ffffff 0 80%, #000000 100%)";
 const MASK_EYES = "radial-gradient(circle at 42% 40%, #ffffff 0 8%, transparent 13%), radial-gradient(circle at 66% 40%, #ffffff 0 8%, transparent 13%), #000000";
+const MASK_TEETH = "radial-gradient(ellipse 24% 13% at 55% 68%, #ffffff 0 55%, #000000 100%)";
 
 // The prototype's vn(): 1.234,5 and "−", in the UI's language (Fmt.js, U30).
 function vn(x, dec) { return Fmt.vn(x, dec); }
@@ -640,8 +646,172 @@ const OPS = {
   },
   eyesTeeth(s) {
     return addAbove(s, "adj", { name: nextName(s, qsTr("Làm sáng mắt")), adj: "Curves", mask: MASK_EYES, vals: { pre: "Lighter (RGB)" } }, qsTr("Mắt, răng"), "face_retouching_natural");
+  },
+
+  // Photoshop's keys, Layers' clicks and the items the prototype's menus lacked (U31, MenuSpec.KEYS) ----
+  // Ctrl Alt Shift E, Stamp Visible: the visible layers merged into a new layer above the active one (at the top
+  // without one); the mock merges no pixels, the new layer shows the photo.
+  stampVisible(s) {
+    if (!flatten(s.root).some((l) => l.props.visible)) throw bad("no visible layers");
+    return addAbove(s, "pixel", { name: nextName(s, qsTr("Layer")), photo: s.photo }, qsTr("Gộp layer đang hiện vào layer mới"), "layers");
+  },
+  // Ctrl Alt E: the layers picked merged into a new one right above the topmost of them, named after it as Photoshop's
+  // "… (merged)".
+  stampLayers(s, c) {
+    const top = topLevel(s, c.layers !== undefined ? c.layers : s.selected);
+    if (!top.length) throw bad("no layers to merge");
+    const first = flatten(s.root).find((l) => top.some((t) => t.id === l.id));
+    const f = find(s.root, first.id);
+    const a = { op: "addLayer", parent: f.parent.id, index: f.index + 1, kind: "pixel", props: { name: qsTr("%1 (gộp)").arg(first.props.name), photo: s.photo } };
+    return out(OPS.addLayer(s, a).s, qsTr("Gộp layer đang chọn vào layer mới"), "layers", a);
+  },
+  // Ctrl Shift Alt T: the layers picked copied (as duplicateLayers does) and Edit › Transform › Again done to the copies.
+  transformAgain(s, c) {
+    const r = OPS.duplicateLayers(s, { op: "duplicateLayers", layers: c.layers });
+    return out(r.s, qsTr("Nhân bản rồi Transform lại"), "content_copy", { op: "transformAgain", layers: r.c.layers });
+  },
+  // Layer › Liên kết layer: the layers picked linked (two or more: props.link, a number they share), or unlinked when
+  // they are linked together already (Bỏ liên kết layer).
+  link(s, c) {
+    const ids = c.layers !== undefined ? c.layers : s.selected;
+    const ls = ids.map((id) => need(s, id).node);
+    const k = ls.length ? ls[0].props.link : null;
+    const together = !!k && ls.every((l) => l.props.link === k);
+    if (!together && ls.length < 2) throw bad("two layers or more to link");
+    const to = together ? null : flatten(s.root).reduce((m, l) => Math.max(m, l.props.link || 0), 0) + 1;
+    let t = s;
+    for (const id of ids) t = put(t, { root: patched(t, id, { link: to }) });
+    return out(t, together ? qsTr("Bỏ liên kết layer") : qsTr("Liên kết layer"), "link", { op: "link", layers: ids.slice() });
+  },
+  // Layer › Sắp xếp › Đảo thứ tự: the layers picked but the Background swap places within their group, the topmost
+  // into the bottommost's; two of one group at least.
+  reverse(s, c) {
+    const top = topLevel(s, c.layers !== undefined ? c.layers : s.selected).filter((l) => !l.props.background);
+    const by = {};  // a group's id → its children picked
+    for (const l of top) {
+      const p = find(s.root, l.id).parent.id;
+      (by[p] = by[p] || {})[l.id] = true;
+    }
+    if (!Object.keys(by).some((p) => Object.keys(by[p]).length > 1)) throw bad("two layers of one group or more to reverse");
+    const root = rebuilt(s, (n) => {
+      const want = n.children && by[n.id];
+      if (!want || Object.keys(want).length < 2) return undefined;
+      const at = n.children.map((x, i) => (want[x.id] ? i : -1)).filter((i) => i >= 0);
+      const kids = n.children.slice();
+      at.forEach((i, k) => { kids[i] = n.children[at[at.length - 1 - k]]; });
+      return [Object.assign({}, n, { children: kids })];
+    });
+    return out(put(s, { root: root }), qsTr("Đảo thứ tự layer"), "drag_indicator", { op: "reverse", layers: top.map((l) => l.id) });
+  },
+  // Layer › Layer Style › Xóa Layer Style: the style (props.fx) of the layers picked that have one.
+  clearStyle(s, c) {
+    const styled = (id) => { const fx = need(s, id).node.props.fx; return !!fx && Object.keys(fx).some((k) => !!fx[k]); };
+    const ids = (c.layers !== undefined ? c.layers : s.selected).filter(styled);
+    if (!ids.length) throw bad("no layer style to clear");
+    let t = s;
+    for (const id of ids) t = put(t, { root: patched(t, id, { fx: null }) });
+    return out(t, qsTr("Xóa Layer Style"), "shadow", { op: "clearStyle", layers: ids });
+  },
+  // Layer › Mới › Layer từ Background…: the Background a layer as the others, "Layer 0", unlocked, picked.
+  bgToLayer(s) {
+    const bg = flatten(s.root).find((l) => l.props.background);
+    if (!bg) throw bad("no Background");
+    const p = { background: false, lockAll: false, lockTransparency: false, lockPixels: false, lockPosition: false, name: qsTr("Layer 0") };
+    return out(put(s, { root: patched(s, bg.id, p), selected: [bg.id] }), qsTr("Layer từ Background"), "layers", { op: "bgToLayer" });
+  },
+  // Chuyển thành Background (its place in Layer › Mới while a layer but the Background is picked): the active pixel
+  // layer, while there is no Background, made it: at the bottom, Normal, opaque, locked, without mask or style.
+  layerToBg(s, c) {
+    const id = target(s, c);
+    const l = need(s, id).node;
+    if (flatten(s.root).some((x) => x.props.background)) throw bad("there is a Background");
+    if (l.kind !== "pixel") throw bad("layer " + id + " is no pixel layer");
+    const p = checked(Object.assign({}, l.props, { name: qsTr("Background"), background: true, lockAll: true, lockTransparency: false, lockPixels: false, lockPosition: false,
+      blend: "normal", opacity: 1, fill: 1, clip: false, mask: null, maskOff: false, fx: null, link: null }), "pixel");
+    const bg = Object.assign({}, l, { props: p });
+    const root = rebuilt(s, (n) => (n.id === id ? [] : n.id === 0 ? [inserted(n, 0, [bg])] : undefined));
+    return out(put(s, { root: root }), qsTr("Chuyển thành Background"), "layers", { op: "layerToBg", layer: id });
+  },
+  // Layer › Phân bố: the layers picked (three or more) spread evenly by their edge or centre (edge, or arg as Docs.exec
+  // gives it: top, vcenter, bottom, left, hcenter, right); the mock places no layer.
+  distribute(s, c) {
+    const edge = c.edge || c.arg;
+    if (["top", "vcenter", "bottom", "left", "hcenter", "right"].indexOf(edge) < 0) throw bad("no edge " + edge);
+    const ids = topLevel(s, c.layers !== undefined ? c.layers : s.selected).map((l) => l.id);
+    if (ids.length < 3) throw bad("three layers or more to distribute");
+    return out(s, qsTr("Phân bố layer"), "align_horizontal_center", { op: "distribute", edge: edge, layers: ids });
+  },
+  // The arrows: the layers picked nudged dx, dy px (what "layer": the Move tool; not the Background nor a layer locked
+  // in place), or the selection's outline ("selection": a selection tool); the mock moves nothing.
+  nudge(s, c) {
+    if (!(Number.isInteger(c.dx) && Number.isInteger(c.dy)) || (!c.dx && !c.dy)) throw bad("no nudge " + c.dx + ", " + c.dy);
+    if (c.what === "selection") {
+      if (!s.selection) throw bad("no selection");
+      return out(s, qsTr("Dời vùng chọn"), "select", { op: "nudge", what: "selection", dx: c.dx, dy: c.dy });
+    }
+    if (c.what !== "layer") throw bad("no nudge of " + c.what);
+    const ids = topLevel(s, c.layers !== undefined ? c.layers : s.selected).filter((l) => !l.props.background && !l.props.lockPosition && !l.props.lockAll).map((l) => l.id);
+    if (!ids.length) throw bad("no layer that moves");
+    return out(s, qsTr("Dời layer"), "open_with", { op: "nudge", what: "layer", dx: c.dx, dy: c.dy, layers: ids });
+  },
+  // Alt, Ctrl Backspace (with Shift, what is transparent kept): the active layer filled with the foreground or the
+  // background colour (use, color), within the selection or all of it. A group, a type or shape layer, a smart object
+  // takes none (Photoshop asks to rasterize), nor a layer locked but the Background. The mock paints nothing.
+  fill(s, c) {
+    const id = target(s, c);
+    const l = need(s, id).node;
+    if (l.kind !== "pixel" && l.kind !== "adj") throw bad("layer " + id + " takes no fill");
+    if (!l.props.background && (l.props.lockAll || l.props.lockPixels)) throw bad("layer " + id + " is locked");
+    if (c.use !== "foreground" && c.use !== "background") throw bad("no fill with " + c.use);
+    return out(s, qsTr("Fill"), "format_color_fill", { op: "fill", layer: id, use: c.use, color: String(c.color || ""), preserve: !!c.preserve, selection: s.selection });
+  },
+  // Ctrl click a thumbnail in Layers: what of the layer is not transparent (from "transparency"), or its mask ("mask"),
+  // made the selection (mode "new"), added to it ("add", Shift), taken from it ("sub", Alt) or crossed with it ("int",
+  // Shift Alt), as a shape of SHAPES (combined()).
+  loadSelection(s, c) {
+    const id = target(s, c);
+    const l = need(s, id).node;
+    const k = c.from === "mask" ? maskShape(l.props) : c.from === "transparency" ? opaqueShape(l) : undefined;
+    if (k === undefined) throw bad("layer " + id + " has no " + c.from);
+    const now = s.selection ? (s.inverse ? "!" : "") + s.selection : null, mode = c.mode || "new", all = (x) => x === "all";
+    let next;
+    if (mode === "new") next = k;
+    else if (mode === "add") next = !now || all(k) ? k : all(now) || now === k || !k ? now : combined(now, "+", k);
+    else if (mode === "sub") next = !now || !k ? now : all(k) || now === k ? null : combined(now, "−", k);
+    else if (mode === "int") next = !now ? now : !k ? null : all(now) ? k : all(k) || now === k ? now : combined(now, "∩", k);
+    else throw bad("no mode " + mode);
+    if (next === now || (mode === "new" && !next)) throw bad("no change");  // Photoshop: no pixels are selected
+    const inv = !!next && /^![a-z]+$/i.test(next);
+    const names = { new: qsTr("Nạp vùng chọn"), add: qsTr("Cộng vào vùng chọn"), sub: qsTr("Trừ khỏi vùng chọn"), int: qsTr("Giao với vùng chọn") };
+    return out(put(s, { prevSelection: s.selection || s.prevSelection, selection: next ? (inv ? next.slice(1) : next) : null, inverse: inv }), names[mode], "select",
+      { op: "loadSelection", layer: id, from: c.from, mode: mode });
   }
 };
+
+// What a layer's pixels cover, as a selection (Ctrl click its thumbnail): a key of SHAPES, "!" before one inverted; null
+// for nothing (an empty layer, a black mask); undefined when there is nothing to load (a group; no mask).
+function opaqueShape(l) {
+  const p = l.props;
+  if (l.kind === "group") return undefined;
+  if (l.kind === "text") return "rect";
+  if (l.kind === "shape") return p.shape === "ellipS" ? "ellip" : "rect";
+  if (l.kind === "adj") return p.mask ? maskShape(p) : "all";  // an adjustment layer's pixels are its mask
+  return p.thumb === "empty" && !p.background ? null : p.thumb === "heal" ? "skin" : "all";
+}
+function maskShape(p) {
+  if (!p.mask) return undefined;
+  const k = { "#ffffff": "all", "#000000": null }[p.mask];
+  if (k !== undefined) return k;
+  return p.mask === MASK_SEL ? "skin" : p.mask === MASK_INV ? "!skin" : p.mask === MASK_SUBJECT ? "subject" : p.mask === MASK_EYES ? "eyes" : p.mask === MASK_TEETH ? "teeth" : "all";
+}
+// Two selections combined by a click with Shift or Alt: "a+b", "a−b", "a∩b" (a, b keys of SHAPES or such), made a shape
+// of SHAPES once, both outlines (the mock draws no area).
+function combined(a, op, b) {
+  const k = a + op + b;
+  const parts = (x) => SHAPES[x] || SHAPES[x.replace(/^!/, "")] || [];
+  if (!SHAPES[k]) SHAPES[k] = parts(a).concat(parts(b));
+  return k;
+}
 
 // A new layer above the active one, in its group; at the top without one (the prototype's addLayer()).
 function addAbove(s, kind, p, name, icon) {
@@ -693,7 +863,7 @@ function protoTree(rows) {
 function portrait() {
   const t = protoTree([
     { id: "c1", name: "Curves 1", kind: "adj", adj: "Curves", mask: "#ffffff", vals: { pre: "Medium Contrast (RGB)" } },
-    { id: "teeth", name: "Làm trắng răng", kind: "adj", adj: "Hue/Saturation", mask: "radial-gradient(ellipse 24% 13% at 55% 68%, #ffffff 0 55%, #000000 100%)", vals: { rng: "Yellows", s: -30, l: 10 } },
+    { id: "teeth", name: "Làm trắng răng", kind: "adj", adj: "Hue/Saturation", mask: MASK_TEETH, vals: { rng: "Yellows", s: -30, l: 10 } },
     { id: "eyes", name: "Làm sáng mắt", kind: "adj", adj: "Curves", mask: MASK_EYES, vals: { pre: "Lighter (RGB)" } },
     { id: "db", name: "Dodge & Burn", thumb: "gray", blend: "Soft Light" },
     { id: "fs", name: "Tách tần số", kind: "group", blend: "Pass Through" },
@@ -752,12 +922,16 @@ function duplicated(d) {
 // What the menus test (the prototype's cx), for document d (null: none open).
 function cx(d) {
   if (!d) return {};
-  const L = d.layers, a = d.active, i = a ? L.indexOf(a) : -1;
+  const L = d.layers, a = d.active, i = a ? L.indexOf(a) : -1, n = d.selected.length;
+  const fx = !!a && !!a.props.fx && Object.keys(a.props.fx).some((k) => !!a.props.fx[k]);
+  const link = (id) => { const l = L.find((x) => x.id === id); return l ? l.props.link : null; };
   return {
     doc: true, sel: !!d.selection, prev: !!d.prevSelection && !d.selection, undo: d.index > 0, redo: d.index < d.history.length - 1, hist: d.history.length > 1,
     layer: !!a, multi: L.length > 1, hidden: L.some((l) => !l.props.visible) && L.some((l) => l.props.visible),
     grp: !!a && a.kind === "group", text: !!a && a.kind === "text", shape: !!a && a.kind === "shape", so: !!a && a.kind === "so",
-    mask: !!a && !!a.props.mask, bgl: !!a && a.props.background, below: i >= 0 && i < L.length - 1, faces: !!d.faces
+    mask: !!a && !!a.props.mask, bgl: !!a && a.props.background, below: i >= 0 && i < L.length - 1, faces: !!d.faces,
+    picked2: n >= 2, picked3: n >= 3, linkable: !!a && (n >= 2 || !!a.props.link), linked: !!a && !!a.props.link && d.selected.every((id) => link(id) === a.props.link),
+    fx: fx, tobg: !!a && a.kind === "pixel" && !L.some((l) => l.props.background)
   };
 }
 // Whether `name` can run on d: a key of CX ('!' negates it), or a menu action ("delLayer", "@merge:down") by its REQ.

@@ -370,7 +370,7 @@ Item {
             keySequence("Ctrl+Shift+Alt+K")
             const d = dialogOn(w, ShortcutsDialog)
             const seg = find(d.contentItem, o => o instanceof Segmented)
-            compare(seg.options, ["Menu ứng dụng", "Menu panel", "Công cụ"])
+            compare(seg.options, ["Menu ứng dụng", "Menu panel", "Công cụ", "Khác"])
             const keyed = MenuSpec.keyed()
             compare(d.shown.map(g => g[0]), ["File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"])
             compare(names(d).length, keyed.length)
@@ -494,7 +494,8 @@ Item {
             verify(all.length > 100)
             const setups = [() => {}, () => Docs.current.run({ op: "select", shape: "all" }),
                 () => { Docs.current.run({ op: "select", shape: "all" }); Docs.current.run({ op: "deselect" }) },
-                () => Docs.current.run({ op: "selectLayers", layers: [Docs.current.layers.find(l => l.kind === "group").id] }), () => Docs.current.undo()]
+                () => Docs.current.run({ op: "selectLayers", layers: [Docs.current.layers.find(l => l.kind === "group").id] }), () => Docs.current.undo(),
+                () => Tools.setTool("move"), () => Docs.current.run({ op: "selectLayers", layers: [Docs.current.layers.find(l => !!l.props.mask).id] })]
             let ran = 0
             for (const seq in keys) {
                 if (seq === "Ctrl+Q")  // Thoát closes the window (tst_u4)

@@ -115,7 +115,7 @@ QtObject {
         ],
         shortcuts: [
             { kind: "link", label: qsTr("Phím mặc định như Photoshop"), text: qsTr("Mở Phím tắt…"), target: "Shortcuts" },
-            { kind: "note", label: qsTr("Bảng phím theo menu ứng dụng, menu panel và công cụ, có ô tìm.") }
+            { kind: "note", label: qsTr("Bảng phím theo menu ứng dụng, menu panel, công cụ và phím khác, có ô tìm.") }
         ],
         ai: [
             { kind: "model", key: "modelBiRefNet", label: "BiRefNet_lite", size: "85 MB", def: true },

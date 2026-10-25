@@ -1,7 +1,8 @@
 .pragma library
+.import "Mock.js" as Mock
 // The menu bar (docs/ui-tasks.md, U4): MENUS and SUBS of build/proto/Main.dc.html (copied by a script, not retyped),
 // their actions, requirements and keys, as PopupMenu items. One source for the menus, the keys Main registers and the
-// Phím tắt dialog (U20). An item:
+// Phím tắt dialog (U20); KEYS, the keys of Photoshop no menu item has (U31). An item:
 //   l the label; k its keys as shown ("Ctrl ⇧ Z", Main registers them, see sequences()); disabled always greyed;
 //   act "@name[:arg]", the prototype's exec(): Docs.exec() runs it, but for Main's own (openFile, quit, close,
 //       closeAll, clearRecent, rename, noop);
@@ -11,13 +12,23 @@
 //   sub a submenu's items ("recent": the recent files, Docs.recent), w its width;
 //   free: runs with no document open too (Start.dc.html's menus: Window, Help, Tạo mới, Mở, Thoát, Thiết lập…);
 //       anything else needs one;
-//   fade: the label names the step Hoàn tác would take back ("Fade Brush…").
+//   fade: the label names the step Hoàn tác would take back ("Fade Brush…");
+//   en: its English name in Photoshop, for Phím tắt (else ShortcutsDialog's table);
+//   uses: the command of run() it takes on a real document, when not its act's (decision 4: Doc.supports()); "" none.
+// Two items follow the layer picked, as Photoshop's: Layer › Mới's Chuyển thành Background is Layer từ Background… while
+// the Background is picked, Liên kết layer is Bỏ liên kết layer while the layers picked are linked together (getters on
+// Main's Docs.can(), setDocCan()).
 // Prototype artboards become dialogs: FillStroke → Fill, Stroke; ImageSize → ImageSize, CanvasSize; ColorSettings →
 // ColorSettings, AssignProfile, ConvertProfile; Filters → Filter { filter }; LayerStyle(Blend) → LayerStyle { page };
 // Notices → MissingFonts (Thoát asks SaveChanges through Main); @dlg:<adjustment> → Adjust { adjust }. A param's value
 // is the item's English name in camelCase ("Gaussian Blur…" → "gaussianBlur", "Hue/Saturation" → "hueSaturation").
 
 var SEP = { t: "sep" }
+
+// Main's Docs.can(), for the items whose label and action follow the layer picked; none: as with no document.
+var docCan = null
+function setDocCan(f) { docCan = f }
+function has(name) { return !!docCan && !!docCan(name) }
 
 var MENUS = [
     { title: qsTr("&File"), w: 250, items: [
@@ -27,6 +38,7 @@ var MENUS = [
         SEP,
         { l: qsTr("Đóng"), k: "Ctrl W", act: "@close" },
         { l: qsTr("Đóng tất cả"), k: "Ctrl Alt W", act: "@closeAll" },
+        { l: qsTr("Đóng các tài liệu khác"), k: "Ctrl Alt P", act: "@closeOthers", req: "doc", uses: "", en: "Close Others" },
         SEP,
         { l: qsTr("Lưu"), k: "Ctrl S", act: "@save" },
         { l: qsTr("Lưu thành…"), k: "Ctrl ⇧ S", dialog: "SaveOptions", req: "doc" },
@@ -143,7 +155,12 @@ var MENUS = [
         { l: qsTr("Mới"), w: 250, sub: [
             { l: qsTr("Layer…"), k: "Ctrl ⇧ N", act: "@newLayer" },
             { l: qsTr("Nhóm…"), act: "@newGroup" },
-            { l: qsTr("Chuyển thành Background"), act: "@noop", req: "!bgl" },
+            { l: qsTr("Nhóm từ layer…"), act: "@groupLayer", en: "Group from Layers" },
+            {
+                get l() { return has("bgl") ? qsTr("Layer từ Background…") : qsTr("Chuyển thành Background") },
+                get act() { return has("bgl") ? "@bgToLayer" : "@layerToBg" },
+                get en() { return has("bgl") ? "Layer from Background" : "Background from Layer" }
+            },
             SEP,
             { l: qsTr("Sao chép sang layer mới"), k: "Ctrl J", act: "@dupLayer" },
             { l: qsTr("Cắt sang layer mới"), k: "Ctrl ⇧ J", act: "@cutLayer", req: "sel" }
@@ -161,7 +178,9 @@ var MENUS = [
             { l: qsTr("Drop Shadow…"), dialog: "LayerStyle", params: { page: "dropShadow" }, req: "doc" },
             { l: qsTr("Stroke…"), dialog: "LayerStyle", params: { page: "stroke" }, req: "doc" },
             { l: qsTr("Color Overlay…"), dialog: "LayerStyle", params: { page: "colorOverlay" }, req: "doc" },
-            { l: qsTr("Gradient Overlay…"), dialog: "LayerStyle", params: { page: "gradientOverlay" }, req: "doc" }
+            { l: qsTr("Gradient Overlay…"), dialog: "LayerStyle", params: { page: "gradientOverlay" }, req: "doc" },
+            SEP,
+            { l: qsTr("Xóa Layer Style"), act: "@clearStyle", en: "Clear Layer Style" }
         ] },
         SEP,
         { l: qsTr("Fill Layer mới"), w: 180, sub: [
@@ -221,7 +240,8 @@ var MENUS = [
             { l: qsTr("Đưa lên trên cùng"), k: "Ctrl ⇧ ]", act: "@arr:top" },
             { l: qsTr("Đưa lên một bậc"), k: "Ctrl ]", act: "@arr:up" },
             { l: qsTr("Đưa xuống một bậc"), k: "Ctrl [", act: "@arr:down" },
-            { l: qsTr("Đưa xuống dưới cùng"), k: "Ctrl ⇧ [", act: "@arr:bottom" }
+            { l: qsTr("Đưa xuống dưới cùng"), k: "Ctrl ⇧ [", act: "@arr:bottom" },
+            { l: qsTr("Đảo thứ tự"), act: "@reverse", en: "Reverse" }
         ] },
         { l: qsTr("Căn"), w: 220, sub: [
             { l: qsTr("Mép trên"), act: "@alignSel", req: "sel" },
@@ -232,18 +252,18 @@ var MENUS = [
             { l: qsTr("Giữa theo chiều ngang"), act: "@alignSel", req: "sel" },
             { l: qsTr("Mép phải"), act: "@alignSel", req: "sel" }
         ] },
-        { l: qsTr("Phân bố"), w: 220, sub: [
-            { l: qsTr("Mép trên"), disabled: true },
-            { l: qsTr("Giữa theo chiều dọc"), disabled: true },
-            { l: qsTr("Mép dưới"), disabled: true },
+        { l: qsTr("Phân bố"), w: 220, sub: [  // three layers picked or more
+            { l: qsTr("Mép trên"), act: "@distribute:top" },
+            { l: qsTr("Giữa theo chiều dọc"), act: "@distribute:vcenter" },
+            { l: qsTr("Mép dưới"), act: "@distribute:bottom" },
             SEP,
-            { l: qsTr("Mép trái"), disabled: true },
-            { l: qsTr("Giữa theo chiều ngang"), disabled: true },
-            { l: qsTr("Mép phải"), disabled: true }
+            { l: qsTr("Mép trái"), act: "@distribute:left" },
+            { l: qsTr("Giữa theo chiều ngang"), act: "@distribute:hcenter" },
+            { l: qsTr("Mép phải"), act: "@distribute:right" }
         ] },
         SEP,
         { l: qsTr("Khóa layer…"), k: "Ctrl /", act: "@lockAll" },
-        { l: qsTr("Liên kết layer"), disabled: true },
+        { get l() { return has("linked") ? qsTr("Bỏ liên kết layer") : qsTr("Liên kết layer") }, act: "@link" },
         SEP,
         { l: qsTr("Gộp xuống"), k: "Ctrl E", act: "@merge:down" },
         { l: qsTr("Gộp layer đang hiện"), k: "Ctrl ⇧ E", act: "@merge:visible" },
@@ -282,6 +302,7 @@ var MENUS = [
         { l: qsTr("Đảo vùng chọn"), k: "Ctrl ⇧ I", act: "@inverse" },
         SEP,
         { l: qsTr("Mọi layer"), k: "Ctrl Alt A", act: "@noop" },
+        { l: qsTr("Bỏ chọn layer"), act: "@deselectLayers", req: "layer", uses: "selectLayers", en: "Deselect Layers" },
         SEP,
         { l: qsTr("Color Range…"), dialog: "ColorRange", req: "doc" },
         { l: qsTr("Subject"), act: "@ants:subject" },
@@ -425,7 +446,7 @@ var MENUS = [
     ] }
 ]
 // File with no document open (Start.dc.html's MENUS): eight rows of the one above, the same items.
-MENUS[0].start = (f => [f[0], f[1], SEP, f[4], f[7], f[13].sub[1], SEP, f[15]])(MENUS[0].items)
+MENUS[0].start = (f => [f[0], f[1], SEP, f[4], f[8], f[14].sub[1], SEP, f[16]])(MENUS[0].items)
 
 // "@merge:down" → "merge", "down"; "" for none.
 function name(act) { return act ? String(act).replace(/^@/, "").split(":")[0] : "" }
@@ -433,11 +454,22 @@ function arg(act) {
     const a = String(act || ""), at = a.indexOf(":")
     return at < 0 ? "" : a.slice(at + 1)
 }
-// The Shortcut sequences of keys as a menu shows them: "Ctrl ⇧ Z" → "Ctrl+Shift+Z"; "Ctrl +" also takes Ctrl =, the
-// key + is on.
+// The keys of a row of Phím tắt, each as a menu shows one: several after the modifiers are each a key with them (the
+// four arrows: "⇧ ← → ↑ ↓" → "⇧ ←", "⇧ →", "⇧ ↑", "⇧ ↓"); else the one ("Ctrl ⇧ Z").
+function keysOf(k) {
+    const t = String(k).split(" "), mod = x => x === "Ctrl" || x === "Alt" || x === "⇧"
+    const mods = t.filter(mod), keys = t.filter(x => !mod(x))
+    return keys.length > 1 ? keys.map(x => mods.concat([x]).join(" ")) : [String(k)]
+}
+// The Shortcut sequences of keys as a menu shows them: "Ctrl ⇧ Z" → "Ctrl+Shift+Z"; + also as =, the key + is on
+// ("Ctrl +" takes Ctrl =; ⇧ + comes as Shift = on Windows); arrows by their names; a row of keys (keysOf()), each's.
+var ARROWS = { "←": "Left", "→": "Right", "↑": "Up", "↓": "Down" }
 function sequences(k) {
-    const s = String(k).replace(/⇧/g, "Shift").replace(/−/g, "-").split(" ").join("+")
-    return s === "Ctrl++" ? [s, "Ctrl+="] : [s]
+    const ks = keysOf(k)
+    if (ks.length > 1)
+        return ks.reduce((o, x) => o.concat(sequences(x)), [])
+    const s = String(k).replace(/⇧/g, "Shift").replace(/−/g, "-").split(" ").map(x => ARROWS[x] || x).join("+")
+    return /.\+\+$/.test(s) ? [s, s.slice(0, -1) + "="] : [s]
 }
 // Every item with keys, in menu order, and the menus leading to it: [{ item, path: ["Edit", "Hoàn tác"], sequences }].
 // A sequence goes to its first item only (Extras, not View › Hiện › Viền vùng chọn, both Ctrl H), as two shortcuts on
@@ -459,4 +491,114 @@ function keyed() {
     for (const m of MENUS)
         walk(m.items, [m.title.replace("&", "")])
     return out
+}
+
+// ---- keys no menu item has (U31) --------------------------------------------------------------------------------------
+// Photoshop 2025's, as on Windows (the menus' Ctrl, Alt stand for ⌘, ⌥ on macOS): Phím tắt's tab Khác lists them by
+// group, Main registers them (bound()). A row: { l, en (Photoshop's English name), k (as shown; a row of arrows, a key
+// each), act (as an item's, run by Main.act(): Docs.exec()'s, or Main's own: layerSel, blend, fillWith, nudge, maskView,
+// nextDoc, brushPreset), dialog, req and uses as an item's, ctx (when it is on but for its req: "brush", a tool with a
+// brush, ToolSpec.PAINT_T; "paint", a tool whose Mode has the blend modes, ToolSpec.modeCell(); "nudge", Move, or a
+// selection tool while there is a selection) }; a click in Layers, the panel's to run: { l, en, k (its modifiers),
+// click (where) }.
+// The blend modes' letters, with Alt ⇧ (Behind, Clear: a painting tool's), by Mock.BLENDS' names.
+var BLEND_KEYS = [["normal", "N"], ["dissolve", "I"], ["behind", "Q"], ["clear", "R"], ["darken", "K"], ["multiply", "M"], ["colorBurn", "B"],
+    ["linearBurn", "A"], ["lighten", "G"], ["screen", "S"], ["colorDodge", "D"], ["linearDodge", "W"], ["overlay", "O"], ["softLight", "F"],
+    ["hardLight", "H"], ["vividLight", "V"], ["linearLight", "J"], ["pinLight", "Z"], ["hardMix", "L"], ["difference", "E"], ["exclusion", "X"],
+    ["hue", "U"], ["saturation", "T"], ["color", "C"], ["luminosity", "Y"]]
+// A blend mode's label as Layers and the options bars show it (Mock.BLEND_LABELS; Behind, Clear).
+function blendLabel(name) { return { behind: "Behind", clear: "Clear" }[name] || Mock.BLEND_LABELS[Mock.BLENDS.indexOf(name)] || "" }
+var KEYS = [
+    [qsTr("Layer", "Phím tắt › Khác"), [
+        { l: qsTr("Chọn layer dưới"), en: "Select Next Layer Down", k: "Alt [", act: "@layerSel:down", req: "below", uses: "selectLayers" },
+        { l: qsTr("Chọn layer trên"), en: "Select Next Layer Up", k: "Alt ]", act: "@layerSel:up", req: "layer", uses: "selectLayers" },
+        { l: qsTr("Chọn layer dưới cùng"), en: "Select Bottom Layer", k: "Alt ,", act: "@layerSel:bottom", req: "multi", uses: "selectLayers" },
+        { l: qsTr("Chọn layer trên cùng"), en: "Select Top Layer", k: "Alt .", act: "@layerSel:top", req: "multi", uses: "selectLayers" },
+        { l: qsTr("Chọn thêm layer dưới"), en: "Add Next Layer Down to Selection", k: "⇧ Alt [", act: "@layerSel:addDown", req: "below", uses: "selectLayers" },
+        { l: qsTr("Chọn thêm layer trên"), en: "Add Next Layer Up to Selection", k: "⇧ Alt ]", act: "@layerSel:addUp", req: "layer", uses: "selectLayers" },
+        { l: qsTr("Gộp layer đang hiện vào layer mới"), en: "Stamp Visible", k: "Ctrl ⇧ Alt E", act: "@stampVisible" },
+        { l: qsTr("Gộp layer đang chọn vào layer mới"), en: "Stamp Selected Layers", k: "Ctrl Alt E", act: "@stampLayers" },
+        { l: qsTr("Layer mới, không hỏi"), en: "New Layer Without Dialog", k: "Ctrl ⇧ Alt N", act: "@newLayer" },
+        { l: qsTr("Xem mask thành lớp phủ đỏ"), en: "Toggle Rubylith Mode", k: "\\", act: "@maskView:overlay", req: "mask", uses: "" },
+        { l: qsTr("Nạp độ trong suốt làm vùng chọn"), en: "Load Layer Transparency as Selection", k: "Ctrl", click: qsTr("nhấp thumbnail") },
+        { l: qsTr("Cộng độ trong suốt vào vùng chọn"), en: "Add Transparency to Selection", k: "Ctrl ⇧", click: qsTr("nhấp thumbnail") },
+        { l: qsTr("Trừ độ trong suốt khỏi vùng chọn"), en: "Subtract Transparency from Selection", k: "Ctrl Alt", click: qsTr("nhấp thumbnail") },
+        { l: qsTr("Giao độ trong suốt với vùng chọn"), en: "Intersect Transparency with Selection", k: "Ctrl ⇧ Alt", click: qsTr("nhấp thumbnail") },
+        { l: qsTr("Nạp mask làm vùng chọn"), en: "Load Layer Mask as Selection", k: "Ctrl", click: qsTr("nhấp mask") },
+        { l: qsTr("Xem riêng mask"), en: "View Layer Mask", k: "Alt", click: qsTr("nhấp mask") },
+        { l: qsTr("Tắt, bật mask"), en: "Disable/Enable Layer Mask", k: "⇧", click: qsTr("nhấp mask") },
+        { l: qsTr("Tạo, bỏ Clipping Mask"), en: "Create/Release Clipping Mask", k: "Alt", click: qsTr("nhấp giữa hai layer") }
+    ]],
+    [qsTr("Tô màu"), [
+        { l: qsTr("Tô màu trước"), en: "Fill with Foreground Color", k: "Alt Backspace", act: "@fillWith:foreground", req: "layer" },
+        { l: qsTr("Tô màu sau"), en: "Fill with Background Color", k: "Ctrl Backspace", act: "@fillWith:background", req: "layer" },
+        { l: qsTr("Tô màu trước, giữ chỗ trong suốt"), en: "Fill with Foreground Color, Preserve Transparency", k: "⇧ Alt Backspace", act: "@fillWith:foreground,keep", req: "layer" },
+        { l: qsTr("Tô màu sau, giữ chỗ trong suốt"), en: "Fill with Background Color, Preserve Transparency", k: "Ctrl ⇧ Backspace", act: "@fillWith:background,keep", req: "layer" },
+        { l: qsTr("Mở hộp thoại Fill"), en: "Display Fill Dialog Box", k: "⇧ Backspace", dialog: "Fill", req: "doc" }
+    ]],
+    [qsTr("Dời, biến đổi"), [
+        { l: qsTr("Dời 1 px"), en: "Nudge 1 Pixel", k: "← → ↑ ↓", act: "@nudge", req: "doc", ctx: "nudge" },
+        { l: qsTr("Dời 10 px"), en: "Nudge 10 Pixels", k: "⇧ ← → ↑ ↓", act: "@nudge", req: "doc", ctx: "nudge" },
+        { l: qsTr("Nhân bản rồi Transform lại"), en: "Duplicate and Transform Again", k: "Ctrl ⇧ Alt T", act: "@transformAgain" }
+    ]],
+    [qsTr("Tài liệu"), [
+        { l: qsTr("Tài liệu kế"), en: "Next Document", k: "Ctrl Tab", act: "@nextDoc:1", req: "doc", uses: "" },
+        { l: qsTr("Tài liệu trước"), en: "Previous Document", k: "Ctrl ⇧ Tab", act: "@nextDoc:-1", req: "doc", uses: "" }
+    ]],
+    [qsTr("Cọ"), [
+        { l: qsTr("Preset cọ trước"), en: "Previous Brush", k: ",", act: "@brushPreset:-1", req: "doc", uses: "", ctx: "brush" },
+        { l: qsTr("Preset cọ sau"), en: "Next Brush", k: ".", act: "@brushPreset:1", req: "doc", uses: "", ctx: "brush" },
+        { l: qsTr("Preset cọ đầu"), en: "First Brush", k: "⇧ ,", act: "@brushPreset:first", req: "doc", uses: "", ctx: "brush" },
+        { l: qsTr("Preset cọ cuối"), en: "Last Brush", k: "⇧ .", act: "@brushPreset:last", req: "doc", uses: "", ctx: "brush" }
+    ]],
+    [qsTr("Blend mode"), [
+        { l: qsTr("Blend mode kế"), en: "Next Blend Mode", k: "⇧ +", act: "@blend:+1", req: "doc", uses: "setProps" },
+        { l: qsTr("Blend mode trước"), en: "Previous Blend Mode", k: "⇧ −", act: "@blend:-1", req: "doc", uses: "setProps" }
+    ].concat(BLEND_KEYS.map(b => ({ l: blendLabel(b[0]), en: "", k: "⇧ Alt " + b[1], act: "@blend:" + b[0], req: "doc", uses: "setProps",
+                                     ctx: b[0] === "behind" || b[0] === "clear" ? "paint" : "" })))]
+]
+// KEYS' keys as Main registers them: [{ item, sequences, plain }], a row of arrows an entry a key, its act given the key
+// ("@nudge:Shift+Left"); plain: a key without Ctrl or Alt, off while a control has the focus (one takes those).
+function bound() {
+    const out = []
+    for (const g of KEYS)
+        for (const r of g[1]) {
+            if (r.click || !r.k)
+                continue
+            const ks = keysOf(r.k)
+            for (const k of ks) {
+                const seqs = sequences(k)
+                out.push({ item: ks.length > 1 ? Object.assign({}, r, { act: r.act + ":" + seqs[0] }) : r, sequences: seqs, plain: !seqs.some(s => /(^|\+)(Ctrl|Alt)\+/.test(s)) })
+            }
+        }
+    return out
+}
+// What the layer keys pick (Alt [ ] , . and, with Shift, add): the ids picked after it, the active one last; null when
+// there is no such layer. rows: Layers' (Doc.rows, top first), selected: Doc.selected.
+function layerSel(rows, selected, how) {
+    const ids = rows.map(l => l.id), at = selected.length ? ids.indexOf(selected[selected.length - 1]) : -1
+    const to = how === "top" ? 0 : how === "bottom" ? ids.length - 1 : at < 0 ? -1 : /down/i.test(how) ? at + 1 : at - 1
+    if (to < 0 || to >= ids.length)
+        return null
+    return /^add/.test(how) ? selected.filter(x => x !== ids[to]).concat([ids[to]]) : [ids[to]]
+}
+// The blend mode a key gives what has the modes list now at cur (a layer: Mock.BLENDS' names; a tool's Mode: labels):
+// arg "+1", "-1" the next or the one before, round; else a name of BLEND_KEYS, as a label when labels; "" for one
+// the list lacks.
+function blendAfter(list, cur, arg, labels) {
+    if (arg === "+1" || arg === "-1")
+        return list[(Math.max(0, list.indexOf(cur)) + (arg === "+1" ? 1 : list.length - 1)) % list.length]
+    const v = labels ? blendLabel(arg) : arg
+    return list.indexOf(v) >= 0 ? v : ""
+}
+// The brush preset , . and with Shift pick among n, the one in use at (-1: none): how "-1", "1", "first", "last"; -1
+// when it stays.
+function presetAfter(n, at, how) {
+    const to = how === "first" ? 0 : how === "last" ? n - 1 : at < 0 ? (+how > 0 ? 0 : n - 1) : Math.max(0, Math.min(n - 1, at + (+how)))
+    return n > 0 && to !== at ? to : -1
+}
+// Layers' view of a mask (Tools.values "layers:maskView", not History's; the canvas is a later task's): { doc, layer, view
+// "alone" (Alt click on its thumbnail) or "overlay" (\, red over the image) }, or {} for none; the one after a toggle.
+function maskView(cur, doc, layer, view) {
+    return cur && cur.doc === doc && cur.layer === layer && cur.view === view ? {} : { doc: doc, layer: layer, view: view }
 }
