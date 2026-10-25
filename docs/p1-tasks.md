@@ -46,7 +46,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | H · Retouch | H30–H39 | Lõi | Chưa làm |
 | X · Biến đổi | X30–X37 | Lõi (CPU, GPU) | Chưa làm |
 | O · AI | O30–O32 | Lõi (ONNX Runtime) | Chưa làm |
-| T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | T30 xong (25/10); đang làm T38 |
+| T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | T30, T38 xong (25/10) |
 | V · View, canvas | V30–V33 | Lõi, GPU, giao diện | Chưa làm |
 | K · Kho ô, hiệu năng lõi | K30–K34 | Lõi, GPU | K30 xong (25/10; số Iris Xe ở Q30) |
 | M · File | M30–M51 | Lõi, build | M39, M30 xong (25/10) |
@@ -570,7 +570,7 @@ Thao tác nặng chạy ở job Background có tiến độ, ra `SetState` (A40)
 - [ ] **T37 · Fade** (lõi; Nhỏ; cần A40, A41, B31; file `core/fade.h`, `core/fade.cpp`, `tests/test_fade.cpp`): Edit › Fade <tên bước> (Ctrl Shift F) ngay sau một bước `SetPixels` hay `SetMask` trên một layer (nét cọ, Fill, bộ lọc, Image › Adjustments, Gradient): Opacity 0–100%, Mode (27 mode của `blend.h`, B31): ghép trạng thái sau lên trạng thái trước của layer đó; xem trước qua `Painting::preview`; một bước mới "Fade <tên>" như Photoshop; bước trước không phải bước điểm ảnh thì `can_fade()` sai. Giao diện: U25, nối: N42.
 
   **Xong khi:** test: Opacity 0 bằng trước, 100% Normal bằng sau, 50% Multiply đúng công thức; trong vùng chọn của bước gốc; `can_fade()` sai sau lệnh không điểm ảnh; undo.
-- [ ] **T38 · Ảnh mẫu Photoshop cho Image Size, Free Transform, Warp** (đang làm: worktree `t38`, 25/10; bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/resample.jsx`, `tools/ps-golden/README-resample.md`, `bench/ps_resample.cpp`, `tests/test_ps_resample.cpp`, `tests/golden/ps/resample/*`): như B4: ảnh vào (bàn cờ, dốc, ảnh thật nhỏ); script làm Image Size 7 cách × (2×, 0,5×, 0,37×), Free Transform (xoay 30°, co 0,37, skew, perspective) × nội suy, Warp 15 kiểu ở Bend 50%, −50%, Image Rotation Arbitrary 15°, Canvas Size; ra PNG 16 bit. Test so T33, X30, X31, X32 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
+- [x] **T38 · Ảnh mẫu Photoshop cho Image Size, Free Transform, Warp** (25/10/2026, 2d44815: `resample.jsx` 177 case (Image Size 77: 7 cách × 200/50/37 %; Free Transform 36: xoay, co, nghiêng, Perspective, Distort × 6 nội suy; Warp 52: 15 kiểu × Bend ±50 %, méo ngang dọc, 2 lưới Custom; Image Rotation 6; Canvas Size 6), khoảng 2,2 MB; `ops` theo lệnh giao diện (imageSize, rotateCanvas, canvasSize, freeTransform, warp), `transform` ma trận 9 số như A31, `warp` là `LayerWarp` của A30 để X30 đọc thẳng; ảnh vào do `tests/ps_resample_inputs.h` sinh (6 PNG 16 bit, 94 KB); test để sẵn chỗ cho T33, X30, X31, X32, T34 (`interp_of`, `matrix_of`, `warp_of`, `problems_of`, `map_spread`); đột biến 10/10; chờ bạn chạy ở B33 (chỗ dễ sai nhất: Perspective/Distort qua `quadCorner`, hệ tọa độ `meshPoints`); build/orch/api/t38.md; bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/resample.jsx`, `tools/ps-golden/README-resample.md`, `bench/ps_resample.cpp`, `tests/test_ps_resample.cpp`, `tests/golden/ps/resample/*`): như B4: ảnh vào (bàn cờ, dốc, ảnh thật nhỏ); script làm Image Size 7 cách × (2×, 0,5×, 0,37×), Free Transform (xoay 30°, co 0,37, skew, perspective) × nội suy, Warp 15 kiểu ở Bend 50%, −50%, Image Rotation Arbitrary 15°, Canvas Size; ra PNG 16 bit. Test so T33, X30, X31, X32 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
 
   **Xong khi:** script, ảnh vào, test có sẵn, bỏ qua khi thiếu ảnh; bạn chạy ở B33; sau đó độ lệch ghi vào dòng task, kèm task chỉnh khi vượt 2 mức 8 bit.
 
