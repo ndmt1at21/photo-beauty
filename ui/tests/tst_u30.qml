@@ -269,7 +269,7 @@ Item {
                 ["LayersPanel", "Lọc: layer điểm ảnh · Filter for pixel layers"],
                 ["NavigatorPanel", "Thu nhỏ · Zoom Out"],
                 ["ParagraphPanel", "Căn trái · Left Align Text"],
-                ["PropertiesPanel", "Dọc · Portrait"],
+                ["PropertiesDocument", "Dọc · Portrait"],
                 ["SwatchesPanel", "Nhóm mới · Create new group"],
                 ["Toolbar", "Chế độ màn hình · Screen Mode (F)"]
             ]

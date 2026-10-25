@@ -6152,11 +6152,58 @@
     </message>
 </context>
 <context>
-    <name>PropertiesPanel</name>
+    <name>PropertiesAdjustment</name>
     <message>
-        <source>Chưa mở tài liệu nào.</source>
-        <translation>No document is open.</translation>
+        <source>Thông số adjustment</source>
+        <translation>Adjustment Settings</translation>
     </message>
+    <message>
+        <source>Layer Mask</source>
+        <translation>Layer Mask</translation>
+    </message>
+    <message>
+        <source>Clip vào layer dưới · Clip to Layer (Ctrl Alt G)</source>
+        <translation>Clip to Layer (Ctrl Alt G)</translation>
+    </message>
+    <message>
+        <source>Clip vào layer dưới</source>
+        <translation>Clip to Layer</translation>
+    </message>
+    <message>
+        <source>Giữ để xem trạng thái trước · View Previous State</source>
+        <translation>View Previous State</translation>
+    </message>
+    <message>
+        <source>Giữ để xem trạng thái trước</source>
+        <translation>View Previous State</translation>
+    </message>
+    <message>
+        <source>Đặt lại mặc định · Reset to Adjustment Defaults</source>
+        <translation>Reset to Adjustment Defaults</translation>
+    </message>
+    <message>
+        <source>Đặt lại mặc định</source>
+        <translation>Reset to Adjustment Defaults</translation>
+    </message>
+    <message>
+        <source>Ẩn hiện layer · Toggle Layer Visibility</source>
+        <translation>Toggle Layer Visibility</translation>
+    </message>
+    <message>
+        <source>Ẩn hiện layer</source>
+        <translation>Toggle Layer Visibility</translation>
+    </message>
+    <message>
+        <source>Xóa · Delete This Layer</source>
+        <translation>Delete This Layer</translation>
+    </message>
+    <message>
+        <source>Xóa adjustment layer</source>
+        <translation>Delete Adjustment Layer</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesDocument</name>
     <message>
         <source>Tài liệu</source>
         <translation>Document</translation>
@@ -6213,6 +6260,102 @@
         <source>Remove Background</source>
         <translation>Remove Background</translation>
     </message>
+</context>
+<context>
+    <name>PropertiesFill</name>
+    <message>
+        <source>Màu</source>
+        <translation>Color</translation>
+    </message>
+    <message>
+        <source>Màu của fill layer · Mở Color Picker</source>
+        <translation>Fill Layer Color · Open Color Picker</translation>
+    </message>
+    <message>
+        <source>Màu của fill layer</source>
+        <translation>Fill Layer Color</translation>
+    </message>
+    <message>
+        <source>màu của fill layer</source>
+        <translation>Fill Layer Color</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesMask</name>
+    <message>
+        <source>Layer Mask</source>
+        <translation>Layer Mask</translation>
+    </message>
+    <message>
+        <source>Density</source>
+        <translation>Density</translation>
+    </message>
+    <message>
+        <source>Feather</source>
+        <translation>Feather</translation>
+    </message>
+    <message>
+        <source>Tinh chỉnh</source>
+        <translation>Refine</translation>
+    </message>
+    <message>
+        <source>Select and Mask…</source>
+        <translation>Select and Mask…</translation>
+    </message>
+    <message>
+        <source>Color Range…</source>
+        <translation>Color Range…</translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation>Invert</translation>
+    </message>
+    <message>
+        <source>Nạp làm vùng chọn · Load Selection from Mask</source>
+        <translation>Load Selection from Mask</translation>
+    </message>
+    <message>
+        <source>Nạp Mask làm vùng chọn</source>
+        <translation>Load Selection from Mask</translation>
+    </message>
+    <message>
+        <source>Nạp vùng chọn từ Mask</source>
+        <translation>Load Selection from Mask</translation>
+    </message>
+    <message>
+        <source>Áp Mask vào layer · Apply Mask</source>
+        <translation>Apply Mask</translation>
+    </message>
+    <message>
+        <source>Áp Mask vào layer</source>
+        <translation>Apply Mask</translation>
+    </message>
+    <message>
+        <source>Tắt Mask · Disable/Enable Mask</source>
+        <translation>Disable/Enable Mask</translation>
+    </message>
+    <message>
+        <source>Tắt Mask</source>
+        <translation>Disable Mask</translation>
+    </message>
+    <message>
+        <source>Xóa Mask · Delete Mask</source>
+        <translation>Delete Mask</translation>
+    </message>
+    <message>
+        <source>Xóa Mask</source>
+        <translation>Delete Mask</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesNone</name>
+    <message>
+        <source>Chưa mở tài liệu nào.</source>
+        <translation>No document is open.</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesPage</name>
     <message>
         <source>Chiều rộng</source>
         <translation>Width</translation>
@@ -6237,6 +6380,9 @@
         <source>Vị trí Y</source>
         <translation>Y Position</translation>
     </message>
+</context>
+<context>
+    <name>PropertiesPixel</name>
     <message>
         <source>Nhóm layer</source>
         <translation>Group</translation>
@@ -6277,78 +6423,9 @@
         <source>Căn</source>
         <translation>Align</translation>
     </message>
-    <message>
-        <source>Smart object nhúng</source>
-        <translation>Embedded Smart Object</translation>
-    </message>
-    <message>
-        <source>Sửa nội dung</source>
-        <translation>Edit Contents</translation>
-    </message>
-    <message>
-        <source>Rasterize</source>
-        <translation>Rasterize</translation>
-    </message>
-    <message>
-        <source>Layer chữ</source>
-        <translation>Type Layer</translation>
-    </message>
-    <message>
-        <source>Character</source>
-        <translation>Character</translation>
-    </message>
-    <message>
-        <source>Font</source>
-        <translation>Font</translation>
-    </message>
-    <message>
-        <source>Kiểu chữ</source>
-        <translation>Font Style</translation>
-    </message>
-    <message>
-        <source>Cỡ chữ · Set the font size</source>
-        <translation>Set the font size</translation>
-    </message>
-    <message>
-        <source>Leading · Set the leading</source>
-        <translation>Set the leading</translation>
-    </message>
-    <message>
-        <source>Auto</source>
-        <translation>Auto</translation>
-    </message>
-    <message>
-        <source>Tracking · Set the tracking for the selected characters</source>
-        <translation>Set the tracking for the selected characters</translation>
-    </message>
-    <message>
-        <source>Màu</source>
-        <translation>Color</translation>
-    </message>
-    <message>
-        <source>Màu chữ · Set the text color</source>
-        <translation>Set the text color</translation>
-    </message>
-    <message>
-        <source>Màu chữ</source>
-        <translation>Text Color</translation>
-    </message>
-    <message>
-        <source>màu chữ</source>
-        <translation>Text Color</translation>
-    </message>
-    <message>
-        <source>Khử răng cưa</source>
-        <translation>Anti-aliasing</translation>
-    </message>
-    <message>
-        <source>Paragraph</source>
-        <translation>Paragraph</translation>
-    </message>
-    <message>
-        <source>Mở Character</source>
-        <translation>Open Character</translation>
-    </message>
+</context>
+<context>
+    <name>PropertiesShape</name>
     <message>
         <source>Hình elip</source>
         <translation>Ellipse</translation>
@@ -6441,125 +6518,83 @@
         <source>Thao tác path</source>
         <translation>Path Operations</translation>
     </message>
+</context>
+<context>
+    <name>PropertiesSmartObject</name>
     <message>
-        <source>Màu của fill layer · Mở Color Picker</source>
-        <translation>Fill Layer Color · Open Color Picker</translation>
+        <source>Smart object nhúng</source>
+        <translation>Embedded Smart Object</translation>
     </message>
     <message>
-        <source>Màu của fill layer</source>
-        <translation>Fill Layer Color</translation>
+        <source>Sửa nội dung</source>
+        <translation>Edit Contents</translation>
     </message>
     <message>
-        <source>màu của fill layer</source>
-        <translation>Fill Layer Color</translation>
+        <source>Rasterize</source>
+        <translation>Rasterize</translation>
+    </message>
+</context>
+<context>
+    <name>PropertiesText</name>
+    <message>
+        <source>Layer chữ</source>
+        <translation>Type Layer</translation>
     </message>
     <message>
-        <source>Thông số adjustment</source>
-        <translation>Adjustment Settings</translation>
+        <source>Character</source>
+        <translation>Character</translation>
     </message>
     <message>
-        <source>Layer Mask</source>
-        <translation>Layer Mask</translation>
+        <source>Font</source>
+        <translation>Font</translation>
     </message>
     <message>
-        <source>Clip vào layer dưới · Clip to Layer (Ctrl Alt G)</source>
-        <translation>Clip to Layer (Ctrl Alt G)</translation>
+        <source>Kiểu chữ</source>
+        <translation>Font Style</translation>
     </message>
     <message>
-        <source>Clip vào layer dưới</source>
-        <translation>Clip to Layer</translation>
+        <source>Cỡ chữ · Set the font size</source>
+        <translation>Set the font size</translation>
     </message>
     <message>
-        <source>Giữ để xem trạng thái trước · View Previous State</source>
-        <translation>View Previous State</translation>
+        <source>Leading · Set the leading</source>
+        <translation>Set the leading</translation>
     </message>
     <message>
-        <source>Giữ để xem trạng thái trước</source>
-        <translation>View Previous State</translation>
+        <source>Auto</source>
+        <translation>Auto</translation>
     </message>
     <message>
-        <source>Đặt lại mặc định · Reset to Adjustment Defaults</source>
-        <translation>Reset to Adjustment Defaults</translation>
+        <source>Tracking · Set the tracking for the selected characters</source>
+        <translation>Set the tracking for the selected characters</translation>
     </message>
     <message>
-        <source>Đặt lại mặc định</source>
-        <translation>Reset to Adjustment Defaults</translation>
+        <source>Màu</source>
+        <translation>Color</translation>
     </message>
     <message>
-        <source>Ẩn hiện layer · Toggle Layer Visibility</source>
-        <translation>Toggle Layer Visibility</translation>
+        <source>Màu chữ · Set the text color</source>
+        <translation>Set the text color</translation>
     </message>
     <message>
-        <source>Ẩn hiện layer</source>
-        <translation>Toggle Layer Visibility</translation>
+        <source>Màu chữ</source>
+        <translation>Text Color</translation>
     </message>
     <message>
-        <source>Xóa · Delete This Layer</source>
-        <translation>Delete This Layer</translation>
+        <source>màu chữ</source>
+        <translation>Text Color</translation>
     </message>
     <message>
-        <source>Xóa adjustment layer</source>
-        <translation>Delete Adjustment Layer</translation>
+        <source>Khử răng cưa</source>
+        <translation>Anti-aliasing</translation>
     </message>
     <message>
-        <source>Density</source>
-        <translation>Density</translation>
+        <source>Paragraph</source>
+        <translation>Paragraph</translation>
     </message>
     <message>
-        <source>Feather</source>
-        <translation>Feather</translation>
-    </message>
-    <message>
-        <source>Tinh chỉnh</source>
-        <translation>Refine</translation>
-    </message>
-    <message>
-        <source>Select and Mask…</source>
-        <translation>Select and Mask…</translation>
-    </message>
-    <message>
-        <source>Color Range…</source>
-        <translation>Color Range…</translation>
-    </message>
-    <message>
-        <source>Invert</source>
-        <translation>Invert</translation>
-    </message>
-    <message>
-        <source>Nạp làm vùng chọn · Load Selection from Mask</source>
-        <translation>Load Selection from Mask</translation>
-    </message>
-    <message>
-        <source>Nạp Mask làm vùng chọn</source>
-        <translation>Load Selection from Mask</translation>
-    </message>
-    <message>
-        <source>Nạp vùng chọn từ Mask</source>
-        <translation>Load Selection from Mask</translation>
-    </message>
-    <message>
-        <source>Áp Mask vào layer · Apply Mask</source>
-        <translation>Apply Mask</translation>
-    </message>
-    <message>
-        <source>Áp Mask vào layer</source>
-        <translation>Apply Mask</translation>
-    </message>
-    <message>
-        <source>Tắt Mask · Disable/Enable Mask</source>
-        <translation>Disable/Enable Mask</translation>
-    </message>
-    <message>
-        <source>Tắt Mask</source>
-        <translation>Disable Mask</translation>
-    </message>
-    <message>
-        <source>Xóa Mask · Delete Mask</source>
-        <translation>Delete Mask</translation>
-    </message>
-    <message>
-        <source>Xóa Mask</source>
-        <translation>Delete Mask</translation>
+        <source>Mở Character</source>
+        <translation>Open Character</translation>
     </message>
 </context>
 <context>
