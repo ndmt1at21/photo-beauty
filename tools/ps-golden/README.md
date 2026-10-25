@@ -2,7 +2,90 @@
 
 Script ExtendScript làm trong Photoshop các ảnh mà test của photo-beauty so với: B4 (P0) là `blend.jsx` ở đây; P1 là các script trong `p1/` (B30, D32, F31), cùng `strokes.jsx` (C41), `select.jsx` (S39), `resample.jsx` (T38), `psd.jsx` (E33) có README riêng (`README-<mảng>.md`). Nhắm Photoshop 2025 (26.x) trên Windows; script là ExtendScript nên các bản từ CC 2019 (20.x) trở đi cũng chạy. Script chưa chạy thử trên Photoshop thật: có lỗi thì gửi lead file `photoshop.txt` của script đó.
 
-Bạn chạy mọi script một lần ở B33 (sau lô 2 của P1, khoảng 2–3 giờ cho tất cả), cùng lần với B4 còn treo: làm mục B4 rồi mục P1, rồi README của các mảng khác.
+Bạn chạy mọi script một lần ở B33 (sau lô 2 của P1), cùng lần với B4 còn treo: theo mục B33 ngay dưới; các mục sau và README của các mảng là chi tiết của từng script.
+
+## B33: chạy một lượt
+
+Một buổi, cả mười script: B4 trước (một phút, cùng phép kiểm cách trộn RGB của mọi script, nên Color Settings sai lộ ra ngay), rồi P1. Photoshop chạy khoảng 65 phút theo ước của README từng mảng (chưa đo trên Photoshop thật: máy chậm có thể gấp đôi); thêm chuẩn bị khoảng 15 phút, chép về và test 10–30 phút: khoảng 1,5–2 giờ, chừa tới 3 giờ cho script phải chạy lại. Hai script làm thay việc chép tay: `b33-stage.sh` gom mọi script và thứ chúng đọc vào một thư mục Windows, `b33-collect.sh` chép kết quả về đúng chỗ trong repo và so với `index.json`. Mục này là đủ để chạy; các mục sau và `README-<mảng>.md` là chi tiết của từng script (case, định dạng, chỗ chưa chắc).
+
+### Chuẩn bị (khoảng 15 phút)
+
+1. Photoshop 2025 (26.x) trên Windows, giao diện tiếng Anh (tên menu dưới đây). Bản 2023 (24) cũng chạy, nhưng thiếu Method Smooth, Stripes của gradient: case dùng chúng hỏng riêng; bản trước 2021 (22) thiếu live shape Triangle, Polygon.
+2. Trong WSL, ở `~/photo-beauty`:
+
+   ```sh
+   tools/ps-golden/b33-stage.sh    # = b33-stage.sh /mnt/c/Users/Teko/Downloads/ps-golden; nhận cả C:\...
+   ```
+
+   Ra `C:\Users\Teko\Downloads\ps-golden\` (45 file, khoảng 1,6 MB, đúng cách xếp các script cần): `blend.jsx`, `base.png`, `top.png` (B4); `p1\` (`lib.jsx`, năm script P1, ảnh vào `in\`, LUT của Color Lookup `lut\`); `strokes.jsx`, `select.jsx`, `resample.jsx`, `psd.jsx` cùng `strokes\in\`, `select\in\`, `resample-in\`; `fonts\`. Script in cỡ và thứ tự chạy với đường dẫn Windows. Chạy lại bao lần cũng được (sau khi lead sửa một script: chạy lại stage rồi riêng script đó): nó chép đè script, ảnh vào, không đụng `out\`, `p1\out\`. Photoshop ở máy khác: chép cả thư mục `ps-golden` sang đó, chạy xong chép cả thư mục về chỗ cũ.
+3. Font: nhấp phải `ps-golden\fonts\SpaceGrotesk.ttf` và `SpaceGrotesk-SemiBold.ttf` › Install for all users, rồi mở lại Photoshop. Cần cho `styles.jsx` (thiếu thì 11 case chữ hỏng, có báo) và `psd.jsx` (thiếu thì dùng bản Space Grotesk khác, không có thì Arial, ghi vào `photoshop.txt`, `index.json`); `filters.jsx` không cần.
+4. Photoshop, trước script đầu (script tự đặt phần lớn và trả lại khi xong; đây là cho chắc):
+   - Đóng mọi ảnh.
+   - Edit › Color Settings (Ctrl Shift K) như bước 2 của B4: Working RGB `sRGB IEC61966-2.1`, Working CMYK, Gray để mặc định; RGB Preserve Embedded Profiles, bỏ ba ô Ask; bỏ Use Dither; bỏ Blend RGB Colors Using Gamma. Script tắt các ô đó trong lúc chạy và kiểm Photoshop trộn RGB không qua gamma 1, đổi 16 sang 8 bit không dither: không qua thì dừng ngay ("Stopped: …").
+   - Edit › Preferences › General (Ctrl K): Image Interpolation Bicubic Automatic (mặc định; `styles.jsx`, `psd.jsx`, `resample.jsx` tự đặt rồi trả lại), Always Create Smart Objects when Placing bật (mặc định, `psd.jsx` đặt ảnh thành smart object). Units & Rulers: Point/Pica Size PostScript, 72 points/inch (mặc định: chữ pt là px ở 72 ppi).
+   - Từng bấm Make Default trong hộp Layer Style thì Reset to Default ở Drop Shadow, Stroke, Color Overlay, Gradient Overlay (bốn case `defaults-*` của `styles.jsx` đọc mặc định của Photoshop); từng đổi Auto Options của Levels, Curves rồi Save as defaults thì đặt lại (Enhance Brightness and Contrast, Snap Neutral Midtones tắt, Clip 0,1 %: các case `auto-*` của `adjust.jsx`).
+   - Gradient Tool (G): ô chế độ trên thanh tùy chọn là Classic gradient (Photoshop 2023 trở đi): 12 case Gradient của `strokes.jsx` vẽ kiểu cổ điển; vẽ ra fill layer thì case báo "not drawing as Classic".
+   - Không để dở Free Transform hay hộp thoại nào; máy cắm sạc, không để ngủ.
+
+### Chạy (khoảng 65 phút)
+
+Mỗi script: File › Scripts › Browse… → chọn file trong `ps-golden\` → Open, chờ tới hộp báo cuối; giữa chừng không bấm gì trong Photoshop (nó mở, đóng tài liệu liên tục và có thể nhảy lên trước); OK rồi script sau. Thời gian là ước của README từng mảng.
+
+| # | File | Task | Ra (cạnh script) | Ước | Hộp báo khi xong |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `blend.jsx` | B4 | `out\`: 22 ảnh ghép, `dabs.png` | 1 phút | Done: …\ps-golden\out |
+| 2 | `p1\blend.jsx` | B30 | `p1\out\blend\`: 174 ảnh | 8 phút | Done: 174 images |
+| 3 | `p1\adjust.jsx` | D32 | `p1\out\adjust\`: 137 ảnh, `presets.json` | 7 phút | Done: 137 images |
+| 4 | `p1\gradient.jsx` | D32 | `p1\out\gradient\`: 73 ảnh | 3 phút | Done: 73 images |
+| 5 | `p1\filters.jsx` | F31 | `p1\out\filters\`: 81 case, 82 ảnh | 6 phút | Done: 81 images |
+| 6 | `p1\styles.jsx` | F31 | `p1\out\styles\`: 74 ảnh | 5 phút | Done: 74 images |
+| 7 | `strokes.jsx` | C41 | `out\strokes\`: 59 ảnh | 4 phút | Done: 59 images |
+| 8 | `select.jsx` | S39 | `out\select\`: 79 ảnh | 4 phút | Done: 79 images |
+| 9 | `resample.jsx` | T38 | `out\resample\`: 177 ảnh | 12 phút | Done: 177 images |
+| 10 | `psd.jsx` | E33, lượt một | `out\psd\`: 57 PSD, ảnh ghép; `out\psd-big\`: PSB rộng 31.000 px | 10–15 phút, PSB thêm vài phút | Done: 58 PSD files |
+
+Hộp báo khác:
+
+- "Done: N images, M failed (photoshop.txt)" (`psd.jsx`: "N PSD files, M failed"): M case không làm được, các case khác vẫn đúng: chạy tiếp script sau, cuối buổi báo lead.
+- "Stopped: …": phép kiểm thiết lập không qua (thường là Color Settings), chưa làm ảnh nào: sửa theo câu báo, chạy lại script đó.
+- `psd.jsx` hỏi Yes/No: chỉ khi `ps-golden\ours\` có PSD (lượt hai, sau E34): bấm No (lượt một).
+- Photoshop vẫn hỏi về profile khi mở ảnh: Leave as is (don't color manage). Photoshop treo hay tắt: mở lại, chạy lại script đó (nó ghi đè thư mục `out` của nó).
+
+Lỗi, case hỏng: mỗi script ghi `photoshop.txt` cạnh ảnh của nó (`out\photoshop.txt` của B4, `p1\out\<script>\`, `out\<script>\`, `out\psd\`): lý do từng case hỏng, thiết lập, từng layer như Photoshop có. Báo lead đường dẫn đó (lead đọc thẳng từ `/mnt/c/`; `b33-collect.sh` in sẵn danh sách); lead sửa script, bạn chạy lại stage, riêng script đó, rồi collect.
+
+### Chép về, kiểm
+
+```sh
+cd ~/photo-beauty
+tools/ps-golden/b33-collect.sh | tee build/b33-collect.txt    # thư mục khác: b33-collect.sh <thư mục>
+```
+
+| Kết quả trong `ps-golden\` | Vào repo |
+| --- | --- |
+| `out\` của B4: 22 ảnh ghép, `dabs.png`, `photoshop.txt` | `tests/golden/ps/` |
+| `p1\out\<script>\` (blend, adjust, gradient, filters, styles) | `tests/golden/ps/p1/<script>/` |
+| `out\strokes\`, `out\select\`, `out\resample\` | `tests/golden/ps/strokes/`, `select/`, `resample/` |
+| `out\psd\` | `tests/golden/psd/` |
+| `out\psd-big\` | `samples/psd/` (ngoài git) |
+
+Mỗi bộ chép đúng các file `index.json` kể (mọi ảnh, ảnh giữ lại của bộ lọc, file của từng PSD; `index.json`, `photoshop.txt`, `presets.json`, `e33-warm.cube`), rồi in: số case làm được trên tổng, case hỏng và lý do, file thiếu, PNG khác độ sâu `bits`, file trong `out` mà index không kể (không chép: ảnh của lần chạy cũ, `~*.png` dở), file cũ trong repo không thuộc lần này; cỡ so ngân sách (`tests/golden/ps/p1` ≤ 30 MB, strokes, select, resample mỗi bộ ≤ 3 MB; `tests/golden/psd` ước 4,5 MB); bản Photoshop; số file mới trong `tests/golden`. Script dừng giữa chừng ("Stopped", `complete` false) không chép. Đủ cả 11 bộ thì in "11 of 11 sets whole." và thoát 0; thiếu thì thoát 1 và in `photoshop.txt` cho lead. Chạy giữa buổi cũng được (bộ chưa chạy thì bỏ qua, chạy lại thì chép đè): lead xem sớm case hỏng trong lúc bạn chạy tiếp. Không commit: lead commit.
+
+Kiểm (thư mục chính chưa có `build/default` thì dựng trước: lần đầu vài phút tới vài chục phút):
+
+```sh
+export VCPKG_ROOT=$HOME/vcpkg PATH=$HOME/.local/bin:$HOME/.local/opt/llvm-mingw-20250402-ucrt-ubuntu-20.04-x86_64/bin:$PATH
+[ -d build/default ] || tools/configure.sh default
+tools/heavy.sh cmake --build build/default --target pb-tests
+for t in test_ps_golden_blend test_ps_golden_dabs test_golden_ps test_gradient_ps test_levels_ps test_curves_ps \
+         test_tone_ps test_adj_simple_ps test_adj_hue_ps test_ps_strokes test_ps_select test_ps_resample_set \
+         test_ps_resample_maps test_descriptor_psd; do build/default/pb-tests $t; done 2>&1 | tee build/b33-tests.txt
+```
+
+Từng test chạy riêng vì một CHECK hỏng dừng cả tiến trình. Trước B33 chúng in "skipped …"; giờ in độ lệch từng ảnh so Photoshop (`ps golden <ảnh>: dE2000 mean …`, mức 8 bit), σ/Radius của Feather, tâm chấm cọ, thống kê vùng retouch, ma trận Photoshop đọc lại, và kiểm mỗi bộ đủ ảnh theo `index.json`, ảnh vào Photoshop đọc đúng mức, cỡ trong ngân sách; `test_descriptor_psd` đọc ghi lại descriptor của 57 PSD. Test đỏ ở đây là số đo cho lead (photo-beauty lệch Photoshop), không phải lỗi của lần chạy: đừng chạy lại Photoshop vì nó. `tools/heavy.sh ctest --test-dir build/default --output-on-failure` chạy cả bộ như trước merge: cùng các test đó, in độ lệch thay "skipped", dừng ở CHECK hỏng đầu tiên.
+
+Báo lead: bản Photoshop (Help › About Photoshop, hay dòng "Photoshop:" của collect), hộp báo lạ của script nào, `build/b33-collect.txt`, `build/b33-tests.txt`. Lead ghi độ lệch vào dòng các task, xong thì xóa `C:\Users\Teko\Downloads\ps-golden`.
+
+Khác với các mục dưới và README từng mảng: lệnh `cp` của từng mục thay bằng hai script trên (`cp out/*` của B4 còn vướng các thư mục `out\psd\`… của script P1); `resample.jsx` đọc ảnh vào ở `resample-in\`, còn `strokes.jsx`, `select.jsx` ở `strokes\in\`, `select\in\` như `tests/golden/ps/` (stage xếp đúng cả hai); thời gian `resample.jsx` 12 phút, `psd.jsx` 10–15 phút theo README của chúng; test của D33–D35 (`test_levels_ps`, `test_curves_ps`, `test_tone_ps`, `test_adj_simple_ps`, `test_adj_hue_ps`) đọc bộ `p1/adjust` dù `README-adjust.md` chưa kể; `psd.jsx` đặt Image Interpolation như `styles.jsx` (B33).
 
 ## B4: 11 blend mode, chấm cọ
 
@@ -62,7 +145,7 @@ Mỗi script trong `p1/` dựng từng ảnh mẫu (một "case": ảnh vào, la
    ```
 
    Script đọc `lib.jsx` cạnh nó: chép cả thư mục `p1`, đừng chép riêng một script.
-2. Font cho ảnh chữ của `filters.jsx`, `styles.jsx` (F31): cài Space Grotesk trên Windows, từ `ui/fonts/SpaceGrotesk.ttf` và `ui/fonts/SpaceGrotesk-SemiBold.ttf` (chép sang Windows, nhấp phải › Install for all users), rồi mở lại Photoshop. `blend.jsx` không cần font.
+2. Font cho ảnh chữ của `styles.jsx` (F31; `psd.jsx` của E33 cũng dùng, `filters.jsx` thì không): cài Space Grotesk trên Windows, từ `ui/fonts/SpaceGrotesk.ttf` và `ui/fonts/SpaceGrotesk-SemiBold.ttf` (chép sang Windows, nhấp phải › Install for all users), rồi mở lại Photoshop. `blend.jsx` không cần font.
 3. Photoshop: đóng mọi ảnh, Color Settings như bước 2 của B4 (bốn điểm, nhất là Use Dither tắt: ảnh 8 bit lưu không dither). Script tự tắt các ô đó nếu đọc được Color Settings, trả lại khi xong, và kiểm: trộn RGB không qua gamma 1 (mọi script), đổi 16 sang 8 bit không dither (script có ảnh 8 bit). Kiểm không qua thì script dừng ngay với câu báo, chưa làm ảnh nào.
 4. File > Scripts > Browse… → `ps-golden\p1\blend.jsx` → Open. Chờ tới khi hiện "Done", giữa chừng không bấm gì (Photoshop mở, đóng tài liệu liên tục). Rồi lần lượt `adjust.jsx`, `gradient.jsx`, `filters.jsx`, `styles.jsx` (những script đã có).
    - "Done: N images": xong. "Done: N images, M failed": M case không làm được (lý do trong `photoshop.txt` và mục `failed` của `index.json`), các case còn lại vẫn đúng: chép như bước 5 và gửi lead `photoshop.txt` của script đó.

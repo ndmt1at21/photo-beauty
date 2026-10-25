@@ -1686,21 +1686,32 @@ E.remove = function (dir, name) {
 
 // ---- Running -------------------------------------------------------------------------------------------------------
 
-// Photoshop's settings for a run, and what puts them back.
+// Photoshop's settings for a run, and what puts them back. Image Interpolation is Photoshop's default, Bicubic
+// Automatic, while it runs (styles.jsx's): the smart objects' scale and turn (so-placed, so-layers) resample by it.
 E.settings = function () {
   var prefs = app.preferences, units = prefs.rulerUnits, type = prefs.typeUnits, dialogs = app.displayDialogs;
-  var fg = app.foregroundColor, bg = app.backgroundColor;
+  var fg = app.foregroundColor, bg = app.backgroundColor, interp = null;
   prefs.rulerUnits = Units.PIXELS;  // documents at 72 ppi: points are pixels too
   prefs.typeUnits = TypeUnits.POINTS;
   app.displayDialogs = DialogModes.NO;
   app.foregroundColor = E.solid('#000000');
   app.backgroundColor = E.solid('#ffffff');  // what flattening fills with
+  try {
+    interp = prefs.interpolation;
+    if (ResampleMethod.BICUBICAUTOMATIC !== undefined) prefs.interpolation = ResampleMethod.BICUBICAUTOMATIC;
+    PB.note('Image Interpolation: ' + interp + ' before, ' + prefs.interpolation + ' while this runs');
+  } catch (e) {
+    PB.note('Image Interpolation: cannot read or set it (' + e + ')');
+  }
   return function () {
     prefs.rulerUnits = units;
     prefs.typeUnits = type;
     app.displayDialogs = dialogs;
     app.foregroundColor = fg;
     app.backgroundColor = bg;
+    try {
+      if (interp !== null) prefs.interpolation = interp;
+    } catch (e) {}
   };
 };
 E.SETS = {psd: '../ps/p1/in', 'psd-big': '../../tests/golden/ps/p1/in'};  // index.json's "inputs": from each folder

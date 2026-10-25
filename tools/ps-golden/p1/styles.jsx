@@ -826,8 +826,8 @@ function cases() {
   text('text-size72', [216, 96], S.text('Pb 72', 72, [8, 72]));
   text('text-tracking200', [224, 44], S.text('Track +200', 28, [8, 30], {tracking: 200}));
   text('text-tracking-60', [144, 44], S.text('Track -60', 28, [8, 30], {tracking: -60}));
-  text('text-vietnamese', [264, 48], S.text('Tiếng Việt: ố ữ ặ ỷ', 28, [8, 34]));
-  text('text-semibold', [232, 48], S.text('SemiBold Ảnh', 32, [8, 34], {face: S.SEMIBOLD}));
+  text('text-vietnamese', [264, 48], S.text('Ti\u1EBFng Vi\u1EC7t: \u1ED1 \u1EEF \u1EB7 \u1EF7', 28, [8, 34]));
+  text('text-semibold', [232, 48], S.text('SemiBold \u1EA2nh', 32, [8, 34], {face: S.SEMIBOLD}));
   // Shapes (Y32): rounded rectangles (one radius, four), an ellipse, a hexagon and a star, a line; a stroke at each
   // alignment over the fill, an ellipse with a stroke and no fill.
   var shape = function (name, s) { c.push({name: name, canvas: S.SQUARE, layers: [{kind: 'shape', props: {name: 'shape', source: s}}]}); };
