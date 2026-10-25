@@ -1,6 +1,8 @@
 // pb-ui: the window of the PhotoBeauty module (docs/ui-tasks.md).
 // copied from snapone 6bdb5c8 (ui/main.cpp: the flags, --screenshot) and 6ff61f0 (its Splash), without its catalog
-// and core.
+// and core; the language (U30) as snapone 3891d67's.
+#include <cstdio>
+
 #include <QCommandLineParser>
 #include <QDeadlineTimer>
 #include <QDir>
@@ -9,12 +11,16 @@
 #include <QIcon>
 #include <QImage>
 #include <QJsonDocument>
+#include <QLocale>
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QRasterWindow>
 #include <QScreen>
 #include <QSettings>
 #include <QTimer>
+#include <QTranslator>
 #include <QtQml/qqmlextensionplugin.h>
 
 #include "brand/splash.h"
@@ -46,6 +52,41 @@ class Splash : public QRasterWindow {
  private:
   qreal done_ = 0.1;
 };
+
+// The UI's language (U30, snapone's decision 10), vi or en: `chosen` (--lang) when set; else, unless a screenshot (from
+// the defaults, so in Vietnamese, the language of the sources), Thiết lập's (Prefs' language as the last start kept it:
+// 0 Tiếng Việt, 1 English); else the system's first of the two; else English.
+static QString uiLanguage(const QString& chosen, bool shot) {
+  if (!chosen.isEmpty() || shot) return chosen.isEmpty() ? QStringLiteral("vi") : chosen;
+  const QJsonValue kept = QJsonDocument::fromJson(QSettings().value("prefs/json").toByteArray())[u"language"];
+  if (kept.isDouble() && (kept.toDouble() == 0 || kept.toDouble() == 1))
+    return kept.toDouble() == 1 ? QStringLiteral("en") : QStringLiteral("vi");
+  for (const QString& l : QLocale::system().uiLanguages()) {  // "vi-VN", "en-US", "fr-FR"…
+    const QString base = l.section('-', 0, 0);
+    if (base == u"vi" || base == u"en") return base;
+  }
+  return QStringLiteral("en");
+}
+
+// The texts shown in `item` and the items in it that are cut short (Text.truncated: elided) or, not elided, run over the
+// sides of a control around them (a button, a field, a popup), for --truncated (U30).
+static void cutTexts(QQuickItem* item, QStringList& cut, QStringList& over, QList<QQuickItem*> boxes = {}) {
+  if (!item->isVisible() || item->opacity() == 0) return;
+  const QString text = item->inherits("QQuickText") ? item->property("text").toString() : QString();
+  if (!text.isEmpty() && item->property("truncated").toBool()) {
+    cut << text;
+  } else if (!text.isEmpty()) {
+    for (QQuickItem* box : boxes) {
+      const QRectF r = item->mapRectToItem(box, item->boundingRect());
+      if (r.left() < -1 || r.right() > box->width() + 1) {
+        over << text;
+        break;
+      }
+    }
+  }
+  if (item->inherits("QQuickControl")) boxes << item;
+  for (QQuickItem* c : item->childItems()) cutTexts(c, cut, over, boxes);
+}
 
 int main(int argc, char* argv[]) {
   // Screenshots render offscreen, in the software scene graph as the tests and CI, not in a window on the desktop.
@@ -83,7 +124,12 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption state("state", "The prototype's artboard to open: Main, Start, Retouch, a dialog or a space.", "name");
   const QCommandLineOption imports("import", "QML import folder searched first, as pb-ui-tests' (build/ui/ui/live: QML from the sources).", "dir");
   const QCommandLineOption startScreen("start-screen", "Save the start screen as PNG at --size (else 560x340), then quit.", "file");
-  args.addOptions({shot, settle, size, theme, state, imports, startScreen});
+  const QCommandLineOption lang("lang", "UI language, vi or en; else Thiết lập's, else the system's (U30).", "code");
+  QCommandLineOption whichLang("which-lang", "Print the UI language this start takes, then quit, 1 when its strings do not load (the i18n test).");
+  QCommandLineOption click("click", "With --screenshot: a click at x,y of the window once it is up, as on a menu's title.", "x,y");
+  QCommandLineOption truncated("truncated", "With --screenshot: print the texts shown cut short (Text.truncated) or over their control's sides.");
+  for (QCommandLineOption* o : {&whichLang, &click, &truncated}) o->setFlags(QCommandLineOption::HiddenFromHelp);
+  args.addOptions({shot, settle, size, theme, state, imports, startScreen, lang, whichLang, click, truncated});
   args.addPositionalArgument("files", "Files to open: JPEG, PNG, TIFF (N1).", "[files...]");
   args.addHelpOption();
   args.addVersionOption();
@@ -99,6 +145,24 @@ int main(int argc, char* argv[]) {
     qCritical("--theme: dark or light");
     return 2;
   }
+  if (args.isSet(lang) && args.value(lang) != u"vi" && args.value(lang) != u"en") {
+    qCritical("--lang: vi or en");
+    return 2;
+  }
+  if (args.isSet(click) && args.value(click).split(',').size() != 2) {
+    qCritical("--click: x,y");
+    return 2;
+  }
+  // The language before anything shows text: English from :/i18n/pb_en.qm (ui/i18n/pb_en.ts), Vietnamese the sources'
+  // own; QLocale's default and Qt.uiLanguage (Fmt.js writes numbers as it says) follow it.
+  const QString ui = uiLanguage(args.value(lang), args.isSet(shot));
+  QTranslator strings;
+  const bool translated = ui == u"vi" || (strings.load(":/i18n/pb_" + ui) && app.installTranslator(&strings));
+  if (args.isSet(whichLang)) {  // the language, its strings loaded (else exit 1)
+    std::fputs(qPrintable(ui + '\n'), stdout);
+    return translated ? 0 : 1;
+  }
+  QLocale::setDefault(ui == u"vi" ? QLocale(QLocale::Vietnamese, QLocale::Vietnam) : QLocale(QLocale::English, QLocale::UnitedStates));
   if (args.isSet(startScreen)) {  // ui/brand/splash.h, to compare with the Splash artboard
     QImage image(args.isSet(size) ? QSize(w, h) : QSize(560, 340), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
@@ -126,6 +190,7 @@ int main(int argc, char* argv[]) {
 
   QQmlApplicationEngine engine;
   for (const QString& dir : args.values(imports)) engine.addImportPath(dir);
+  engine.setUiLanguage(ui);  // Qt.uiLanguage
   QVariantMap start{{"startState", args.value(state)},
                     {"startTheme", args.value(theme)},  // "" without --theme
                     {"persist", !args.isSet(shot)},     // screenshots start from the defaults
@@ -148,8 +213,28 @@ int main(int argc, char* argv[]) {
     const QString file = args.value(shot);
     QDir().mkpath(QFileInfo(file).absolutePath());
     // ponytail: fixed settle time for async images and layout, wait on Image.status if shots flake
-    QObject::connect(win, &QQuickWindow::frameSwapped, &app, [&app, win, file, ms = args.value(settle).toInt()] {
-      QTimer::singleShot(ms, &app, [&app, win, file] { app.exit(win->grabWindow().save(file) ? 0 : 2); });
+    const QStringList at = args.value(click).split(',');
+    QObject::connect(win, &QQuickWindow::frameSwapped, &app, [&app, win, file, ms = args.value(settle).toInt(), at,
+                                                              cut = args.isSet(truncated)] {
+      if (at.size() == 2) {  // --click: pressed and let go where it says (U30: a menu open in any language)
+        const QPointF p(at[0].toDouble(), at[1].toDouble());
+        for (const QEvent::Type t : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+          QMouseEvent e(t, p, win->mapToGlobal(p), Qt::LeftButton, t == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton,
+                        Qt::NoModifier);
+          QCoreApplication::sendEvent(win, &e);
+        }
+      }
+      QTimer::singleShot(ms, &app, [&app, win, file, cut] {
+        if (cut) {  // --truncated: their counts, then one line each
+          QStringList texts, over;
+          cutTexts(win->contentItem(), texts, over);
+          QString out = QStringLiteral("truncated: %1, over: %2\n").arg(texts.size()).arg(over.size());
+          for (const QString& t : texts) out += "cut: " + t + '\n';
+          for (const QString& t : over) out += "over: " + t + '\n';
+          std::fputs(qPrintable(out), stdout);
+        }
+        app.exit(win->grabWindow().save(file) ? 0 : 2);
+      });
     }, Qt::SingleShotConnection);
   }
   return app.exec();

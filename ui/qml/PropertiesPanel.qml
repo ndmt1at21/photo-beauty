@@ -905,7 +905,7 @@ Item {
                 }
                 ToolToggle {
                     icon.name: "preview"
-                    ToolTip.text: qsTr("Giữ để xem trạng thái trước · View Previous State (\\)")
+                    ToolTip.text: qsTr("Giữ để xem trạng thái trước · View Previous State") + " (\\)"  // lupdate drops a "\\" in qsTr
                     Accessible.name: qsTr("Giữ để xem trạng thái trước")
                     onPressedChanged: panel.peeking = pressed
                 }

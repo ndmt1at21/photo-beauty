@@ -1,27 +1,35 @@
 .pragma library
-// Numbers as the Vietnamese UI prints and reads them: 1.234,5 and "−" (vn, sg, zt, pnum of the
-// prototype's script), lengths at a resolution, and the sums a number field takes ("1240*2", "5cm").
+// Numbers as the UI prints and reads them (vn, sg, zt, pnum of the prototype's script), lengths at a resolution, and
+// the sums a number field takes ("1240*2", "5cm"). In the UI's language (U30): 1.234,5 in Vietnamese, 1,234.5 in
+// English (Qt.uiLanguage "en", as main.cpp sets it; tests leave it "", so Vietnamese, the language of the sources);
+// "−" in both.
 
 const PER_INCH = { in: 1, cm: 2.54, mm: 25.4, pt: 72 }  // px: the resolution
 
-// 1.234,5 with `dec` decimals; "−" only when the rounded number is not 0.
+// The decimal mark and the thousands separator of the UI's language: [",", "."] or [".", ","].
+function marks() { return Qt.uiLanguage === "en" ? [".", ","] : [",", "."] }
+
+// 1.234,5 (1,234.5) with `dec` decimals; "−" only when the rounded number is not 0.
 function vn(x, dec) {
-    const s = Math.abs(x).toFixed(dec || 0).split(".")
-    return (x < 0 && Math.abs(x) >= Math.pow(10, -(dec || 0)) / 2 ? "−" : "") + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (s[1] ? "," + s[1] : "")
+    const s = Math.abs(x).toFixed(dec || 0).split("."), m = marks()
+    return (x < 0 && Math.abs(x) >= Math.pow(10, -(dec || 0)) / 2 ? "−" : "") + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, m[1]) + (s[1] ? m[0] + s[1] : "")
 }
 // With "+" before a positive number: sliders that go both ways.
 function sg(x, dec) { return (x > 0 ? "+" : "") + vn(x, dec) }
-// A zoom percentage, up to two decimals: 12.5 → "12,5%". View.js's zoom 1 is zt(100).
-function zt(z) { return String(Math.round(z * 100) / 100).replace(".", ",") + "%" }
+// A zoom percentage, up to two decimals: 12.5 → "12,5%" ("12.5%"). View.js's zoom 1 is zt(100).
+function zt(z) { return String(Math.round(z * 100) / 100).replace(".", marks()[0]) + "%" }
 // What follows a number in unit u: "62%", "30°", "2.480 px".
 function suffix(u) { return !u || u === "%" || u === "°" ? u || "" : " " + u }
 function unit(x, u, dec) { return vn(x, dec) + suffix(u) }
 
-// Digits with a decimal comma and dots between thousands ("1.234,5"); with no comma, a dot that
-// groups no thousands is a decimal point ("12.5", "0.125"), where the prototype read 125.
+// Digits with the language's decimal mark and thousands separator ("1.234,5", "1,234.5"); with no decimal mark, a
+// separator that groups no thousands is one ("12.5", "0.125" in Vietnamese, "12,5" in English), where the prototype
+// read 125.
 function digits(s) {
-    if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".")
-    else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "")
+    const m = marks()
+    if (s.indexOf(m[0]) >= 0) s = s.split(m[1]).join("").replace(m[0], ".")
+    else if (/^[1-9]\d{0,2}([.,]\d{3})+$/.test(s)) s = s.split(m[1]).join("")
+    else s = s.replace(m[1], ".")
     return /^(\d+\.?\d*|\.\d+)$/.test(s) ? parseFloat(s) : NaN
 }
 // The number a text starts with ("12,5%" → 12.5, "−3" → −3), null when none.

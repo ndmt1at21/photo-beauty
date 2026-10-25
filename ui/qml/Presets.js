@@ -18,7 +18,7 @@ var GR_GROUPS = [
 ];
 // Brush presets: groups of [name, [[name, size px, hardness %, note after the size], …]].
 var BR_GROUPS = [
-  [qsTr("Cơ bản"), [[qsTr("Tròn mềm"), 400, 0, ""], [qsTr("Tròn cứng"), 60, 100, ""], [qsTr("Tròn vừa"), 120, 50, ""]]],
+  [qsTr("Cơ bản", "brushes"), [[qsTr("Tròn mềm"), 400, 0, ""], [qsTr("Tròn cứng"), 60, 100, ""], [qsTr("Tròn vừa"), 120, 50, ""]]],
   [qsTr("Retouch"), [[qsTr("Dodge & Burn mềm"), 300, 0, qsTr(" · Flow 6%")], [qsTr("Heal cứng"), 40, 100, ""], [qsTr("Mask tóc"), 24, 50, qsTr(" · lực nhấn")]]],
   [qsTr("Khô và mực"), [[qsTr("Mực khô"), 30, 80, ""], [qsTr("Than chì"), 12, 90, ""], [qsTr("Phấn"), 60, 40, ""]]]
 ];

@@ -24,7 +24,7 @@ var ADJ = {
   "Black & White": { ic: "filter_b_and_w", sh: "B & W", rows: ["PRE~bw", "TINT~0~#c8a27c", "BTN~Auto", "TOOLS~h", "S~r~Reds~-200~300~40~0~reds~%", "S~y~Yellows~-200~300~60~0~yel~%", "S~g~Greens~-200~300~40~0~gre~%", "S~c~Cyans~-200~300~60~0~cya~%", "S~b~Blues~-200~300~20~0~blu~%", "S~m~Magentas~-200~300~80~0~mag~%"] },
   "Photo Filter": { ic: "camera", sh: "Photo Filter", rows: ["RADIO~pf~0~Filter~pfilter~Warming Filter (85)", "RADIO~pf~1~Color~#ec8a00", "S~d~Density~1~100~25~0~~%", "CHK~pl~Preserve Luminosity~1"] },
   "Channel Mixer": { ic: "join", sh: "Ch. Mixer", rows: ["DDL~out~Output Channel~Red~chan3", "CHK~mono~Monochrome~0", "S~r~Red~-200~200~100~0~~%", "S~g~Green~-200~200~0~0~~%", "S~b~Blue~-200~200~0~0~~%", "TOT~Total", "S~k~Constant~-200~200~0~0~~%"] },
-  "Color Lookup": { ic: "grid_on", sh: "Lookup", rows: ["RADIO~lf~0~3DLUT File~lut~Phim ấm.cube", "RADIO~lf~1~Abstract~lutA~Chọn…", "RADIO~lf~2~Device Link~lutA~Chọn…", "CHK~dither~Dither~0"] },
+  "Color Lookup": { ic: "grid_on", sh: "Lookup", rows: ["RADIO~lf~0~3DLUT File~lut~" + qsTr("Phim ấm.cube"), "RADIO~lf~1~Abstract~lutA~" + qsTr("Chọn…"), "RADIO~lf~2~Device Link~lutA~" + qsTr("Chọn…"), "CHK~dither~Dither~0"] },
   "Invert": { ic: "invert_colors", sh: "Invert", rows: ["NOTE~" + qsTr("Invert không có thông số; bật tắt bằng mắt của layer.")] },
   "Posterize": { ic: "stairs", sh: "Posterize", rows: ["S~lv~Levels~2~255~4"] },
   "Threshold": { ic: "contrast", sh: "Threshold", rows: ["HIST~threshold", "LF~t=Threshold Level=128"] },

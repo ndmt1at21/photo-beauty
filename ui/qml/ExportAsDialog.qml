@@ -31,7 +31,7 @@ DialogBox {
     property real ch: NaN
     readonly property int canvasW: isNaN(cw) ? Math.round(iw) : cw
     readonly property int canvasH: isNaN(ch) ? Math.round(ih) : ch
-    property var scales: [{ s: 1, suf: "" }, { s: 0.5, suf: "@0,5x" }]  // s: the factor, suf: added to the file name
+    property var scales: [{ s: 1, suf: "" }, { s: 0.5, suf: suffix(0.5) }]  // s: the factor, suf: added to the file name
     property int meta: 0  // Không, Bản quyền và liên hệ
     property bool srgb: true
     property bool embed: true
@@ -75,8 +75,8 @@ DialogBox {
         iw = srcW * pct / 100
         ih = srcH * pct / 100
     }
-    function scaleText(s) { return String(s).replace(".", ",") + "×" }  // 0.5 → "0,5×"
-    function suffix(s) { return s === 1 ? "" : "@" + String(s).replace(".", ",") + "x" }  // 0.5 → "@0,5x"
+    function scaleText(s) { return String(s).replace(".", Fmt.marks()[0]) + "×" }  // 0.5 → "0,5×" ("0.5×")
+    function suffix(s) { return s === 1 ? "" : "@" + String(s).replace(".", Fmt.marks()[0]) + "x" }  // 0.5 → "@0,5x" ("@0.5x")
     function setScaleAt(i, s) {  // a suffix still the factor's own follows it
         scales = scales.map((x, j) => j === i ? { s: s, suf: x.suf === suffix(x.s) ? suffix(s) : x.suf } : x)
     }

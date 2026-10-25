@@ -1,7 +1,7 @@
 # Qt Quick UI (docs/ui-tasks.md): the static QML module PhotoBeauty, which pb-ui and its tests link.
 # Files are globbed, so a task only adds them; a QML file with a `pragma Singleton` line is a singleton.
 # copied from snapone 6bdb5c8 (ui/CMakeLists.txt), the parts U0 needs.
-find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 QuickTest)
+find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 QuickTest LinguistTools)
 qt_standard_project_setup(REQUIRES 6.8)
 
 # QML straight from the source tree, no build (CLAUDE.md): `pb-ui-tests -import build/ui/ui/live` takes the module
@@ -48,9 +48,22 @@ if(WIN32 AND ico)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/pb-ui.rc" PROPERTIES OBJECT_DEPENDS "${ico}")
   target_sources(pb-ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/pb-ui.rc")
 endif()
+# English beside Vietnamese, the language of the sources (U30; snapone's decision 10): the module embeds it as
+# :/i18n/pb_en.qm, which pb-ui's main.cpp loads and tests read through Language (language.h); `cmake --build build/ui
+# --target update_translations` adds new and changed strings to i18n/pb_en.ts, to translate there (build/orch/api/u30.md).
+set(PB_TS i18n/pb_en.ts)
+qt_add_translations(pb_qml TS_FILES ${PB_TS} SOURCE_TARGETS pb_qml pb-ui SOURCES brand/splash.h
+  LUPDATE_OPTIONS -no-obsolete -locations none)
 
 # QML tests: tests/tst_*.qml, read from the source tree when they run, offscreen.
 qt_add_executable(pb-ui-tests tests/main.cpp)
 target_compile_definitions(pb-ui-tests PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
 target_link_libraries(pb-ui-tests PRIVATE Qt6::QuickControls2 Qt6::QuickTest pb_qmlplugin)
 add_test(NAME ui COMMAND pb-ui-tests)
+# Every string of the sources translated, with the same placeholders and edge spaces (i18n/check.py); pb-ui takes the
+# language it should at start (--lang, Thiết lập, the system's).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  add_test(NAME i18n COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/i18n/check.py $<TARGET_FILE:Qt6::lupdate>
+    ${CMAKE_CURRENT_SOURCE_DIR} ${PB_TS} --app $<TARGET_FILE:pb-ui>)
+endif()

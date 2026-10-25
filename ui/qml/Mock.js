@@ -1,11 +1,12 @@
 .pragma library
+.import "Fmt.js" as Fmt
 // Mock documents (docs/ui-tasks.md, U3): the sample photos, documents and recent files of the prototype
 // (build/proto/Main.dc.html, Start.dc.html), and the document model behind Doc.qml, ported from the prototype's class
 // Component (mkL, docBase, mkPortrait, upd, step, restore, histTo, exec, the Layers, Channels and Retouch parts). A state
 // is immutable: a command makes a new one, a History step keeps it with the commands that made it. Commands carry the
 // names and JSON fields of T1's (core/doc.h), so N1's DocModel can stand in for a mock document. Plain JavaScript but
-// for qsTr() and String.arg(), so node runs it with those two shimmed. Exported names are `var` and `function`; `const`
-// stays inside.
+// for qsTr(), String.arg() and Fmt.vn() (U30: numbers in the UI's language), so node runs it with those three shimmed.
+// Exported names are `var` and `function`; `const` stays inside.
 
 // ---- sample photos ------------------------------------------------------------------------------------------------
 // ui/mock/photos among the module's resources; the one place to change when the prefix does.
@@ -26,14 +27,14 @@ function photoUrl(i) { return i === null || i === undefined || !PHOTOS[i] ? "" :
 // Recent files: the Start screen's list (newest first) with the editor's fields for opening one. `size` and `when` as
 // it shows them; `mb` sorts by size, `order` by date modified (newer higher).
 var RECENT = [
-  { file: "chân dung.psd", photo: 0, w: 4400, h: 5600, ppi: 300, bits: 16, mem: "148 MB / 1,02 GB", size: "312 MB", mb: 312, when: qsTr("Hôm nay, 14:32"), order: 8 },
-  { file: "poster-tet.pbd", photo: 3, w: 2480, h: 3508, ppi: 300, bits: 8, mem: "26,1 MB / 96 MB", size: "96 MB", mb: 96, when: qsTr("Hôm qua, 21:10"), order: 7 },
-  { file: "san-pham.webp", photo: 4, w: 1800, h: 1200, ppi: 72, bits: 8, mem: "6,48 MB / 6,48 MB", size: "410 KB", mb: 0.41, when: qsTr("Hôm qua, 16:45"), order: 6 },
-  { file: "halong-pano.psb", photo: 2, w: 36000, h: 24000, ppi: 300, bits: 16, mem: "5,18 GB / 9,4 GB", size: "3,4 GB", mb: 3400, when: "12/10/2026", order: 5 },
-  { file: "cuoi-trang-an.psd", photo: 6, w: 8256, h: 5504, ppi: 300, bits: 16, mem: "273 MB / 1,6 GB", size: "1,6 GB", mb: 1600, when: "10/10/2026", order: 4 },
+  { file: "chân dung.psd", photo: 0, w: 4400, h: 5600, ppi: 300, bits: 16, mem: "148 MB / " + vn(1.02, 2) + " GB", size: "312 MB", mb: 312, when: qsTr("Hôm nay, 14:32"), order: 8 },
+  { file: "poster-tet.pbd", photo: 3, w: 2480, h: 3508, ppi: 300, bits: 8, mem: vn(26.1, 1) + " MB / 96 MB", size: "96 MB", mb: 96, when: qsTr("Hôm qua, 21:10"), order: 7 },
+  { file: "san-pham.webp", photo: 4, w: 1800, h: 1200, ppi: 72, bits: 8, mem: vn(6.48, 2) + " MB / " + vn(6.48, 2) + " MB", size: "410 KB", mb: 0.41, when: qsTr("Hôm qua, 16:45"), order: 6 },
+  { file: "halong-pano.psb", photo: 2, w: 36000, h: 24000, ppi: 300, bits: 16, mem: vn(5.18, 2) + " GB / " + vn(9.4, 1) + " GB", size: vn(3.4, 1) + " GB", mb: 3400, when: "12/10/2026", order: 5 },
+  { file: "cuoi-trang-an.psd", photo: 6, w: 8256, h: 5504, ppi: 300, bits: 16, mem: "273 MB / " + vn(1.6, 1) + " GB", size: vn(1.6, 1) + " GB", mb: 1600, when: "10/10/2026", order: 4 },
   { file: "chan-dung-ho.psd", photo: 1, w: 6000, h: 4000, ppi: 300, bits: 16, mem: "144 MB / 702 MB", size: "702 MB", mb: 702, when: "09/10/2026", order: 3 },
-  { file: "hoang-hon.tif", photo: 5, w: 1800, h: 1013, ppi: 300, bits: 8, mem: "5,47 MB / 10 MB", size: "10 MB", mb: 10, when: "08/10/2026", order: 2 },
-  { file: "cau-vang.jpg", photo: 7, w: 1800, h: 1125, ppi: 72, bits: 8, mem: "6,08 MB / 6,08 MB", size: "254 KB", mb: 0.25, when: "05/10/2026", order: 1 }
+  { file: "hoang-hon.tif", photo: 5, w: 1800, h: 1013, ppi: 300, bits: 8, mem: vn(5.47, 2) + " MB / 10 MB", size: "10 MB", mb: 10, when: "08/10/2026", order: 2 },
+  { file: "cau-vang.jpg", photo: 7, w: 1800, h: 1125, ppi: 72, bits: 8, mem: vn(6.08, 2) + " MB / " + vn(6.08, 2) + " MB", size: "254 KB", mb: 0.25, when: "05/10/2026", order: 1 }
 ];
 // Files left unsaved when the app last closed (Start, Notices).
 var RECOVERY = [
@@ -103,19 +104,16 @@ var REQ = {
 // The keys of cx().
 var CX = ["doc", "sel", "prev", "undo", "redo", "hist", "layer", "multi", "hidden", "grp", "text", "shape", "so", "mask", "bgl", "below", "faces"];
 // The portrait's History as it opens (the mock keeps no pixels, so every step has the state it opened with).
-const H0 = [["Mở", "folder_open"], ["Tách tần số", "face_retouching_natural"], ["Spot Healing Brush", "spot_heal"], ["Spot Healing Brush", "spot_heal"], ["Liquify", "face"],
-  ["Layer Curves mới", "curve"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"]];
+const H0 = [[qsTr("Mở"), "folder_open"], [qsTr("Tách tần số"), "face_retouching_natural"], ["Spot Healing Brush", "spot_heal"], ["Spot Healing Brush", "spot_heal"], ["Liquify", "face"],
+  [qsTr("Layer Curves mới"), "curve"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"], ["Brush", "brush"]];
 // Masks the prototype draws, as CSS.
 const MASK_SEL = "radial-gradient(ellipse 30% 26% at 57% 42%, #ffffff 0 70%, #000000 100%)";
 const MASK_INV = "radial-gradient(ellipse 30% 26% at 57% 42%, #000000 0 70%, #ffffff 100%)";
 const MASK_SUBJECT = "radial-gradient(ellipse 42% 47% at 57% 55%, #ffffff 0 80%, #000000 100%)";
 const MASK_EYES = "radial-gradient(circle at 42% 40%, #ffffff 0 8%, transparent 13%), radial-gradient(circle at 66% 40%, #ffffff 0 8%, transparent 13%), #000000";
 
-// The prototype's vn(): 1.234,5 and "−".
-function vn(x, dec) {
-  const s = Math.abs(x).toFixed(dec || 0).split(".");
-  return (x < 0 && Math.abs(x) >= Math.pow(10, -(dec || 0)) / 2 ? "−" : "") + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (s[1] ? "," + s[1] : "");
-}
+// The prototype's vn(): 1.234,5 and "−", in the UI's language (Fmt.js, U30).
+function vn(x, dec) { return Fmt.vn(x, dec); }
 
 // ---- layers -------------------------------------------------------------------------------------------------------
 // A layer: { id, kind, props }, and a group's children, bottom first as T1's; the root is { id: 0, kind: "group",
@@ -705,7 +703,7 @@ function portrait() {
     { id: "bg", name: "Background", ph: 0, lock: "a", bgl: true }
   ]);
   return {
-    file: "chân dung.psd", mem: "148 MB / 1,02 GB", dirty: true, zoom: 12.5, ids: t.ids,
+    file: "chân dung.psd", mem: "148 MB / " + vn(1.02, 2) + " GB", dirty: true, zoom: 12.5, ids: t.ids,
     state: docState({ w: 4400, h: 5600, ppi: 300, bits: 16, photo: 0, faces: true, root: t.root, nextId: t.next, selected: [t.ids.db], alphas: ["Vùng chọn da"] }),
     history: H0.map((h) => ({ name: h[0], icon: h[1] })),
     snapshots: [{ name: "chân dung.psd", at: 0, look: "none" }, { name: "Trước khi Liquify", at: 3, look: "saturate(.8)" }]

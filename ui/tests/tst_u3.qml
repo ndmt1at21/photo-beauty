@@ -664,7 +664,7 @@ Item {
                     if (r.kind === "select" || r.kind === "group")
                         verify(r.def >= 0 && r.def < r.options.length, r.key)
                 }
-            compare([Object.keys(Prefs.panes).length, rows], [15, 69])  // the prototype's 68 and Thanh công cụ hai cột (U5)
+            compare([Object.keys(Prefs.panes).length, rows], [15, 70])  // the prototype's 68, Thanh công cụ hai cột (U5) and U30's note under Ngôn ngữ
             Prefs.set("gpu", false)
             verify(!Prefs.value("gpu"))
             Prefs.reset()

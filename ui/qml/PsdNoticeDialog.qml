@@ -10,9 +10,9 @@ DialogBox {
     property var params: ({})
     readonly property string file: params.file || "poster-tet.psd"
     readonly property var items: params.items || [
-        { layer: "Tiêu đề (layer chữ)", what: "Bevel & Emboss: chưa vẽ lại được, dùng điểm ảnh đã lưu." },
-        { layer: "Ưu đãi 30% (layer chữ)", what: "Bevel & Emboss: chưa vẽ lại được, dùng điểm ảnh đã lưu." },
-        { layer: "Logo khách (smart object)", what: "Smart filter Gaussian Blur: chưa sửa được, giữ nguyên khi lưu." }]
+        { layer: "Tiêu đề (layer chữ)", what: qsTr("Bevel & Emboss: chưa vẽ lại được, dùng điểm ảnh đã lưu.") },
+        { layer: "Ưu đãi 30% (layer chữ)", what: qsTr("Bevel & Emboss: chưa vẽ lại được, dùng điểm ảnh đã lưu.") },
+        { layer: "Logo khách (smart object)", what: qsTr("Smart filter Gaussian Blur: chưa sửa được, giữ nguyên khi lưu.") }]
     property bool copied: false  // the list is on the clipboard
 
     title: qsTr("PSD: %1 layer có phần chưa sửa được", "", items.length).arg(items.length)

@@ -42,7 +42,10 @@ QtObject {
             { kind: "select", key: "canvasFull", label: qsTr("Nền quanh ảnh · toàn màn hình"), options: canvasColors, def: 0 },
             { kind: "group", key: "canvasBorder", label: qsTr("Viền canvas"), options: [qsTr("Bóng"), qsTr("Đường"), qsTr("Không")], def: 0 },
             { kind: "group", key: "fontSize", label: qsTr("Cỡ chữ"), options: [qsTr("Nhỏ"), qsTr("Vừa"), qsTr("Lớn")], def: 1 },
-            { kind: "group", key: "language", label: qsTr("Ngôn ngữ"), options: ["Tiếng Việt", "English"], def: 0 },
+            // U30: from the next start (main.cpp reads it from the JSON kept); by default the one this start took
+            // (Qt.uiLanguage: the system's on a first start; tests leave it "", Vietnamese).
+            { kind: "group", key: "language", label: qsTr("Ngôn ngữ"), options: ["Tiếng Việt", "English"], def: Qt.uiLanguage === "en" ? 1 : 0 },
+            { kind: "note", label: qsTr("Ngôn ngữ mới có hiệu lực từ lần mở app sau.") },
             { kind: "toggle", key: "channelsInColor", label: qsTr("Hiện kênh bằng màu"), def: false }
         ],
         workspace: [
@@ -66,7 +69,7 @@ QtObject {
             { kind: "note", label: qsTr("Bước cũ ra scratch trước; vượt nữa thì bỏ bước cũ nhất.") }
         ],
         files: [
-            { kind: "select", key: "psdCompatibility", label: qsTr("Maximize PSD Compatibility"), options: [qsTr("Luôn"), qsTr("Hỏi"), qsTr("Không")], def: 1 },
+            { kind: "select", key: "psdCompatibility", label: qsTr("Maximize PSD Compatibility"), options: [qsTr("Luôn"), qsTr("Hỏi"), qsTr("Không", "never")], def: 1 },
             { kind: "select", key: "recentFiles", label: qsTr("Số file gần đây"), options: ["10", "20", "30", "50"], def: 1 },
             { kind: "select", key: "quickFormat", label: qsTr("Quick Export: định dạng"), options: ["PNG", "JPEG", "WebP", "TIFF"], def: 0 },
             { kind: "select", key: "quickPlace", label: qsTr("Quick Export: chỗ lưu"), options: [qsTr("Hỏi mỗi lần"), qsTr("Thư mục assets cạnh tài liệu")], def: 0 },

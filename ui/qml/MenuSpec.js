@@ -52,7 +52,7 @@ var MENUS = [
         { l: qsTr("Sao chép hợp nhất"), k: "Ctrl ⇧ C", act: "@noop", req: "sel" },
         { l: qsTr("Dán"), k: "Ctrl V", act: "@paste" },
         { l: qsTr("Dán tại chỗ"), k: "Ctrl ⇧ V", act: "@paste" },
-        { l: qsTr("Xóa"), k: "Del", act: "@noop", req: "sel" },
+        { l: qsTr("Xóa", "Edit › Clear"), k: "Del", act: "@noop", req: "sel" },
         SEP,
         { l: qsTr("Fill…"), k: "⇧ F5", dialog: "Fill", req: "doc" },
         { l: qsTr("Stroke…"), dialog: "Stroke", req: "sel" },
@@ -378,7 +378,7 @@ var MENUS = [
         { l: qsTr("Bắt dính vào"), w: 200, sub: [
             { l: qsTr("Guide"), act: "@snapTo:guides" },
             { l: qsTr("Lưới"), act: "@snapTo:grid" },
-            { l: qsTr("Layer"), act: "@snapTo:layers" },
+            { l: qsTr("Layer", "View › Snap To › Layers"), act: "@snapTo:layers" },
             { l: qsTr("Biên tài liệu"), act: "@snapTo:bounds" },
             SEP,
             { l: qsTr("Tất cả"), act: "@snapTo:all" },
