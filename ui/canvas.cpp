@@ -2,6 +2,7 @@
 // Core::useGpu() as useGpu() and useWindow(), RawFrame's texture pool), without its tiles, stand-ins and renders.
 #include "canvas.h"
 
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -50,6 +51,7 @@
 #include "open.h"
 #include "pattern.spv.h"
 #include "pbd.h"
+#include "pen.h"
 #include "profile.h"
 #include "strokelog.h"
 
@@ -727,6 +729,7 @@ void Canvas::setDocument(pb::DocPtr doc, std::shared_ptr<const pb::Preview> prev
   if (model_) setModel(nullptr);
   painting_.reset();  // before the history it paints into
   stroking_ = false;
+  held_.reset();
   own_ = doc ? std::make_unique<pb::Document>(std::move(doc), "Open") : nullptr;
   history_ = own_.get();
   preview_ = std::move(preview);
@@ -743,6 +746,7 @@ void Canvas::setHistory(pb::Document* h) {
   settle();             // the stroke into the history it was painted on
   painting_.reset();    // before the history it paints into
   stroking_ = false;
+  held_.reset();
   own_.reset();
   history_ = h;
   preview_.reset();
@@ -932,7 +936,28 @@ void Canvas::mousePressEvent(QMouseEvent* e) {
     const std::lock_guard l(s_->m);
     s_->toScreen.clear();
   }
+  // I30: a pen down without pressure (Windows Ink's touch-down, some drivers'; a mouse's is 1) would start the stroke
+  // at its thinnest: its first dab waits for the next event's pressure (Pen.firstPressure)
+  if (p.pressure == 0 && penFirstPressure()) {
+    held_ = p;
+    qCInfo(lcPen, "pen down without pressure: its first dab takes the next event's");
+    return;
+  }
   painting_->add(p);
+}
+
+void Canvas::add(const pb::PenEvent& p) {
+  if (held_) {
+    held_->pressure = p.pressure;
+    painting_->add(*std::exchange(held_, std::nullopt));
+  }
+  painting_->add(p);
+}
+
+void Canvas::lift() {
+  stroking_ = false;
+  if (held_) painting_->add(*std::exchange(held_, std::nullopt));  // nothing came after it: as it came
+  painting_->end();
 }
 
 void Canvas::mouseMoveEvent(QMouseEvent* e) {
@@ -940,22 +965,20 @@ void Canvas::mouseMoveEvent(QMouseEvent* e) {
   if (!stroking_) return e->ignore();
   const pb::PenEvent p = penEvent(e);
   got_.push_back(p.t);
-  painting_->add(p);
+  add(p);
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent* e) {
   if (playing_) playing_->quit();
   if (!stroking_) return e->ignore();
-  stroking_ = false;
-  painting_->end();  // Qt moved it to the release's point first
+  lift();  // Qt moved it to the release's point first
   accepts();
 }
 
 void Canvas::mouseUngrabEvent() {  // a popup took the mouse, say
   if (playing_) playing_->quit();
   if (!stroking_) return;
-  stroking_ = false;
-  painting_->end();
+  lift();
   accepts();
 }
 
@@ -986,8 +1009,7 @@ bool Canvas::eventFilter(QObject* o, QEvent* e) {
 
 void Canvas::settle() {
   if (!painting_) return;
-  stroking_ = false;
-  painting_->end();
+  lift();
   commit();
 }
 
@@ -1110,17 +1132,36 @@ bool Canvas::pen(const QString& phase, QPointF at, qreal pressure) {
   return mice;
 }
 
+void Canvas::record(const QString& dir) {
+  if (dir.isEmpty())
+    qunsetenv("PB_RECORD_STROKES");
+  else
+    qputenv("PB_RECORD_STROKES", QByteArray::fromStdString(local(dir).string()));
+}
+
 QVariantMap Canvas::strokeLog(const QString& path) const {
   try {
-    const pb::StrokeRecord r = pb::read_stroke_log(local(path).string());
+    std::filesystem::path file = local(path);
+    std::error_code no;
+    if (!std::filesystem::exists(file, no)) return {};  // not yet (a log is written after pen up)
+    if (std::filesystem::is_directory(file, no)) {  // its newest log
+      const QFileInfoList logs = QDir(file).entryInfoList({QStringLiteral("*.jsonl")}, QDir::Files, QDir::Time);
+      if (logs.isEmpty()) return {};
+      file = logs[0].filesystemAbsoluteFilePath();
+    }
+    const pb::StrokeRecord r = pb::read_stroke_log(file.string());
     if (r.events.empty()) return {};
     float x0 = r.events[0].x, x1 = x0, y0 = r.events[0].y, y1 = y0;
-    for (const pb::PenEvent& e : r.events)
+    QVariantList points;
+    for (const pb::PenEvent& e : r.events) {
       x0 = std::min(x0, e.x), x1 = std::max(x1, e.x), y0 = std::min(y0, e.y), y1 = std::max(y1, e.y);
+      points.push_back(QVariantList{e.t, e.x, e.y, e.pressure, e.tilt_x, e.tilt_y, e.rotation});
+    }
     return {{"events", int(r.events.size())}, {"seconds", r.events.back().t - r.events[0].t},
             {"zoom", r.zoom},                 {"x", r.events[0].x},
             {"y", r.events[0].y},             {"cx", (x0 + x1) / 2},
-            {"cy", (y0 + y1) / 2},            {"size", r.brush.size}};
+            {"cy", (y0 + y1) / 2},            {"size", r.brush.size},
+            {"erase", r.brush.erase},         {"points", points}};
   } catch (const std::exception& e) {
     qWarning("pb: %s", e.what());
     return {};

@@ -34,7 +34,21 @@ file(GLOB PB_UI_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPEN
 qt_add_library(pb_qml STATIC)
 qt_add_qml_module(pb_qml URI PhotoBeauty OUTPUT_DIRECTORY PhotoBeauty  # under its URI, for qmllint
   SOURCES ${PB_UI_SOURCES} QML_FILES ${PB_QML} RESOURCES ${PB_UI_RESOURCES})
-target_link_libraries(pb_qml PRIVATE Qt6::Quick Qt6::QuickControls2 pb_core)  # pb_core: the canvas (V1)
+# pb_core: the canvas (V1); whole, as the core's static registrations (F30's FILTER() in core/filter_*.cpp) are in
+# files nothing names, which the linker would leave out of a static library. MinGW: CMake 3.28 asks ld.lld --help
+# and gives --push-state, which lld's MinGW driver (llvm-mingw) does not take: the plain pair there.
+if(MINGW)
+  set(CMAKE_LINK_LIBRARY_USING_WHOLE_ARCHIVE "LINKER:--whole-archive" "<LINK_ITEM>" "LINKER:--no-whole-archive")
+endif()
+target_link_libraries(pb_qml PRIVATE Qt6::Quick Qt6::QuickControls2 "$<LINK_LIBRARY:WHOLE_ARCHIVE,pb_core>")
+# Wintab on Windows (I30, pen.cpp) through QWindowsApplication of qguiapplication_p.h: Qt's private API, which a Qt
+# update may change (pen.cpp then no longer builds; check it with each Qt), the build tied to its Qt's DLLs, as
+# ui/deploy-win.sh ships them (Qt's warning of that, said here, off).
+if(WIN32)
+  set(QT_NO_PRIVATE_MODULE_WARNING ON)
+  find_package(Qt6 6.11 REQUIRED COMPONENTS GuiPrivate)
+  target_link_libraries(pb_qml PRIVATE Qt6::GuiPrivate)
+endif()
 
 qt_add_executable(pb-ui WIN32 MACOSX_BUNDLE main.cpp)  # no console window on Windows, an .app on macOS
 target_link_libraries(pb-ui PRIVATE Qt6::Quick Qt6::QuickControls2 pb_qmlplugin)

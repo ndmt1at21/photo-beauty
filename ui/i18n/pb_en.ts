@@ -6129,8 +6129,8 @@
         <translation>On Windows</translation>
     </message>
     <message>
-        <source>Wintab cho bảng vẽ Wacom đời cũ.</source>
-        <translation>Wintab for older Wacom tablets.</translation>
+        <source>Wintab cho bảng vẽ Wacom đời cũ. Có hiệu lực từ lần mở app sau.</source>
+        <translation>Wintab for older Wacom tablets. Takes effect the next time the app opens.</translation>
     </message>
     <message>
         <source>Phím mặc định như Photoshop</source>

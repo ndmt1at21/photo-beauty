@@ -315,7 +315,7 @@ Item {
 
         function test_notes() {
             const d = open({ page: "pen" })
-            const t = find(d.contentItem, o => o instanceof Text && o.visible && o.text === "Wintab cho bảng vẽ Wacom đời cũ.")
+            const t = find(d.contentItem, o => o instanceof Text && o.visible && o.text === "Wintab cho bảng vẽ Wacom đời cũ. Có hiệu lực từ lần mở app sau.")
             verify(t)
             compare(t.color, Theme.t3)
         }

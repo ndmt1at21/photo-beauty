@@ -110,8 +110,9 @@ QtObject {
             { kind: "toggle", key: "placeholderText", label: qsTr("Điền chữ mẫu khi tạo layer chữ"), def: true }
         ],
         pen: [
+            // I30: from the next start (main.cpp's usePen() reads it from the JSON kept, before Qt takes the pen in)
             { kind: "group", key: "tabletApi", label: qsTr("Trên Windows"), options: ["Windows Ink", "Wintab"], def: 0 },
-            { kind: "note", label: qsTr("Wintab cho bảng vẽ Wacom đời cũ.") }
+            { kind: "note", label: qsTr("Wintab cho bảng vẽ Wacom đời cũ. Có hiệu lực từ lần mở app sau.") }
         ],
         shortcuts: [
             { kind: "link", label: qsTr("Phím mặc định như Photoshop"), text: qsTr("Mở Phím tắt…"), target: "Shortcuts" },

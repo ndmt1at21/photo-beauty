@@ -128,9 +128,13 @@ class Canvas : public QQuickItem {
   // over (QWindowSystemInterface), delivered before it returns. Where Qt makes no mouse event of a tablet event no
   // handler took (offscreen: the platform would), it hands over the one Windows' Qt makes; false then.
   Q_INVOKABLE bool pen(const QString& phase, QPointF at, qreal pressure);
-  // For tests and measures: C4's stroke log at `path` (strokelog.h): { events, seconds, zoom, x, y (its first point),
-  // cx, cy (the middle of its points), size (its brush's) }; {} if it cannot be read.
+  // For tests and measures: C4's stroke log at `path` (strokelog.h), or a folder's newest: { events, seconds, zoom, x,
+  // y (its first point), cx, cy (the middle of its points), size (its brush's), erase, points ([t, x, y, pressure,
+  // tiltX, tiltY, rotation] of each event, I30) }; {} if there is none or it cannot be read (a warning).
   Q_INVOKABLE QVariantMap strokeLog(const QString& path) const;
+  // For tests (I30): every canvas's strokes logged into the folder `dir` from the next one on, as PB_RECORD_STROKES
+  // has them (its value); "" for none.
+  Q_INVOKABLE void record(const QString& dir);
   // ... played from a thread through Qt as a platform hands input over (QWindowSystemInterface, queued), each event at
   // the window point that shows its document point now, at its own pace (`pace` 1; 0: all at once): kind "pen" a
   // tablet's with its pressure (and the mouse event as pen()), "mouse" the left button's; its stroke with its brush.
@@ -184,6 +188,8 @@ class Canvas : public QQuickItem {
   pb::Painting* painting(bool gpu);  // the document's, on that route; null while the GPU's presenter is being made
   void accepts();                    // the left button while it paints
   pb::PenEvent penEvent(const QMouseEvent*) const;
+  void add(const pb::PenEvent&);  // into the stroke, after the first event if it waits for this one's pressure
+  void lift();                    // pen up: the stroke ended, its first event in if that still waits
   void settle();  // the stroke ended, then committed
   void commit();  // an ended stroke's step, once merged
 
@@ -204,6 +210,8 @@ class Canvas : public QQuickItem {
   pb::BrushParams brush_;
   std::optional<pb::BrushParams> played_;  // play()'s stroke's
   bool stroking_ = false;                  // pen down, its stroke begun
+  // I30: the stroke's first event while it waits for the next one's pressure, the pen down without any (pen.h)
+  std::optional<pb::PenEvent> held_;
   struct Pen {  // the last tablet event its window had: what the mouse event Qt makes of it lacks
     quint64 timestamp = 0;
     float pressure = 1, tiltX = 0, tiltY = 0, rotation = 0;

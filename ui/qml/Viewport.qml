@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "View.js" as View
 import "MenuSpec.js" as MenuSpec
+import "ToolSpec.js" as ToolSpec
 
 // The canvas area (docs/ui-tasks.md, U6; artboard Main): rulers, then in the frame the canvas (MockCanvas; V1's Canvas
 // in its place), the overlays (U7) and the pointer, on the grey Thiết lập picks for the screen mode. Pan: the Hand tool
@@ -86,6 +87,34 @@ Rectangle {
         origins = all
     }
     function zoomsOut(mods) { return (Tools.value("zoom:2", 0) === 1) !== !!(mods & Qt.AltModifier) }  // the Zoom tool: its bar, Alt the other way
+
+    // ---- the pen's ends (I30) ---------------------------------------------------------------------------------------
+    // As Photoshop: the eraser end turned to the canvas takes the Eraser, the tip again the tool before; each end keeps
+    // the tool last used with it (otherEnd: the end not in use's). Pen says which end it is as it comes near, before its
+    // press reaches the canvas. Main's canvas alone (a space's tools are its own), not during Free Transform.
+    property bool eraserEnd: false  // Tools.tool is the eraser end's
+    property string otherEnd: "eraser"
+    property bool mainCanvas: true  // not a space's (in a Workspace), whose tools are its own
+    Component.onCompleted: {
+        eraserEnd = Pen.eraser
+        for (let p = parent; p; p = p.parent)
+            if (p instanceof Workspace)
+                mainCanvas = false
+    }
+    Connections {
+        target: Pen
+        enabled: vp.mainCanvas && vp.visible && !Tools.xf
+        function onEraserChanged() {
+            if (Pen.eraser === vp.eraserEnd)
+                return
+            const t = vp.otherEnd
+            vp.eraserEnd = Pen.eraser
+            vp.otherEnd = Tools.tool
+            Tools.setTool(t, ToolSpec.tool(t).g)
+            if (Tools.tool !== t)  // locked on a real document (N3): the Brush, as a real one gives
+                Tools.setTool("brush", "brush")
+        }
+    }
 
     // ---- the pointer ------------------------------------------------------------------------------------------------
     function press(m) {

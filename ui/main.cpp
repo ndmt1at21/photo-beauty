@@ -25,6 +25,7 @@
 
 #include "brand/splash.h"
 #include "look.h"
+#include "pen.h"
 
 Q_IMPORT_QML_PLUGIN(PhotoBeautyPlugin)
 
@@ -100,6 +101,9 @@ int main(int argc, char* argv[]) {
   // object holds: SIGSEGV, SEGV_ACCERR in ~QVariantHash at libQt6Qml+0x2cd54b under load (U23d). The whole GC at once
   // instead, as before Qt 6.8. ponytail: longer GC pauses; drop this once Qt has fixed it.
   if (!qEnvironmentVariableIsSet("QV4_GC_TIMELIMIT")) qputenv("QV4_GC_TIMELIMIT", "0");
+  // I30: Windows Ink or Wintab, Thiết lập › Bút's as the last start kept it (not with --screenshot), before the
+  // application, whose platform takes the tablet in (pen.h)
+  usePen(argc, argv);
   QGuiApplication app(argc, argv);
   app.setApplicationName("photo-beauty");
   app.setOrganizationName("photo-beauty");
