@@ -37,7 +37,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A30, A30b, A31, A40, A41 | Lõi (lô 0) | A30, A30b, A40 xong (25/10); kế tiếp A31 |
 | B · Ghép | B30–B38 | Lõi (CPU, GPU), ảnh mẫu | B30 xong (24/10) |
-| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31, D31b, D32, D33, D38 xong (25/10); đang làm D34, D35 |
+| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31, D31b, D32, D33, D35, D38 xong (25/10); đang làm D34 |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | F31 xong (25/10) |
@@ -264,7 +264,7 @@ Lô 0, nối tiếp A30 → A40 → A31 → A41: cùng `core/doc.h`, `core/rende
   - Exposure (exposure ±20, offset ±0,5, gamma 0,01–9,99), trong ánh sáng tuyến tính (Adobe: "gamma 1.0"): x = decode(v) (đường cong của hồ sơ tài liệu, `color.h`; giả thuyết, thử cả gamma 2,2), x × 2^exposure + offset, rồi x^(1/gamma), encode, kẹp; LUT mỗi kênh dựng trên CPU. Ống hút: đen đặt Offset, xám và trắng đặt Exposure (theo Photoshop).
 
   **Xong khi:** mặc định là identity; Legacy khớp công thức; Exposure +1 nhân đôi giá trị tuyến tính (qua decode), Offset dời đúng; `check_adjust`; so ảnh mẫu ΔE2000 trung bình < 1 khi có, độ lệch của Brightness/Contrast mới in cho B38.
-- [ ] **D35 · Hue/Saturation, Vibrance** (đang làm: worktree `d35`, 25/10, mở sớm từ lô 8; lõi, GPU; Vừa; cần D31; file `core/adj_hue_saturation.cpp`, `core/adj_vibrance.cpp`, `shaders/lib/adj_hue_saturation.slang`, `shaders/lib/adj_vibrance.slang`, `tests/test_adj_hue.cpp`):
+- [x] **D35 · Hue/Saturation, Vibrance** (25/10/2026, 6a861c2: Master và 6 dải (bộ theo tên dải thắng bộ mức trên, như D33), Colorize lấy bộ Master; hue tính theo vòng, Master cộng tổng trọng số × dải cho h, s, l, điểm xám không thuộc dải nào; so tham chiếu HSL double lệch 2,84e-6 (Vibrance 1,24e-7), GPU khớp CPU từng bit; giả thuyết `kSaturationUp`, `kLightnessMixes`, `kColorizeLum`, `kSkinSpan`, `kSkinProtect` (nhánh kiểu GIMP bật thử vẫn khớp GPU: đổi hằng là đủ); `span_from_pick()`, `range_of_hue()` ở adj_hue_saturation.cpp; test_adj_hue_vals đọc thẳng `SPANS` của ui/qml/AdjustSpec.js; 2048² U16 Hue/Saturation ba dải 88 ms, Vibrance 77 ms; đột biến 11/12 (một không thể bắt); Add/Subtract to Sample của ống hút chưa có (N37); build/orch/api/d35.md; lõi, GPU; Vừa; cần D31; file `core/adj_hue_saturation.cpp`, `core/adj_vibrance.cpp`, `shaders/lib/adj_hue_saturation.slang`, `shaders/lib/adj_vibrance.slang`, `tests/test_adj_hue.cpp`):
   - Hue/Saturation: Master và 6 dải (Reds…Magentas; span [a, b, c, d] mặc định như `AdjustSpec.SPANS`, sửa được), mỗi cái hue −180..180, saturation, lightness −100..100; Colorize (hue 0–360, saturation 0–100, lightness). Giả thuyết (mô hình GIMP dựng theo Photoshop): RGB → HSL; trọng số dải theo hue: 1 trong [b, c], tuyến tính về 0 tới a và d, vắt qua 0° được; hue cộng Master và Σ trọng số × dải; saturation dương tăng về bão hòa, âm giảm tuyến tính (−100 ra xám L = (max + min)/2, như Desaturate); lightness dương trộn về trắng v + (1 − v) × l, âm về đen v × (1 + l); Colorize: hue, saturation cố định, L của điểm ảnh. Ống hút dải: `span_from_pick(hue)`.
   - Vibrance (vibrance, saturation −100..100), không công khai: giả thuyết tăng bão hòa theo (1 − bão hòa hiện tại), giảm tác dụng ở tông da (hue 0–50°), saturation của nó không kẹp theo HSL; khớp ảnh mẫu trên lưới 33³ (B38 chốt).
 
