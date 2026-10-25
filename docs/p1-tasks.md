@@ -52,7 +52,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | M · File | M30–M51 | Lõi, build | M39, M30 xong (25/10) |
 | U · Giao diện | U30–U35 | Giao diện | U30, U31, U34, U35 xong (25/10); U32, U33 chờ bạn chọn cách thiết kế hộp thoại mới |
 | N · Nối lõi | N30–N39, N42–N53 | Giao diện | Chưa làm |
-| I · Bút | I30–I32 | Giao diện | Đang làm I30 (25/10) |
+| I · Bút | I30–I32 | Giao diện | I30 xong (25/10), còn phần bút thật của bạn |
 | R · Phát hành | R30–R37 | Build, giao diện | Chưa làm |
 | E · Đo, cổng G2 | E30–E37 | Bench, giao diện, bạn | E33 xong (25/10) |
 | Q · Đợt tích hợp | Q30–Q51 | Test, đo | Chưa làm |
@@ -775,7 +775,7 @@ Tiếp N1–N3 của `docs/ui-tasks.md` (P0; mọi task dưới cần chúng), l
 
 ### I · Bút
 
-- [ ] **I30 · Bút trên Windows: Windows Ink, Wintab, đầu tẩy** (đang làm: worktree `u23s`, nhánh `ui/i30`, 25/10; giao diện, Cách làm của ui-tasks.md; Vừa; cần C3b, U30 (cùng `ui/main.cpp`, `Prefs.qml`); file `ui/pen.h`, `ui/pen.cpp`, `ui/main.cpp` (một lời gọi trước khi dựng `QGuiApplication`), `ui/canvas.cpp` (đầu tẩy, lực nhấn chạm đầu), dòng ghi chú của mục Bút trong `ui/qml/Prefs.qml`, `ui/tests/tst_i30.qml`): C3b đã đọc lực nhấn, nghiêng, xoay qua Qt (`build/orch/api/c3b.md`):
+- [x] **I30 · Bút trên Windows: Windows Ink, Wintab, đầu tẩy** (25/10/2026, bb76ee5: Qt 6.11.3 không có tùy chọn platform cho bút, luôn đọc WM_POINTER; Wintab bật thêm bằng `QWindowsApplication::setWinTabEnabled` (API riêng, Qt6::GuiPrivate chỉ WIN32; đổi bản Qt thì kiểm lại), app tự lọc sự kiện trùng; `usePen()` trước QGuiApplication, singleton `Pen`; SetWindowFeedbackSetting tắt 5 loại phản hồi (Iris Xe đọc lại đã tắt); đầu tẩy đổi công cụ trên canvas của Main, mỗi đầu nhớ công cụ; chấm đầu lấy lực nhấn sự kiện kế (tắt bằng `PB_PEN_FIRST_PRESSURE=0`, chờ log bút thật); ui/CMakeLists.txt thêm WHOLE_ARCHIVE cho pb_core (cho FILTER() của F30) và `if(MINGW)` vì lld không nhận --push-state; tst_i30 10 qua (+1 chỉ Windows, qua trên Iris Xe), ctest ui 1105 s, i18n, lint sạch; đột biến 16/16; Wintab, bút thật chưa thử (laptop không có driver: phần (bạn) bên dưới, hướng dẫn ở `build/orch/api/i30.md`); giao diện, Cách làm của ui-tasks.md; Vừa; cần C3b, U30 (cùng `ui/main.cpp`, `Prefs.qml`); file `ui/pen.h`, `ui/pen.cpp`, `ui/main.cpp` (một lời gọi trước khi dựng `QGuiApplication`), `ui/canvas.cpp` (đầu tẩy, lực nhấn chạm đầu), dòng ghi chú của mục Bút trong `ui/qml/Prefs.qml`, `ui/tests/tst_i30.qml`): C3b đã đọc lực nhấn, nghiêng, xoay qua Qt (`build/orch/api/c3b.md`):
   - Windows Ink (WM_POINTER, mặc định) hay Wintab theo Thiết lập › Bút: đọc Prefs trước khi dựng `QGuiApplication`, đặt tùy chọn platform của Qt (`windows:nowmpointer` hay tên đúng ở Qt 6.11: `qwindows.dll` có chuỗi `wmpointer`, `wintab`); hiệu lực từ lần mở sau, có ghi chú như Ngôn ngữ;
   - tắt phản hồi bút của Windows trên cửa sổ app (`SetWindowFeedbackSetting`: nhấn giữ thành chuột phải, tap, nút thân bút) để nét đầu không trễ (bước 3 của mục thử bút thật trong c3b.md);
   - đầu tẩy (`QPointingDevice::PointerType::Eraser`) tạm sang Eraser, lật lại về công cụ cũ, như Photoshop;
