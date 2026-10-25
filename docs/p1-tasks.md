@@ -37,7 +37,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A30, A30b, A31, A40, A41 | Lõi (lô 0) | A30, A30b xong (25/10); đang làm A40 |
 | B · Ghép | B30–B38 | Lõi (CPU, GPU), ảnh mẫu | B30 xong (24/10) |
-| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31 xong (25/10); đang làm D32 |
+| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31 xong (25/10); đang làm D32, D33 |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | F31 xong (25/10) |
@@ -46,7 +46,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | H · Retouch | H30–H39 | Lõi | Chưa làm |
 | X · Biến đổi | X30–X37 | Lõi (CPU, GPU) | Chưa làm |
 | O · AI | O30–O32 | Lõi (ONNX Runtime) | Chưa làm |
-| T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | Đang làm T30 (25/10) |
+| T · Tài liệu, lịch sử, lệnh layer | T30–T38 | Lõi | T30 xong (25/10); đang làm T38 |
 | V · View, canvas | V30–V33 | Lõi, GPU, giao diện | Chưa làm |
 | K · Kho ô, hiệu năng lõi | K30–K34 | Lõi, GPU | Đang làm K30 (25/10) |
 | M · File | M30–M51 | Lõi, build | M39, M30 xong (25/10) |
@@ -252,7 +252,7 @@ Lô 0, nối tiếp A30 → A40 → A31 → A41: cùng `core/doc.h`, `core/rende
   **Lead (25/10):** nghĩa của `Mdpn` (điểm giữa của điểm dừng) lệch giữa `psd.jsx` của E33 (m của chính điểm dừng) và D30 (đoạn từ điểm dừng tới điểm sau): chốt theo ảnh Photoshop của bạn, sửa bên sai.
 
   **Xong khi:** script qua kiểm cú pháp; `index.json` mẫu viết tay khớp script; LUT thử đúng định dạng (đọc bằng tay).
-- [ ] **D33 · Levels, Curves** (lõi, GPU; Vừa; cần D31; file `core/adj_levels.cpp`, `core/adj_curves.cpp`, `shaders/lib/adj_levels.slang`, `shaders/lib/adj_curves.slang`, `tests/test_adj_levels.cpp`, `tests/test_adj_curves.cpp`):
+- [ ] **D33 · Levels, Curves** (đang làm: worktree `d33`, 25/10, mở sớm từ lô 8; lõi, GPU; Vừa; cần D31; file `core/adj_levels.cpp`, `core/adj_curves.cpp`, `shaders/lib/adj_levels.slang`, `shaders/lib/adj_curves.slang`, `tests/test_adj_levels.cpp`, `tests/test_adj_curves.cpp`):
   - Levels theo kênh (RGB, Red, Green, Blue; JSON mỗi kênh {in0, gam, in1, out0, out1}; giao diện giả đang giữ một bộ: N37 mở rộng): v' = clamp((v − in0)/(in1 − in0)); v' = v'^(1/gam); ra out0 + v' × (out1 − out0) (mức /255); kênh riêng áp trước kênh RGB (giả thuyết; ảnh mẫu chốt thứ tự). Ống hút điểm đen, xám, trắng: `levels_from_pick()` đưa màu chọn về đích (đích mặc định của Photoshop: 0, 128, 255).
   - Curves theo kênh: tối đa 16 điểm (0–255), spline bậc ba tự nhiên qua các điểm (giả thuyết), ngoài điểm đầu, cuối là hằng, kẹp [0, 1]; hay bảng 256 điểm (đường vẽ tay của PSD); LUT 4.096 mỗi kênh; thứ tự kênh như Levels.
   - Preset (Medium Contrast…) lấy từ `presets.json` của D32 khi có; Auto ở D41.
@@ -546,7 +546,7 @@ Như plan.md (AI) và `ai-plan.md` của snapone: ONNX Runtime nạp lúc chạy
 
 Thao tác nặng chạy ở job Background có tiến độ, ra `SetState` (A40): trong lúc chạy giao diện khóa lệnh trên tài liệu đó, canvas vẫn pan, zoom (Cần bạn chốt 5).
 
-- [ ] **T30 · Hình học lưới ô: dời, xoay 90°, lật, cắt, biên nội dung** (đang làm: worktree `t30`, 25/10, mở sớm từ lô 3; lõi; Nhỏ; cần —; file `core/regrid.h`, `core/regrid.cpp`, `tests/test_regrid.cpp`, `bench/regrid.cpp`): `shift(lưới, dx, dy)` (nguyên; bội cạnh ô chỉ đổi khóa, giữ ô và `id`; lẻ: mỗi ô mới ghép từ ≤ 4 ô cũ, song song theo ô, giữ ô trống và ô một màu), `rotate(lưới, số phần tư, canvas)`, `flip(lưới, ngang hay dọc, canvas)`, `crop(lưới, hình chữ nhật)`, `content_bounds(lưới)` (biên điểm ảnh khác fill, chính xác, chỉ quét ô mép); mọi định dạng. Cho Move, Crop, Canvas Size, Image Rotation, Flip, Trim, Align, dời vùng chọn, Layer Edges.
+- [x] **T30 · Hình học lưới ô: dời, xoay 90°, lật, cắt, biên nội dung** (25/10/2026, d6f4634: một phép chung `Placement {transpose, mirror_x, mirror_y, dx, dy}` với `place()`, `shift`, `rotate`, `flip`, `crop` bọc quanh nó (X31 xoay, lật quanh một hộp một lượt); `crop` đưa góc rect về (0, 0) (S31 dời vùng chọn rồi cắt về canvas một lượt); dời bội ô giữ ô và `id`, không đọc điểm ảnh; xoay bốn lần, lật hai lần trả lại cả `id` của ô một màu; `content_bounds` chỉ đọc ô mép, thêm bản theo màu cho Trim; đột biến 16/17 (con còn lại tương đương); `pb-bench regrid` layer D1 16 bit: dời (17, −33) 205 ms (155 ms là kho ô cấp trang mới trên WSL2: việc của nhóm K), xoay 180 ms, lật 218 ms, cắt 181 ms, biên 3 ms, tải 6,8; build/orch/api/t30.md; lõi; Nhỏ; cần —; file `core/regrid.h`, `core/regrid.cpp`, `tests/test_regrid.cpp`, `bench/regrid.cpp`): `shift(lưới, dx, dy)` (nguyên; bội cạnh ô chỉ đổi khóa, giữ ô và `id`; lẻ: mỗi ô mới ghép từ ≤ 4 ô cũ, song song theo ô, giữ ô trống và ô một màu), `rotate(lưới, số phần tư, canvas)`, `flip(lưới, ngang hay dọc, canvas)`, `crop(lưới, hình chữ nhật)`, `content_bounds(lưới)` (biên điểm ảnh khác fill, chính xác, chỉ quét ô mép); mọi định dạng. Cho Move, Crop, Canvas Size, Image Rotation, Flip, Trim, Align, dời vùng chọn, Layer Edges.
 
   **Xong khi:** test so tham chiếu đọc ghi điểm ảnh (`read_rect`) với dx, dy ngẫu nhiên âm dương, mọi định dạng; dời bội cạnh giữ `id`; xoay bốn lần trả lại; lật hai lần trả lại; biên nội dung đúng trên lưới ngẫu nhiên; `pb-bench regrid` in thời gian dời một layer D1 lệch (17, −33).
 - [ ] **T31 · Lệnh layer P1** (lõi; Vừa; cần A40, T30, K30; file `core/layerops.h`, `core/layerops.cpp`, `tests/test_layerops.cpp`): Layer via Copy (Ctrl J: điểm ảnh × vùng chọn ra layer mới ngay trên, không vùng chọn thì nhân bản), Layer via Cut (Ctrl Shift J); Background from Layer (chỗ trong suốt tô màu nền sau, xuống dưới cùng), Layer from Background ("Layer 0"); Merge Down (Ctrl E: layer trên ghép lên layer dưới theo blend, opacity, fill của layer trên; kết quả giữ tên, blend, opacity của layer dưới), Merge Layers (nhiều layer chọn: như nhóm cô lập, ra ở chỗ layer trên cùng), Merge Visible (Ctrl Shift E: vào layer hiện dưới cùng, hay Background), Flatten Image (layer hiện ghép lên trắng thành Background, bỏ layer ẩn), Stamp Visible (Ctrl Alt Shift E: ảnh ghép thành layer mới trên cùng), Delete Hidden Layers, Link Layers, Unlink; Arrange (Bring to Front, Bring Forward, Send Backward, Send to Back; không xuống dưới Background). Ghép bằng `composite_plan` (CPU, theo ô, song song; ảnh ghép K30 khi có), nên mặt nạ, clipping, adjustment (B34, D40) tự vào khi chúng có. Giao diện: U9, U4 (menu Layer), nối: N36.
