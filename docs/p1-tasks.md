@@ -37,7 +37,7 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A30, A30b, A31, A40, A41 | Lõi (lô 0) | A30, A30b xong (25/10); đang làm A40 |
 | B · Ghép | B30–B38 | Lõi (CPU, GPU), ảnh mẫu | B30 xong (24/10) |
-| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31, D32 xong (25/10); đang làm D33, D35, D38 |
+| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31, D32 xong (25/10); đang làm D33, D34, D35, D38 |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | F31 xong (25/10) |
@@ -258,7 +258,7 @@ Lô 0, nối tiếp A30 → A40 → A31 → A41: cùng `core/doc.h`, `core/rende
   - Preset (Medium Contrast…) lấy từ `presets.json` của D32 khi có; Auto ở D41.
 
   **Xong khi:** Levels khớp công thức trên lưới 33³ và dốc 16 bit; gam 1 và mặc định là identity; Curves qua đúng các điểm (≤ 1e−4), hai điểm ra đường thẳng, điểm đơn điệu cho đường đơn điệu, bảng 256 điểm đúng; ống hút đưa màu chọn về đích; `check_adjust` cho cả hai; so ảnh mẫu ≤ 1 mức 8 bit khi có.
-- [ ] **D34 · Brightness/Contrast, Exposure** (lõi, GPU; Nhỏ; cần D31; file `core/adj_brightness_contrast.cpp`, `core/adj_exposure.cpp`, `shaders/lib/adj_brightness_contrast.slang`, `shaders/lib/adj_exposure.slang`, `tests/test_adj_tone.cpp`):
+- [ ] **D34 · Brightness/Contrast, Exposure** (đang làm: worktree `d34`, 25/10, mở sớm từ lô 9; lõi, GPU; Nhỏ; cần D31; file `core/adj_brightness_contrast.cpp`, `core/adj_exposure.cpp`, `shaders/lib/adj_brightness_contrast.slang`, `shaders/lib/adj_exposure.slang`, `tests/test_adj_tone.cpp`):
   - Brightness/Contrast, Use Legacy: v + b/255, rồi (v − 0,5) × k + 0,5, k từ c (giả thuyết: (100 + c)/100 khi c < 0, 100/(100 − c) khi c > 0), kẹp; khoảng của Legacy theo Photoshop. Mặc định (từ CS3): đường cong mỗi kênh giữ đen, trắng, công thức không công khai: LUT theo giả thuyết (Brightness đẩy điểm giữa như Curves, Contrast đường chữ S quanh 0,5), tham số khớp ảnh mẫu D32 (B38 chốt).
   - Exposure (exposure ±20, offset ±0,5, gamma 0,01–9,99), trong ánh sáng tuyến tính (Adobe: "gamma 1.0"): x = decode(v) (đường cong của hồ sơ tài liệu, `color.h`; giả thuyết, thử cả gamma 2,2), x × 2^exposure + offset, rồi x^(1/gamma), encode, kẹp; LUT mỗi kênh dựng trên CPU. Ống hút: đen đặt Offset, xám và trắng đặt Exposure (theo Photoshop).
 
