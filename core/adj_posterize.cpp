@@ -1,0 +1,37 @@
+// Posterize (D38), on the CPU: Image › Adjustments › Posterize and its adjustment layer. D31's frame: its values read
+// and written as AdjustSpec keys them, the identity until D38 puts the formula in, and shaders/lib/adj_posterize.slang
+// the same (adjust.h says how a type goes).
+#include "adjust.h"
+
+#include <nlohmann/json.hpp>
+
+namespace pb {
+namespace {
+
+// AdjustSpec's: Levels 2..255.
+struct Values {
+  double lv = 4;
+  void fields(AdjFields& f) {
+    f.number("lv", lv, 4, 2, 255);
+  }
+};
+
+class Posterize final : public Adjustment {
+ public:
+  Posterize(const Values& v, const AdjustContext& c, std::string vals)
+      : Adjustment(AdjType::Posterize, c, std::move(vals)), v_(v) {}
+  bool identity() const override { return true; }  // the frame's: D38 says when
+
+ private:
+  void adjust_row(float*, int, int, int) const override {}  // the frame's: the identity (D38)
+  void pack_words(AdjustParams&) const override {}         // the frame's: no words yet (D38: w[2..31], tables)
+  [[maybe_unused]] Values v_;
+};
+
+}  // namespace
+
+AdjustmentPtr adj::posterize(const nlohmann::json& vals, const AdjustContext& c) {
+  return make_adjustment<Values, Posterize>(vals, c);
+}
+
+}  // namespace pb
