@@ -48,17 +48,25 @@ std::string spec_text() {
   return s.str();
 }
 
-// The JS string literals in s, in order.
+// The JS strings in s, in order, as JS makes them with qsTr() returning its text: literals joined by + (each alone or
+// in qsTr()) are one string, as U30's "RADIO~lf~0~3DLUT File~lut~" + qsTr("Phim ấm.cube").
 std::vector<std::string> literals(const std::string& s) {
+  static const std::regex join(R"(\s*\)?\s*\+\s*(qsTr\(\s*)?)");  // between two literals of one string
   std::vector<std::string> out;
+  size_t end = 0;  // past the last literal
   for (size_t i = 0; i < s.size(); i++) {
     if (s[i] != '"') continue;
+    const bool joined = !out.empty() && std::regex_match(s.substr(end, i - end), join);
     std::string v;
     for (i++; i < s.size() && s[i] != '"'; i++) {
       if (s[i] == '\\' && i + 1 < s.size()) i++;
       v += s[i];
     }
-    out.push_back(v);
+    end = i + 1;
+    if (joined)
+      out.back() += v;
+    else
+      out.push_back(v);
   }
   return out;
 }
