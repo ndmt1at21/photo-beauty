@@ -250,6 +250,7 @@ QtObject {
 
     // The Crop tool's box on a w × h document, by the ratio picked in its bar (crop:2), centred.
     function cropBox(w, h) {
+        if (values["crop:box"]) return values["crop:box"]  // as dragged on the canvas (U34; Overlays drops it when the ratio, the document change)
         const m = String(value("crop:2", "4:5 (8:10)")).match(/^(\d+):(\d+)/)
         if (!m)
             return { x: 0, y: 0, w: w, h: h }

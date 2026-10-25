@@ -4,6 +4,7 @@ import "View.js" as View
 import "Mock.js" as Mock
 import "Presets.js" as Presets
 import "ToolSpec.js" as ToolSpec
+import "Fmt.js" as Fmt
 
 // What is drawn over the canvas (docs/ui-tasks.md, U7; artboard Overlays, the prototype's ov and cur): Viewport lays it
 // over the canvas, the frame's size, above its own pointer handling, and gives it what the canvas shows; each overlay
@@ -47,6 +48,7 @@ Item {
         cloneSource = null
         cloneOffset = null
         gradientStops = null
+        dropCrop(true)
     }
     // A gradient fill layer's stops as dragged on the canvas, until another layer is picked (ponytail: the mock keeps
     // them nowhere else).
@@ -58,6 +60,166 @@ Item {
     function stopsOf(css) {
         const parts = String(css).replace(/^[a-z-]+\(|\)$/g, "").split(/,\s*(?![^(]*\))/).filter(x => !/deg$|^to /.test(x))
         return parts.map((c, i) => ({ pos: parts.length > 1 ? i / (parts.length - 1) : 0, color: c.trim() }))
+    }
+    function num(key, def) {  // a number box of the bar as a number: def when empty
+        const v = Tools.value(key, def), n = typeof v === "number" ? v : Fmt.pnum(String(v))
+        return isFinite(n) ? n : def
+    }
+
+    // ---- Free Transform (U34): what TransformBox draws and its drags make, in the xf bar's boxes -------------------
+    // X, Y (xf:3, xf:5: where the reference point is, document px; with Relative, xf:4, from where it was as that went
+    // on), W, H (xf:7, xf:9 %), the angle (xf:11 °), H, V skew (xf:13, xf:14 °), the reference point (xf:2, 0–8; −1 off
+    // them: xf:ref, fractions of the box), the link (xf:8: corners keep proportions, Shift the other way); and
+    // xf:corners (Distort, Perspective: the box's corners before the rest, box px), warp:mesh ({ cells, pts }: Warp's
+    // net, box px). Each Free Transform starts from the document's box as it is; a reference point picked in the bar goes
+    // there on the box, W or H typed with the link on takes the other along.
+    property var xfOrigin: ({ x: 0, y: 0 })  // Relative's 0
+    property var xfLast: null  // the boxes as last written or seen: { pivot, rel, W, H, t (TransformBox's transform) }
+    property bool xfWriting: false
+    property string xfTool: ""  // the tool Free Transform began with
+    readonly property var xfAt: xfPos()  // where the reference point is, document px (NaN: its place on the box)
+    function xfPos() {
+        const x = num("xf:3", NaN), y = num("xf:5", NaN)
+        return Tools.value("xf:4", false) ? { x: xfOrigin.x + x, y: xfOrigin.y + y } : { x: x, y: y }
+    }
+    function xfNow() {  // TransformBox's transform as the boxes have it
+        const P = xfPos()
+        return { scaleX: num("xf:7", 100) / 100, scaleY: num("xf:9", 100) / 100, angle: num("xf:11", 0), skewX: num("xf:13", 0), skewY: num("xf:14", 0),
+            pivot: Tools.value("xf:2", 4), ref: Tools.value("xf:ref", null), refX: P.x, refY: P.y, corners: Tools.value("xf:corners", null) }
+    }
+    function xfWrite(o) {
+        xfWriting = true
+        if (Object.keys(o).length)
+            Tools.setValues(o)
+        xfWriting = false
+        xfLast = { pivot: Tools.value("xf:2", 4), rel: !!Tools.value("xf:4", false), W: num("xf:7", 100), H: num("xf:9", 100), t: xfNow() }
+    }
+    function startXf() {
+        if (!has)
+            return
+        xfTool = Tools.tool
+        const k = Tools.value("xf:2", 4), pv = k >= 0 && k <= 8 ? k : 4, rel = !!Tools.value("xf:4", false)
+        xfOrigin = { x: pv % 3 / 2 * docW, y: Math.floor(pv / 3) / 2 * docH }  // the box is the document's (the mock has no layer bounds)
+        const fresh = { 2: pv, 3: rel ? 0 : xfOrigin.x, 5: rel ? 0 : xfOrigin.y, 7: 100, 8: Prefs.value("transformProportional") !== false, 9: 100, 11: 0, 13: 0, 14: 0 }, o = {}
+        for (const i in fresh)  // only what is not so already: the bar's own defaults stand for the portrait as it opens
+            if (Tools.value("xf:" + i, ToolSpec.def("xf", +i)) !== fresh[i])
+                o["xf:" + i] = fresh[i]
+        for (const k of ["xf:ref", "xf:corners", "warp:mesh"])
+            if (Tools.value(k, null) !== null)
+                o[k] = null
+        xfWrite(o)
+    }
+    function writeXf(t) {  // TransformBox's drag
+        const rel = !!Tools.value("xf:4", false)
+        xfWrite({ "xf:2": t.pivot, "xf:ref": t.ref, "xf:3": rel ? t.refX - xfOrigin.x : t.refX, "xf:5": rel ? t.refY - xfOrigin.y : t.refY, "xf:7": t.scaleX * 100,
+            "xf:9": t.scaleY * 100, "xf:11": t.angle, "xf:13": t.skewX, "xf:14": t.skewY, "xf:corners": t.corners })
+    }
+    function syncXf() {  // the bar's boxes changed: what follows from them
+        const was = xfLast, k = Tools.value("xf:2", 4), rel = !!Tools.value("xf:4", false), W = num("xf:7", 100), H = num("xf:9", 100), o = {}
+        if (k !== was.pivot && k >= 0 && k <= 8) {
+            const t = xform.withPivot(was.t, k)
+            Object.assign(o, { "xf:ref": null, "xf:3": rel ? t.refX - xfOrigin.x : t.refX, "xf:5": rel ? t.refY - xfOrigin.y : t.refY })
+        } else if (rel !== was.rel) {
+            if (rel)
+                xfOrigin = { x: was.t.refX, y: was.t.refY }
+            Object.assign(o, { "xf:3": rel ? 0 : was.t.refX, "xf:5": rel ? 0 : was.t.refY })
+        }
+        if (Tools.value("xf:8", true) && W !== was.W && H === was.H && was.W)
+            o["xf:9"] = H * W / was.W
+        else if (Tools.value("xf:8", true) && H !== was.H && W === was.W && was.H)
+            o["xf:7"] = W * H / was.H
+        xfWrite(o)
+    }
+    Connections {
+        target: Tools
+        function onXfChanged() {
+            if (Tools.xf)
+                ov.startXf()
+            else
+                ov.xfLast = null
+        }
+        function onValuesChanged() {
+            if (Tools.xf && ov.xfLast && !ov.xfWriting)
+                ov.syncXf()
+        }
+    }
+
+    // ---- Crop, Perspective Crop (U34): CropBox's drags in crop:box, crop:angle (Tools.cropBox() gives the box), and
+    // pcrop:quad; dropped when the ratio or the document (its size: Crop applied, undone) changes, Esc, Enter.
+    // The ratio a crop's drag keeps, width over height (0: none): the bar's n:m, Original Ratio, or its W and H.
+    readonly property real cropAspect: {
+        const r = String(Tools.value("crop:2", "4:5 (8:10)")), m = r.match(/^(\d+):(\d+)/)
+        if (m)
+            return +m[1] / +m[2]
+        if (r === "Original Ratio")
+            return docH > 0 ? docW / docH : 0
+        const w = num("crop:3", 4), h = num("crop:5", 5)
+        return w > 0 && h > 0 ? w / h : 0
+    }
+    readonly property string cropKey: [Tools.value("crop:2", ""), Tools.value("crop:3", ""), Tools.value("crop:5", "")].join("|")
+    onCropKeyChanged: dropCrop(false)
+    onDocWChanged: dropCrop(true)
+    onDocHChanged: dropCrop(true)
+    function dropCrop(quadToo) {
+        const o = {}
+        if (Tools.value("crop:box", null) || Tools.value("crop:angle", null) !== null)
+            Object.assign(o, { "crop:box": null, "crop:angle": null })
+        if (quadToo && Tools.value("pcrop:quad", null))
+            o["pcrop:quad"] = null
+        if (Object.keys(o).length)
+            Tools.setValues(o)
+    }
+    readonly property bool cropping: has && !Tools.xf && (tool === "crop" || tool === "pcrop" && !!Tools.value("pcrop:quad", null))
+
+    // ---- keys: Enter applies, Esc cancels, the arrows move the box by 1 px (Shift 10), as Photoshop's: the window's
+    // own (as Toolbar's held keys), the arrows taken before Main's keys have them (the Move tool's nudge, U31).
+    readonly property Item keyRoot: visible && (Tools.xf && has || cropping) ? Window.contentItem : null
+    function keysFree() {
+        const f = Window.activeFocusItem, w = Window.window as Main
+        return !(f instanceof TextInput) && !(f instanceof TextEdit) && !(w && w.dialogs.length)
+    }
+    function arrow(e) { return [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].indexOf(e.key) >= 0 && !(e.modifiers & (Qt.ControlModifier | Qt.AltModifier)) }
+    function boxKey(e) {
+        if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Escape) {
+            if (e.isAutoRepeat)
+                return true
+            const ok = e.key !== Qt.Key_Escape
+            if (Tools.xf) {
+                Docs.exec(ok ? "@xfApply" : "@xfCancel")
+            } else if (tool === "crop") {
+                if (ok)
+                    Docs.exec("@cropApply")
+                dropCrop(false)
+            } else {
+                Docs.exec(ok ? "@pcropApply" : "@pcropCancel")  // as the bar's ✓, ✗
+            }
+            return true
+        }
+        if (!arrow(e))
+            return false
+        const n = e.modifiers & Qt.ShiftModifier ? 10 : 1, d = { [Qt.Key_Left]: [-n, 0], [Qt.Key_Right]: [n, 0], [Qt.Key_Up]: [0, -n], [Qt.Key_Down]: [0, n] }[e.key]
+        if (Tools.xf)
+            xform.nudge(d[0], d[1])
+        else
+            cropper.nudge(d[0], d[1])
+        return true
+    }
+    // An Enter or Esc a text field had first (it takes them: a box of the bar lets the focus go at Enter, the key going on).
+    property bool keyInField: false
+    Connections {
+        target: ov.keyRoot ? ov.keyRoot.Keys : null
+        function onShortcutOverride(e) {
+            if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Escape)
+                ov.keyInField = !ov.keysFree()
+            else if (ov.arrow(e) && ov.keysFree())
+                e.accepted = true
+        }
+        function onPressed(e) {
+            const inField = ov.keyInField
+            ov.keyInField = false
+            if (!inField && ov.keysFree() && ov.boxKey(e))
+                e.accepted = true
+        }
     }
 
     GuidesGrid {
@@ -106,17 +268,28 @@ Item {
         text: qsTr("Quick Mask · Q để thoát")
     }
     CropBox {
+        id: cropper
+        readonly property bool persp: ov.tool === "pcrop"
         anchors.fill: parent
-        visible: ov.has && ov.tool === "crop" && !Tools.xf
+        visible: ov.has && (ov.tool === "crop" || persp) && !Tools.xf
         view: ov.view
         size: ov.size
         docW: ov.docW
         docH: ov.docH
-        box: visible ? Tools.cropBox(ov.docW, ov.docH) : null
+        perspective: persp
+        box: visible && !persp ? Tools.cropBox(ov.docW, ov.docH) : null
+        angle: visible && !persp ? ov.num("crop:angle", 0) : 0
+        quad: visible && persp ? Tools.value("pcrop:quad", null) : null
+        grid: !!Tools.value("pcrop:9", true)
+        aspect: ov.cropAspect
+        interactive: !Tools.real
         pointerArea: ov.pointerArea
         ratio: (String(Tools.value("crop:2", "4:5 (8:10)")).match(/^\d+:\d+/) || [""])[0]
+        onBoxEdited: (b, a) => Tools.setValues({ "crop:box": b, "crop:angle": a })
+        onQuadEdited: q => Tools.setValue("pcrop:quad", q)
     }
     TransformBox {
+        id: xform
         anchors.fill: parent
         visible: ov.has && Tools.xf
         view: ov.view
@@ -124,12 +297,24 @@ Item {
         docW: ov.docW
         docH: ov.docH
         warp: Tools.warp
-        scaleX: Tools.value("xf:7", 100) / 100
-        scaleY: Tools.value("xf:9", 100) / 100
-        angle: Tools.value("xf:11", 0)
+        scaleX: ov.num("xf:7", 100) / 100
+        scaleY: ov.num("xf:9", 100) / 100
+        angle: ov.num("xf:11", 0)
+        skewX: ov.num("xf:13", 0)
+        skewY: ov.num("xf:14", 0)
         pivot: Tools.value("xf:2", 4)
+        ref: Tools.value("xf:ref", null)
+        refX: ov.xfAt.x
+        refY: ov.xfAt.y
+        corners: Tools.value("xf:corners", null)
         cells: parseInt(Tools.value("warp:3", "3 × 3")) || 3
+        mesh: { const m = Tools.value("warp:mesh", null); return m && m.cells === cells ? m.pts : null }
+        proportional: !!Tools.value("xf:8", true)
+        // Space held: Viewport pans (Free Transform begun with the Hand tool keeps the drags); a real document's is N49's.
+        interactive: !Tools.real && (Tools.tool !== "hand" || ov.xfTool === "hand")
         pointerArea: ov.pointerArea
+        onTransformed: t => ov.writeXf(t)
+        onWarped: m => Tools.setValue("warp:mesh", { cells: cells, pts: m })
     }
     ShapeHandles {
         // A shape layer picked with a shape tool: its size from the bar of its shape, centred (the mock keeps no place).
@@ -138,7 +323,7 @@ Item {
         readonly property real bw: Tools.value(bar + ":10", dims[0])
         readonly property real bh: Tools.value(bar + (bar === "line" ? ":11" : ":12"), dims[1])
         anchors.fill: parent
-        visible: ov.has && !!ov.active && ov.active.kind === "shape" && !!Mock.SHAPE_TOOLS[ov.tool]
+        visible: ov.has && !!ov.active && ov.active.kind === "shape" && !!Mock.SHAPE_TOOLS[ov.tool] && !Tools.xf
         view: ov.view
         size: ov.size
         box: visible ? { x: (ov.docW - bw) / 2, y: (ov.docH - bh) / 2, w: bw, h: bh } : null
@@ -151,7 +336,7 @@ Item {
         readonly property real em: Tools.value("char:size", 48) * (ov.doc ? ov.doc.ppi : 72) / 72  // Character's (the Type bar's) pt to document px
         readonly property real w: Math.min(ov.docW - 2 * em, 9.2 * em)
         anchors.fill: parent
-        visible: ov.has && !!ov.active && ov.active.kind === "text" && ov.tool === "type"
+        visible: ov.has && !!ov.active && ov.active.kind === "text" && ov.tool === "type" && !Tools.xf
         view: ov.view
         size: ov.size
         box: visible ? { x: (ov.docW - w) / 2, y: (ov.docH - 2 * em) / 2, w: w, h: 2 * em } : null
@@ -161,7 +346,7 @@ Item {
     }
     GradientLine {
         anchors.fill: parent
-        visible: !!ov.gradientLayer
+        visible: !!ov.gradientLayer && !Tools.xf
         view: ov.view
         size: ov.size
         from: visible ? { x: 0.13 * ov.docW, y: 0.83 * ov.docH } : null  // as the artboard draws it: the mock keeps no line
@@ -195,7 +380,7 @@ Item {
         hint: qsTr("Alt nhấp để đặt nguồn") + (Tools.value(ov.tool === "clone" ? "clone:13" : "heal:8", true) ? " · Aligned" : "")
     }
     TapHandler {  // Alt click: the source
-        enabled: ov.has && (ov.tool === "clone" || ov.tool === "heal")
+        enabled: ov.has && (ov.tool === "clone" || ov.tool === "heal") && !Tools.xf
         acceptedModifiers: Qt.AltModifier
         onTapped: ep => {
             ov.cloneSource = View.toDoc(ov.view, ov.size, ep.position)
@@ -203,7 +388,7 @@ Item {
         }
     }
     PointHandler {  // the first stroke after it: the offset
-        enabled: ov.has && (ov.tool === "clone" || ov.tool === "heal") && !!ov.cloneSource && !ov.cloneOffset
+        enabled: ov.has && (ov.tool === "clone" || ov.tool === "heal") && !!ov.cloneSource && !ov.cloneOffset && !Tools.xf
         acceptedButtons: Qt.LeftButton
         acceptedModifiers: Qt.NoModifier
         onActiveChanged: {
@@ -223,7 +408,7 @@ Item {
     PointHandler {  // the Eyedropper held down: the ring; let go: the colour
         id: pick
         property color was: "#ffffff"
-        enabled: ov.has && ov.tool === "eyedrop"
+        enabled: ov.has && ov.tool === "eyedrop" && !Tools.xf  // not Alt's Eyedropper for a moment in Free Transform
         acceptedButtons: Qt.LeftButton
         onActiveChanged: {
             if (active)

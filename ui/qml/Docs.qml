@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import "Mock.js" as Mock
+import "ToolSpec.js" as ToolSpec
 import "View.js" as View
 
 // The open documents, recent files, files to recover and the background job (docs/ui-tasks.md, U3), as the prototype
@@ -380,6 +381,15 @@ QtObject {
                 return false
             const b = Tools.cropBox(d.w, d.h)
             return run({ op: "crop", w: Math.round(b.w), h: Math.round(b.h) })
+        }
+        // Perspective Crop's ✗ and ✓ (Esc, Enter: U34): the four corners dropped; ✓ one step, the mock keeping its size.
+        case "pcropCancel": if (Tools.value("pcrop:quad", null)) Tools.setValue("pcrop:quad", null); return true
+        case "pcropApply": {
+            if (!d || !Tools.value("pcrop:quad", null))
+                return false
+            const ok = run({ op: "step", name: ToolSpec.TOOL.pcrop.n, icon: ToolSpec.TOOL.pcrop.icn })
+            Tools.setValue("pcrop:quad", null)
+            return ok
         }
         default: return run({ op: n, arg: arg })  // a command of the core (P1's N tasks): only MenuSpec names it
         }
