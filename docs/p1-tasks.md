@@ -37,12 +37,12 @@ Lập 20/10/2026 từ ba nháp soạn song song (phần a: ghép, điều chỉn
 | --- | --- | --- | --- |
 | A · Hợp đồng lõi | A30, A30b, A31, A40, A41 | Lõi (lô 0) | A30, A30b xong (25/10); đang làm A40 |
 | B · Ghép | B30–B38 | Lõi (CPU, GPU), ảnh mẫu | B30 xong (24/10) |
-| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31 xong (25/10); đang làm D32, D33 |
+| D · Điều chỉnh | D30–D41 | Lõi (CPU, GPU) | D30, D31 xong (25/10); đang làm D32, D33, D35 |
 | L · Layer style, smart object | L30–L35 | Lõi (CPU, GPU) | Chưa làm |
 | Y · Chữ, hình | Y30–Y34 | Giao diện (QtGui) | Chưa làm |
 | F · Bộ lọc | F30–F38 | Lõi (CPU, GPU) | F31 xong (25/10) |
 | C · Cọ, vẽ, tô, tẩy, gradient | C30–C41 | Lõi (CPU, GPU) | Đang làm C41 (25/10) |
-| S · Vùng chọn, Quick Mask, Select and Mask | S30–S39 | Lõi | S30 xong (25/10); đang làm S39 |
+| S · Vùng chọn, Quick Mask, Select and Mask | S30–S39 | Lõi | S30, S39 xong (25/10) |
 | H · Retouch | H30–H39 | Lõi | Chưa làm |
 | X · Biến đổi | X30–X37 | Lõi (CPU, GPU) | Chưa làm |
 | O · AI | O30–O32 | Lõi (ONNX Runtime) | Chưa làm |
@@ -263,7 +263,7 @@ Lô 0, nối tiếp A30 → A40 → A31 → A41: cùng `core/doc.h`, `core/rende
   - Exposure (exposure ±20, offset ±0,5, gamma 0,01–9,99), trong ánh sáng tuyến tính (Adobe: "gamma 1.0"): x = decode(v) (đường cong của hồ sơ tài liệu, `color.h`; giả thuyết, thử cả gamma 2,2), x × 2^exposure + offset, rồi x^(1/gamma), encode, kẹp; LUT mỗi kênh dựng trên CPU. Ống hút: đen đặt Offset, xám và trắng đặt Exposure (theo Photoshop).
 
   **Xong khi:** mặc định là identity; Legacy khớp công thức; Exposure +1 nhân đôi giá trị tuyến tính (qua decode), Offset dời đúng; `check_adjust`; so ảnh mẫu ΔE2000 trung bình < 1 khi có, độ lệch của Brightness/Contrast mới in cho B38.
-- [ ] **D35 · Hue/Saturation, Vibrance** (lõi, GPU; Vừa; cần D31; file `core/adj_hue_saturation.cpp`, `core/adj_vibrance.cpp`, `shaders/lib/adj_hue_saturation.slang`, `shaders/lib/adj_vibrance.slang`, `tests/test_adj_hue.cpp`):
+- [ ] **D35 · Hue/Saturation, Vibrance** (đang làm: worktree `d35`, 25/10, mở sớm từ lô 8; lõi, GPU; Vừa; cần D31; file `core/adj_hue_saturation.cpp`, `core/adj_vibrance.cpp`, `shaders/lib/adj_hue_saturation.slang`, `shaders/lib/adj_vibrance.slang`, `tests/test_adj_hue.cpp`):
   - Hue/Saturation: Master và 6 dải (Reds…Magentas; span [a, b, c, d] mặc định như `AdjustSpec.SPANS`, sửa được), mỗi cái hue −180..180, saturation, lightness −100..100; Colorize (hue 0–360, saturation 0–100, lightness). Giả thuyết (mô hình GIMP dựng theo Photoshop): RGB → HSL; trọng số dải theo hue: 1 trong [b, c], tuyến tính về 0 tới a và d, vắt qua 0° được; hue cộng Master và Σ trọng số × dải; saturation dương tăng về bão hòa, âm giảm tuyến tính (−100 ra xám L = (max + min)/2, như Desaturate); lightness dương trộn về trắng v + (1 − v) × l, âm về đen v × (1 + l); Colorize: hue, saturation cố định, L của điểm ảnh. Ống hút dải: `span_from_pick(hue)`.
   - Vibrance (vibrance, saturation −100..100), không công khai: giả thuyết tăng bão hòa theo (1 − bão hòa hiện tại), giảm tác dụng ở tông da (hue 0–50°), saturation của nó không kẹp theo HSL; khớp ảnh mẫu trên lưới 33³ (B38 chốt).
 
@@ -460,7 +460,7 @@ Vùng chọn là lưới một kênh của A40 (Kiến trúc của plan.md: mọ
 - [ ] **S38 · Guided filter theo ô** (lõi; Nhỏ; cần —; file `core/guided.h`, `core/guided.cpp`, `tests/test_guided.cpp`): chép `box_means()` và guided filter (He, Sun; bản nhanh lấy mẫu thưa) của `guided.cpp` snapone (ghi commit nguồn), sang lưới ô: hướng dẫn xám hay màu (hiệp phương sai 3 × 3), lề theo bán kính, `parallel_for`; nâng mặt nạ thô (1024 px của model) lên mức 0 theo ảnh hướng dẫn. Dùng cho Select Subject (O31), Select and Mask (S35), mặt nạ da (H37), làm mịn da (H38).
 
   **Xong khi:** test: ε → 0 với hướng dẫn là chính ảnh vào trả lại ảnh vào; hướng dẫn hằng ra trung bình hộp; bậc thang tổng hợp giữ mép (lệch ≤ 1 điểm ảnh); nâng mặt nạ 1024 lên 8256 theo mép của hướng dẫn: biên lệch ≤ 1 điểm ảnh; không phụ thuộc chia ô.
-- [ ] **S39 · Ảnh mẫu Photoshop cho lệnh vùng chọn** (đang làm: worktree `s39`, 25/10; bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/select.jsx`, `tools/ps-golden/README-select.md`, `bench/ps_select.cpp`, `tests/test_ps_select.cpp`, `tests/golden/ps/select/*`): như B4: ảnh vào và vùng chọn vào; script làm Feather (1, 5, 20, 100 px), Expand, Contract (5, 50 px), Border (10 px), Smooth (10 px), Magic Wand (Tolerance 0, 32, 100; Contiguous bật, tắt; Anti-alias bật, tắt) ở điểm cho trước, Grow, Similar, Color Range (Fuzziness 40, 100; Highlights; Skin Tones), Lasso ngôi sao tự cắt, elip anti-alias, Add, Subtract, Intersect của hai vùng chọn mềm; lưu vùng chọn thành kênh, xuất PNG 16 bit. Test so S30–S34 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
+- [x] **S39 · Ảnh mẫu Photoshop cho lệnh vùng chọn** (25/10/2026, fe79473: `select.jsx` 79 case (Feather 0,5–100 px hai cách, Expand, Contract, Border, Smooth, Magic Wand, Grow, Similar, Color Range kể cả Midtones, Shadows, Reds, Skin Tones, Lasso tự cắt, elip, kết hợp vùng chọn mềm), khoảng 1,2 MB, khoảng 4 phút; vùng chọn vào nạp qua kênh đỏ, ra lưu thành kênh chép sang tài liệu xám 16 bit; Color Range đưa thẳng Lab của màu mẫu; ảnh vào do `tests/ps_select_inputs.h` sinh (bench, test dùng chung), index mẫu ở `tests/golden/ps/select/sample/`; test so Feather với S30 ngay (ảnh thay thế ước lại đúng σ/Radius), chỗ để sẵn cho S31–S34; đột biến 8/9 (con còn lại có test khác bắt); chờ bạn chạy ở B33; build/orch/api/s39.md; bench; Nhỏ; agent viết, bạn chạy ở B33; cần B30 (`tests/golden.h`); file `tools/ps-golden/select.jsx`, `tools/ps-golden/README-select.md`, `bench/ps_select.cpp`, `tests/test_ps_select.cpp`, `tests/golden/ps/select/*`): như B4: ảnh vào và vùng chọn vào; script làm Feather (1, 5, 20, 100 px), Expand, Contract (5, 50 px), Border (10 px), Smooth (10 px), Magic Wand (Tolerance 0, 32, 100; Contiguous bật, tắt; Anti-alias bật, tắt) ở điểm cho trước, Grow, Similar, Color Range (Fuzziness 40, 100; Highlights; Skin Tones), Lasso ngôi sao tự cắt, elip anti-alias, Add, Subtract, Intersect của hai vùng chọn mềm; lưu vùng chọn thành kênh, xuất PNG 16 bit. Test so S30–S34 khi có ảnh, in độ lệch, bỏ qua khi thiếu.
 
   **Xong khi:** script, ảnh vào, test có sẵn, bỏ qua khi thiếu ảnh; bạn chạy ở B33; sau đó độ lệch ghi vào dòng task, vượt 2 mức 8 bit thì kèm task chỉnh hằng số.
 
